@@ -33,6 +33,7 @@ import (
 	// needs; see internal/collector's own doc comment for the full
 	// 5-step checklist a fifth integration follows.
 	_ "github.com/uyab/lotus/internal/collector/gitlab"
+	_ "github.com/uyab/lotus/internal/collector/sentry"
 	_ "github.com/uyab/lotus/internal/collector/sonarqube"
 	_ "github.com/uyab/lotus/internal/collector/trivy"
 )

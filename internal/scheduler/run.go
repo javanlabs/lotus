@@ -40,6 +40,13 @@ func DefaultExecute(db *sqlx.DB, kek *crypto.KEK, netguardCfg netguard.Config, l
 		if err != nil {
 			return collector.Result{}, collector.ErrInternal(err)
 		}
+		// organizations.settings — task 3.4's trivy_fail_on is the first
+		// reader; without this, CollectRequest.OrgSettings was always nil
+		// on the real scheduler path, silently defeating that policy.
+		orgSettings, err := global.OrgSettings(ctx, db, run.OrgID)
+		if err != nil {
+			return collector.Result{}, collector.ErrInternal(err)
+		}
 
 		dek, err := global.GetOrCreateOrgDEK(ctx, db, kek, run.OrgID)
 		if err != nil {
@@ -53,7 +60,7 @@ func DefaultExecute(db *sqlx.DB, kek *crypto.KEK, netguardCfg netguard.Config, l
 		client := netguard.NewClient(netguardCfg)
 		client.Transport = WrapTransport(client.Transport, limiters.For(run.ConnectionID))
 
-		session, err := c.Open(ctx, collector.ConnConfig{BaseURL: conn.BaseURL, Secret: secret, Client: client})
+		session, err := c.Open(ctx, collector.ConnConfig{BaseURL: conn.BaseURL, Secret: secret, Client: client, Config: conn.Config})
 		if err != nil {
 			return collector.Result{}, err
 		}
@@ -61,7 +68,7 @@ func DefaultExecute(db *sqlx.DB, kek *crypto.KEK, netguardCfg netguard.Config, l
 
 		return session.Collect(ctx, collector.CollectRequest{
 			OrgID: run.OrgID, ComponentID: binding.ComponentID, BindingID: binding.ID,
-			ExternalKey: binding.ExternalKey, Config: binding.Config,
+			ExternalKey: binding.ExternalKey, Config: binding.Config, OrgSettings: orgSettings,
 		})
 	}
 }

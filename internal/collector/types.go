@@ -54,6 +54,13 @@ type ConnConfig struct {
 	BaseURL string
 	Secret  string
 	Client  *http.Client
+	// Config is integration_connections.config (task 2.2's existing
+	// generic jsonb column) — plain, non-secret connection-level settings
+	// that don't fit base_url/Secret. First use: task 3.5's Sentry
+	// connection needs an organization slug alongside its token, and that
+	// slug isn't a credential, so it belongs here rather than folded into
+	// Secret the way Harbor's "username:password" is.
+	Config json.RawMessage
 }
 
 type DiscoverQuery struct {
