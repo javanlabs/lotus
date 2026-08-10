@@ -1,0 +1,96 @@
+// Package dbtest gives Go tests an isolated, migrated Postgres schema.
+//
+// Every test gets its own schema (via the connection's search_path) on the
+// shared TEST_DATABASE_URL database, so tests can run without a container
+// per test and without clobbering each other's rows. Mirrors the pattern
+// used by talisa's internal/store test harness.
+package dbtest
+
+import (
+	"database/sql"
+	"fmt"
+	"os"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
+
+	"github.com/uyab/lotus/internal/db"
+)
+
+var schemaSeq atomic.Int64
+
+// DSN creates a fresh schema, migrates it with goose, and returns a DSN
+// scoped to that schema (via search_path). Skips the test if
+// TEST_DATABASE_URL is unset (run via `make test`, which sets it). Exposed
+// separately from Open so tests that need to re-run migrations themselves
+// (e.g. an idempotency check) can do so against the same isolated schema.
+func DSN(t *testing.T) string {
+	t.Helper()
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set; run `make test`")
+	}
+
+	name := fmt.Sprintf("t_%s_%d", sanitize(strings.ToLower(t.Name())), schemaSeq.Add(1))
+
+	admin, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open admin conn: %v", err)
+	}
+	defer admin.Close()
+	if _, err := admin.Exec(`DROP SCHEMA IF EXISTS "` + name + `" CASCADE`); err != nil {
+		t.Fatalf("drop schema %s: %v", name, err)
+	}
+	if _, err := admin.Exec(`CREATE SCHEMA "` + name + `"`); err != nil {
+		t.Fatalf("create schema %s: %v", name, err)
+	}
+	t.Cleanup(func() {
+		a, err := sql.Open("pgx", dsn)
+		if err != nil {
+			return
+		}
+		defer a.Close()
+		a.Exec(`DROP SCHEMA IF EXISTS "` + name + `" CASCADE`)
+	})
+
+	scoped := withSearchPath(dsn, name)
+	if err := db.Migrate(scoped); err != nil {
+		t.Fatalf("migrate schema %s: %v", name, err)
+	}
+	return scoped
+}
+
+// Open creates a fresh schema, migrates it with goose, and returns a
+// *sqlx.DB whose connections default to that schema.
+func Open(t *testing.T) *sqlx.DB {
+	t.Helper()
+	scoped := DSN(t)
+	sqlxDB, err := db.Open(scoped)
+	if err != nil {
+		t.Fatalf("open sqlx conn: %v", err)
+	}
+	t.Cleanup(func() { sqlxDB.Close() })
+	return sqlxDB
+}
+
+func withSearchPath(dsn, schema string) string {
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	return dsn + sep + "search_path=" + schema
+}
+
+// sanitize keeps only characters legal in an unquoted Postgres identifier,
+// so subtest names (which contain "/") produce a valid schema name.
+func sanitize(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			return r
+		}
+		return '_'
+	}, s)
+}

@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@theme {
+  /* Placeholder tokens — replaced with the real Claude Design tokens
+     (colors, radius, typography, spacing) in task 4.1. */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}

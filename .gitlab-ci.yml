@@ -1,0 +1,143 @@
+stages:
+  - test
+  - e2e
+  - build
+  - deploy
+
+variables:
+  GIT_DEPTH: "20"
+  GOPATH: "$CI_PROJECT_DIR/.go"
+  GOMODCACHE: "$CI_PROJECT_DIR/.go/pkg/mod"
+
+# ---------------------------------------------------------------------------
+# Test — full suite against a real Postgres service, plus the two static
+# guardrails (go vet, and the task-0.4 CI check that no db.Get/Select/Exec/
+# Query call exists outside internal/repo). Each Go test creates and
+# migrates its own Postgres schema on TEST_DATABASE_URL (see
+# internal/dbtest), so this job needs nothing more than a reachable
+# Postgres — no separate migrate step. Runs on every push, not just main,
+# so a broken branch fails before it reaches build.
+# ---------------------------------------------------------------------------
+test:
+  stage: test
+  image: golang:1.26-bookworm
+  services:
+    - name: postgres:17-alpine
+      alias: postgres
+  variables:
+    POSTGRES_USER: lotus
+    POSTGRES_PASSWORD: lotus
+    POSTGRES_DB: lotus_test
+    TEST_DATABASE_URL: "postgres://lotus:lotus@postgres:5432/lotus_test?sslmode=disable"
+  before_script:
+    - for i in $(seq 1 30); do (echo > /dev/tcp/postgres/5432) >/dev/null 2>&1 && break; sleep 1; done
+  script:
+    - go vet ./...
+    - ./scripts/check-repo-scope.sh
+    - go test ./...
+  only:
+    variables:
+      - $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
+  cache:
+    key: lotus-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .go/pkg/mod/
+
+# ---------------------------------------------------------------------------
+# E2E — Playwright drives a real build of the app against a real Postgres.
+# Same webServer command as local (`make css` + `go run ./cmd/lotus serve`),
+# so this exercises the exact dev-mode boot path contributors use.
+# ---------------------------------------------------------------------------
+e2e:
+  stage: e2e
+  image: golang:1.26-bookworm
+  services:
+    - name: postgres:17-alpine
+      alias: postgres
+  variables:
+    POSTGRES_USER: lotus
+    POSTGRES_PASSWORD: lotus
+    POSTGRES_DB: lotus
+    DATABASE_URL: "postgres://lotus:lotus@postgres:5432/lotus?sslmode=disable"
+    MIGRATE_DATABASE_URL: "postgres://lotus:lotus@postgres:5432/lotus?sslmode=disable"
+  before_script:
+    - for i in $(seq 1 30); do (echo > /dev/tcp/postgres/5432) >/dev/null 2>&1 && break; sleep 1; done
+    - apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates nodejs npm
+    - go run ./cmd/lotus migrate up
+  script:
+    - cd e2e
+    - npm install
+    - npx playwright install --with-deps chromium
+    - npx playwright test
+  artifacts:
+    when: always
+    paths:
+      - e2e/playwright-report/
+      - e2e/test-results/
+    expire_in: 7 days
+  only:
+    variables:
+      - $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
+  cache:
+    key: lotus-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .go/pkg/mod/
+
+# ---------------------------------------------------------------------------
+# Build — produces the self-contained Linux binary as an artifact. Lotus
+# embeds its templates + static assets, uses the standalone Tailwind CLI (no
+# Node), and pure-Go pgx for Postgres (CGO_ENABLED=0), so the build is a
+# single static binary with no runtime dependencies.
+# ---------------------------------------------------------------------------
+build:
+  stage: build
+  image: golang:1.26-bookworm
+  before_script:
+    - apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates
+    - curl -fsSL -o /usr/local/bin/tailwindcss https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
+    - chmod +x /usr/local/bin/tailwindcss
+  script:
+    - tailwindcss -i web/static/css/app.css -o web/static/css/app.built.css --minify
+    - mkdir -p bin
+    - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/lotus ./cmd/lotus
+    - ls -la bin/lotus
+    - sha256sum bin/lotus > bin/lotus.sha256
+  artifacts:
+    name: "lotus-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - bin/lotus
+      - bin/lotus.sha256
+    expire_in: 30 days
+  only:
+    refs:
+      - main
+    variables:
+      - $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
+  cache:
+    key: lotus-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .go/pkg/mod/
+
+# ---------------------------------------------------------------------------
+# Deploy — intentionally not wired up yet (task 5.2 in the project plan).
+# Lotus needs wildcard DNS + an ACME DNS-01 wildcard certificate before any
+# real host can serve *.{{LOTUS_BASE_DOMAIN}}, and no production base domain
+# has been decided yet (tracked in ActiveCollab project 697). Once it is,
+# this stage should mirror talisa's deploy_prod job: SSH in, render
+# /etc/lotus/lotus.env from GitLab CI/CD variables, swap the binary, restart
+# the systemd unit — see talisa/.gitlab-ci.yml and talisa/deploy/ for the
+# reference shape (bootstrap.sh, update.sh, nginx vhost, systemd unit).
+# Required variables once this is filled in: SSH_PRIVATE_KEY,
+# PROD_SERVER_HOST, PROD_SERVER_USER, SESSION_SECRET, LOTUS_KEK,
+# DATABASE_URL, MIGRATE_DATABASE_URL, LOTUS_BASE_DOMAIN.
+# ---------------------------------------------------------------------------
+deploy_prod:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - echo "deploy_prod is not implemented yet — see task 5.2 and the comment above this job."
+    - exit 1
+  when: manual
+  only:
+    refs:
+      - main

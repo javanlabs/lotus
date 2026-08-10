@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: lotus-pg
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5418:5432"
+    volumes:
+      - lotus-pg-data:/var/lib/postgresql/data
+
+volumes:
+  lotus-pg-data:

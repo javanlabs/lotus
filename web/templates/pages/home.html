@@ -1,0 +1,12 @@
+{{define "content"}}
+<main class="mx-auto flex max-w-2xl flex-col items-start gap-4 px-6 py-16">
+  <span class="rounded-full bg-indigo-100 px-3 py-1 text-sm font-medium text-indigo-700">Fase 0</span>
+  <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Lotus</h1>
+  <p class="text-slate-600">Scaffold is up. Toolchain, package layout, and rendering path are wired
+    end to end — schema, auth, and the real UI land in the phases after this one.</p>
+  <a href="/healthz"
+     class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+     hx-get="/healthz" hx-target="#healthz-result" hx-swap="innerHTML">Check /healthz</a>
+  <pre id="healthz-result" class="text-sm text-slate-500"></pre>
+</main>
+{{end}}
