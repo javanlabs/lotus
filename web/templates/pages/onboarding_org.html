@@ -1,0 +1,26 @@
+{{define "content"}}
+<main class="mx-auto flex max-w-sm flex-col items-start gap-4 px-6 py-16">
+  <h1 class="text-xl font-semibold text-slate-900">Create your organization</h1>
+  {{if .Data.Error}}
+  <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{.Data.Error}}</p>
+  {{end}}
+  <form method="post" action="/onboarding/org" class="flex w-full flex-col gap-3">
+    <label class="flex flex-col gap-1 text-sm text-slate-700">
+      Organization name
+      <input type="text" name="name" id="org-name" value="{{.Data.Name}}" required
+             class="rounded-md border border-slate-300 px-3 py-2">
+    </label>
+    <label class="flex flex-col gap-1 text-sm text-slate-700">
+      Subdomain
+      <input type="text" name="slug" id="org-slug" value="{{.Data.Slug}}" required
+             hx-get="/onboarding/slug-check" hx-trigger="input changed delay:300ms" hx-target="#slug-check"
+             class="rounded-md border border-slate-300 px-3 py-2">
+      <span id="slug-check" class="text-xs"></span>
+    </label>
+    <button type="submit"
+            class="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+      Create organization
+    </button>
+  </form>
+</main>
+{{end}}

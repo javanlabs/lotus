@@ -1,0 +1,51 @@
+{{define "content"}}
+<main class="mx-auto flex max-w-sm flex-col items-start gap-4 px-6 py-16">
+  {{if eq .Data.State "invalid"}}
+  <h1 class="text-xl font-semibold text-slate-900">Invitation not found</h1>
+  <p class="text-slate-600">This invite link is invalid, expired, or was already used.</p>
+
+  {{else if eq .Data.State "declined"}}
+  <h1 class="text-xl font-semibold text-slate-900">Invitation declined</h1>
+  <p class="text-slate-600">You've declined this invitation.</p>
+
+  {{else if eq .Data.State "login"}}
+  <h1 class="text-xl font-semibold text-slate-900">You're invited</h1>
+  <p class="text-slate-600">{{if .Data.InviterName}}{{.Data.InviterName}}{{else}}Someone{{end}}
+    invited you to join <strong>{{.Data.OrgName}}</strong> as {{.Data.RoleKey}}.</p>
+  <a href="/login/github?return=/invite/{{.Data.Token}}"
+     class="w-full rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-900 hover:bg-slate-50">
+    Continue with GitHub
+  </a>
+  <a href="/login/google?return=/invite/{{.Data.Token}}"
+     class="w-full rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-900 hover:bg-slate-50">
+    Continue with Google
+  </a>
+  <form method="post" action="/invite/{{.Data.Token}}/decline" class="w-full">
+    <button type="submit" class="w-full text-sm text-slate-500 underline">Decline</button>
+  </form>
+
+  {{else if eq .Data.State "mismatch_soft"}}
+  <h1 class="text-xl font-semibold text-slate-900">Email doesn't match</h1>
+  <p class="text-slate-600">
+    You're signed in as <strong>{{.Data.ActorEmail}}</strong>, but this invite to
+    <strong>{{.Data.OrgName}}</strong> was sent to a different address. Accept anyway?
+  </p>
+  <form method="post" action="/invite/{{.Data.Token}}/confirm" class="w-full">
+    <button type="submit"
+            class="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+      Accept anyway
+    </button>
+  </form>
+  <form method="post" action="/invite/{{.Data.Token}}/decline" class="w-full">
+    <button type="submit" class="w-full text-sm text-slate-500 underline">Decline</button>
+  </form>
+
+  {{else if eq .Data.State "mismatch_hard"}}
+  <h1 class="text-xl font-semibold text-slate-900">Wrong account</h1>
+  <p class="text-slate-600">
+    You're signed in as <strong>{{.Data.ActorEmail}}</strong>. This {{.Data.RoleKey}} invitation to
+    <strong>{{.Data.OrgName}}</strong> can only be accepted by logging in as the invited address.
+  </p>
+  {{end}}
+</main>
+{{end}}

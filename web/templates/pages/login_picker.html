@@ -1,0 +1,13 @@
+{{define "content"}}
+<main class="mx-auto flex max-w-sm flex-col items-start gap-4 px-6 py-16">
+  <h1 class="text-xl font-semibold text-slate-900">Log in to continue</h1>
+  <div class="flex w-full flex-col gap-3">
+    {{range .Data.Providers}}
+    <a href="/login/{{.}}?return={{$.Data.ReturnPath}}"
+       class="w-full rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-900 hover:bg-slate-50">
+      Continue with {{.}}
+    </a>
+    {{end}}
+  </div>
+</main>
+{{end}}

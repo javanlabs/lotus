@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/uyab/lotus/internal/authn"
 	"github.com/uyab/lotus/internal/config"
 	"github.com/uyab/lotus/internal/dbtest"
 	"github.com/uyab/lotus/internal/httpx"
@@ -22,7 +23,13 @@ func newTestApp(t *testing.T) *fiber.App {
 	renderer := httpx.NewRenderer(os.DirFS("../../web/templates"), true)
 	db := dbtest.Open(t)
 	resolver := tenant.NewResolver(config.Config{BaseDomain: "lotus.test", Dev: true}, db)
-	return New(renderer, os.DirFS("../../web/static"), resolver)
+	return New(Deps{
+		Renderer:       renderer,
+		StaticFS:       os.DirFS("../../web/static"),
+		Resolver:       resolver,
+		DB:             db,
+		OAuthProviders: authn.Registry{},
+	})
 }
 
 func TestHealthz(t *testing.T) {

@@ -20,11 +20,11 @@ DO $$
 BEGIN
     BEGIN
         CREATE ROLE lotus_migrate NOLOGIN;
-    EXCEPTION WHEN duplicate_object THEN NULL;
+    EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL;
     END;
     BEGIN
         CREATE ROLE lotus_app NOLOGIN;
-    EXCEPTION WHEN duplicate_object THEN NULL;
+    EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL;
     END;
 END
 $$;

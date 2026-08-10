@@ -44,6 +44,22 @@ func (r *Renderer) Render(w io.Writer, page string, vd ViewData) error {
 	return tmpl.ExecuteTemplate(w, "layout", vd)
 }
 
+// RenderPartial writes the named partial ("partials/slug_check.html")
+// standalone, without the layout — for htmx fragment responses (task
+// 1.6's slug-availability check is the first consumer; task 4.1 broadens
+// this pattern to every htmx endpoint).
+func (r *Renderer) RenderPartial(w io.Writer, name string, data any) error {
+	body, err := fs.ReadFile(r.fsys, name)
+	if err != nil {
+		return err
+	}
+	tmpl, err := template.New(path.Base(name)).Parse(string(body))
+	if err != nil {
+		return err
+	}
+	return tmpl.Execute(w, data)
+}
+
 func (r *Renderer) parse(page string) (*template.Template, error) {
 	tmpl := template.New("layout")
 	layout, err := fs.ReadFile(r.fsys, path.Join("layout", "layout.html"))

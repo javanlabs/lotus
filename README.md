@@ -63,6 +63,9 @@ EnvironmentFile is the only source of config — see `deploy/`, added in task
 | `LOTUS_DEV` | unset (off) | `1` enables dev mode: templates/static assets are read from disk (hot reload) instead of the embedded build, and the `X-Lotus-Org` header fallback (below) is honored. |
 | `SESSION_SECRET` | random per-boot | Signs session cookies. Set to a stable value in production, or sessions reset on every restart. |
 | `LOTUS_BASE_DOMAIN` | `lotus.localhost` | Wildcard root Lotus is served under — apex is this value, auth host is `auth.`+this, tenants are `<slug>.`+this. **No production value has been chosen yet** — see the open decision logged in ActiveCollab. |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | unset | GitHub OAuth app credentials (task 1.1). Login via GitHub is simply not offered when the secret is empty. Redirect URI to register: `<scheme>://auth.<LOTUS_BASE_DOMAIN>/login/github/callback`. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset | Google OAuth app credentials (task 1.1). Same on/off behavior as GitHub's. Redirect URI: `<scheme>://auth.<LOTUS_BASE_DOMAIN>/login/google/callback`. |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | unset (`SMTP_PORT` defaults `587`) | Sends invitation emails (task 1.7). With `SMTP_HOST` empty, no mail is sent — invitations still work via the copyable link. |
 | `LOTUS_KEK` | unset | Base64 key-encryption-key for envelope-encrypting per-organization integration credentials (task 2.2, not yet implemented). Required once that lands; unused in Fase 0. |
 | `LOTUS_WORKER_COUNT` | `4` | Sync worker pool size (task 3.2, not yet implemented). Unused in Fase 0. |
 | `COOKIE_SECURE` | `!LOTUS_DEV` | Forces the `Secure` cookie flag on/off. Defaults to on outside dev mode. |
@@ -115,8 +118,12 @@ internal/dbtest           per-test isolated-schema Postgres harness
 internal/tenant           subdomain resolver + Scope type (task 0.4/0.5)
 internal/repo              tenant-scoped queries only (task 0.4) — empty until Phase 2 adds real queries
 internal/repo/global       the one exception: control-plane queries (no org scope)
-internal/httpx             html/template renderer (layout + page)
-internal/web                HTTP routes
+internal/reqctx            the one piece of per-request state internal/authn and internal/authz both need (breaks their import cycle)
+internal/authz             RBAC: Principal, Require/Public route markers, permission matrix (task 1.4/1.5)
+internal/authn             OAuth (1.1), handoff (1.2), sessions (1.3), onboarding (1.6), invitations (1.7), API tokens (1.8)
+internal/mailer             SMTP sender (task 1.7), no-op when unconfigured
+internal/httpx             html/template renderer (layout + page + htmx partial)
+internal/web                HTTP routes + task 1.5's route-coverage test
 web/templates, web/static  layout, pages, vendored htmx/Alpine, Tailwind source
 e2e                         Playwright end-to-end tests
 scripts                     CI guardrail scripts

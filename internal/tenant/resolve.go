@@ -148,7 +148,7 @@ func (r *Resolver) classify(ctx context.Context, host, devOrgHeader string) (Res
 }
 
 func (r *Resolver) classifyTenantLabel(ctx context.Context, label string) (Resolved, error) {
-	if !validSubdomainLabel(label) {
+	if !ValidSubdomainLabel(label) {
 		return Resolved{Kind: HostUnknown}, nil
 	}
 
@@ -191,7 +191,7 @@ func orgResolved(org *global.Org) Resolved {
 	return Resolved{Kind: HostTenant, Org: org}
 }
 
-// validSubdomainLabel rejects, before any query runs, the cases that
+// ValidSubdomainLabel rejects, before any query runs, the cases that
 // either aren't caught by the organizations.subdomain CHECK constraint
 // (task 0.2) or are cheap to reject up front: all-numeric labels (the DB
 // CHECK's character class allows digits, since a label like "500" is a
@@ -201,7 +201,7 @@ func orgResolved(org *global.Org) Resolved {
 // here has the same effect as NFKC-normalizing then rejecting non-ASCII
 // codepoints — no org can ever match a normalized-but-still-non-ASCII
 // label — without adding a normalization dependency for a no-op case.
-func validSubdomainLabel(label string) bool {
+func ValidSubdomainLabel(label string) bool {
 	if label == "" || strings.HasPrefix(label, "xn--") {
 		return false
 	}

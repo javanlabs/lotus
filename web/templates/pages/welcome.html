@@ -1,0 +1,14 @@
+{{define "content"}}
+<main class="mx-auto flex max-w-sm flex-col items-start gap-4 px-6 py-16">
+  <h1 class="text-xl font-semibold text-slate-900">Welcome to Lotus</h1>
+  <p class="text-slate-600">What should we call you?</p>
+  <form method="post" action="/welcome" class="flex w-full flex-col gap-3">
+    <input type="text" name="name" value="{{.Data.Name}}" placeholder="Your name"
+           class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+    <button type="submit"
+            class="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+      Continue
+    </button>
+  </form>
+</main>
+{{end}}

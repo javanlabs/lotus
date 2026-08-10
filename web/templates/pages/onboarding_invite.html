@@ -1,0 +1,31 @@
+{{define "content"}}
+<main class="mx-auto flex max-w-sm flex-col items-start gap-4 px-6 py-16">
+  <h1 class="text-xl font-semibold text-slate-900">Invite your team</h1>
+  <p class="text-slate-600">Add teammates to {{.Data.OrgSlug}}, or skip for now — you can always invite people later.</p>
+  <form method="post" action="/onboarding/invite?org={{.Data.OrgSlug}}" class="flex w-full flex-col gap-3">
+    <label class="flex flex-col gap-1 text-sm text-slate-700">
+      Email addresses (one per line)
+      <textarea name="emails" rows="4"
+                class="rounded-md border border-slate-300 px-3 py-2"></textarea>
+    </label>
+    <label class="flex flex-col gap-1 text-sm text-slate-700">
+      Role
+      <select name="role" class="rounded-md border border-slate-300 px-3 py-2">
+        <option value="member" selected>Member</option>
+        <option value="admin">Admin</option>
+        <option value="viewer">Viewer</option>
+      </select>
+    </label>
+    <div class="flex w-full gap-3">
+      <button type="submit" name="action" value="send"
+              class="flex-1 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+        Send invites
+      </button>
+      <button type="submit" name="action" value="skip"
+              class="flex-1 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50">
+        Skip for now
+      </button>
+    </div>
+  </form>
+</main>
+{{end}}

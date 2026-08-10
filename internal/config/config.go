@@ -36,10 +36,37 @@ type Config struct {
 	KEK string
 
 	WorkerCount int
+
+	// OAuth (task 1.1). A provider with an empty ClientSecret is simply not
+	// registered — see cmd/lotus — so local dev works with zero or either
+	// provider configured.
+	GitHubClientID     string
+	GitHubClientSecret string
+	GoogleClientID     string
+	GoogleClientSecret string
+
+	// SMTP (task 1.7): sends invitation emails. With SMTPHost empty, mail
+	// is simply not sent — invitations still work via the copyable link
+	// (task 1.6), so this is a degrade, not a hard dependency.
+	SMTPHost string
+	SMTPPort string
+	SMTPUser string
+	SMTPPass string
+	SMTPFrom string
 }
 
-func (c Config) AuthHost() string   { return "auth." + c.BaseDomain }
+func (c Config) AuthHost() string              { return "auth." + c.BaseDomain }
 func (c Config) TenantHost(slug string) string { return slug + "." + c.BaseDomain }
+
+// Scheme is "https" outside dev mode, "http" in it — used to build
+// absolute URLs (OAuth redirect URIs) that need a real scheme, not just a
+// host.
+func (c Config) Scheme() string {
+	if c.CookieSecure {
+		return "https"
+	}
+	return "http"
+}
 
 // Load builds the config from environment variables.
 //
@@ -61,6 +88,15 @@ func Load() Config {
 		BaseDomain:         envOr("LOTUS_BASE_DOMAIN", "lotus.localhost"),
 		KEK:                os.Getenv("LOTUS_KEK"),
 		WorkerCount:        envInt("LOTUS_WORKER_COUNT", 4),
+		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
+		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
+		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		SMTPHost:           os.Getenv("SMTP_HOST"),
+		SMTPPort:           envOr("SMTP_PORT", "587"),
+		SMTPUser:           os.Getenv("SMTP_USER"),
+		SMTPPass:           os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:           envOr("SMTP_FROM", "Lotus <no-reply@lotus.invalid>"),
 	}
 	if c.MigrateDatabaseURL == "" {
 		c.MigrateDatabaseURL = c.DatabaseURL
