@@ -38,6 +38,22 @@ func newScope(db *sqlx.DB, orgID uuid.UUID) Scope {
 // OrgID returns the organization this scope is bound to.
 func (s Scope) OrgID() uuid.UUID { return s.orgID }
 
+// FromRun builds a Scope for orgID directly — task 3.2's scheduler worker
+// processing a sync_runs row, which already carries which organization it
+// belongs to, has no HTTP request to resolve a Host from. sync_runs
+// itself and the claim query that reads it are intentionally NOT
+// RLS-scoped (see migration 00013's own comment: a fair cross-tenant
+// claim query is incompatible with being bound to one org_id) — but the
+// instant the worker has a specific run in hand and goes to write its
+// result (a snapshot, a fact, a binding status update), that write must
+// go through this org's Scope like any other tenant-plane write, RLS and
+// all. FromRun is that bridge: unexported-constructor discipline
+// preserved (still only reachable via this package), but keyed by
+// whatever org_id the run names rather than a resolved Host.
+func FromRun(db *sqlx.DB, orgID uuid.UUID) Scope {
+	return newScope(db, orgID)
+}
+
 // Tx opens a transaction and issues SET LOCAL app.org_id before handing the
 // transaction to fn, so every query fn makes is subject to the org's RLS
 // policy without fn needing to remember to scope it itself. SET LOCAL

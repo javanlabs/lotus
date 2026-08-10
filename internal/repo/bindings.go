@@ -103,6 +103,52 @@ func BindingByID(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Binding, e
 	return &out, nil
 }
 
+// ListDueBindings returns every enabled, non-deleted binding in this
+// org's Scope whose next_sync_at has arrived (or was never set — a brand
+// new binding, task 3.2's "jalanin sekali langsung pas binding dibuat").
+// The scheduler (task 3.2) calls this once per organization via
+// tenant.FromRun, iterating every org in turn — see that package's own
+// doc comment for why a single cross-tenant query isn't an option here.
+func ListDueBindings(ctx context.Context, s tenant.Scope, now time.Time) ([]Binding, error) {
+	var out []Binding
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &out, `
+			SELECT `+bindingColumns+` FROM metric_bindings
+			WHERE enabled AND deleted_at IS NULL AND (next_sync_at IS NULL OR next_sync_at <= $1)`, now)
+	})
+	return out, err
+}
+
+// UpdateBindingAfterRun records a completed run's effect on its binding's
+// own schedule and health bookkeeping: when it's due again, its last
+// status, and its consecutive-failure count (task 3.1's not_found rule:
+// 3 in a row marks it broken — see internal/scheduler's result handler
+// for where that threshold is applied).
+func UpdateBindingAfterRun(ctx context.Context, s tenant.Scope, id uuid.UUID, nextSyncAt time.Time, lastStatus string, consecutiveFailures int) error {
+	return s.Tx(ctx, func(tx *sqlx.Tx) error {
+		res, err := tx.ExecContext(ctx, `
+			UPDATE metric_bindings
+			SET next_sync_at = $2, last_status = $3, consecutive_failures = $4
+			WHERE id = $1`, id, nextSyncAt, lastStatus, consecutiveFailures)
+		if err != nil {
+			return err
+		}
+		return checkRowsAffected(res)
+	})
+}
+
+// FreezeBindingsForConnection disables every binding on connectionID —
+// task 3.1's auth-failure side effect: an expired credential must stop
+// every binding under it at once, not fail them one at a time as the
+// scheduler happens to get around to each.
+func FreezeBindingsForConnection(ctx context.Context, s tenant.Scope, connectionID uuid.UUID) error {
+	return s.Tx(ctx, func(tx *sqlx.Tx) error {
+		_, err := tx.ExecContext(ctx, `
+			UPDATE metric_bindings SET enabled = false WHERE connection_id = $1 AND deleted_at IS NULL`, connectionID)
+		return err
+	})
+}
+
 // ListBindingsForComponent returns live bindings by default (deleted_at
 // IS NULL) — soft-deleted bindings still exist for their history but
 // don't belong in a normal listing.

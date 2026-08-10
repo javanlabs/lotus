@@ -67,7 +67,7 @@ EnvironmentFile is the only source of config — see `deploy/`, added in task
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset | Google OAuth app credentials (task 1.1). Same on/off behavior as GitHub's. Redirect URI: `<scheme>://auth.<LOTUS_BASE_DOMAIN>/login/google/callback`. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | unset (`SMTP_PORT` defaults `587`) | Sends invitation emails (task 1.7). With `SMTP_HOST` empty, no mail is sent — invitations still work via the copyable link. |
 | `LOTUS_KEK` | dev-only fixed value (see warning below) | Base64, 32-byte key-encryption-key that wraps each organization's per-org DEK (task 2.2). Every integration credential is sealed under its org's DEK, AES-256-GCM, with the org's id as AAD — a credential row copied to another organization fails to decrypt even with the right key. **The dev default is checked into source control (`internal/config.devOnlyKEK`) — production must always set a real `LOTUS_KEK`, or every credential is encrypted under a key anyone with this repo already has.** Rotate with `lotus rewrap-keys --old-kek=<base64>` (new key read from `LOTUS_KEK`) — re-wraps every org's DEK without touching a single credential row, so reads never see downtime. |
-| `LOTUS_WORKER_COUNT` | `4` | Sync worker pool size (task 3.2, not yet implemented). Unused in Fase 0. |
+| `LOTUS_WORKER_COUNT` | `4` | Sync worker pool size (task 3.2) — goroutines within the `serve` process claiming and executing queued `sync_runs`, not separate OS processes. |
 | `COOKIE_SECURE` | `!LOTUS_DEV` | Forces the `Secure` cookie flag on/off. Defaults to on outside dev mode. |
 | `X-Lotus-Org` (header, not env) | — | Dev-only fallback so `curl`/tests can hit a tenant without wildcard DNS or a custom Host header. Only honored when `LOTUS_DEV=1`. |
 
@@ -123,6 +123,7 @@ Test-only (set by `make test` / CI, never needed by hand):
   addresses, re-validating on every redirect hop, and validates the
   *actually-dialed* IP (not a separately-resolved one) specifically to
   close a DNS-rebinding gap between check-time and connect-time.
+- **`sync_runs` and `connection_sync_state` are the only tenant-plane-shaped tables with no RLS** (task 3.2). Both carry `org_id`, but the scheduler's claim query is inherently cross-tenant — it fairly picks the next runnable job across *every* organization in one query, which is structurally incompatible with being bound to a single `app.org_id`. Verified directly against Postgres before shipping: with `app.org_id` unset (required for a query to see every org), RLS hides 100% of an RLS'd table's rows, for any org, not a subset — a first attempt that joined the claim query against the (RLS'd) `integration_connections` table returned zero claimable runs, always, which is why the rate-limit/backoff state was pulled out into `connection_sync_state`, a dedicated unscoped sidecar holding only that operational state. The moment a worker has one specific run in hand and goes to write its result, that write goes through `tenant.FromRun(db, run.OrgID)` like any other tenant-plane write, RLS and all.
 - **Credentials are write-only by construction, not by convention.**
   `repo.Connection` (task 2.2) has no ciphertext, nonce, or plaintext
   field at all — there is no struct a handler could accidentally
@@ -141,7 +142,9 @@ internal/db/migrations    schema (goose SQL migrations)
 internal/dbtest           per-test isolated-schema Postgres harness
 internal/tenant           subdomain resolver + Scope type (task 0.4/0.5)
 internal/repo              tenant-scoped queries only (task 0.4) — Project & Component (2.1), Connection & audit (2.2), Metric binding (2.3), Discovery (2.4)
-internal/repo/global       the one exception: control-plane queries (no org scope) — includes per-org DEK storage (task 2.2)
+internal/repo/global       the one exception: control-plane queries (no org scope) — per-org DEK storage (2.2), the sync queue + connection rate-limit state (3.2, deliberately unscoped — see below)
+internal/collector          Collector/Session/Ingestor interface, Result/Fact/Headline, error class taxonomy, registry (task 3.1)
+internal/scheduler           sync queue orchestration: enqueuer, worker pool, leader election, rate limiting, backoff (task 3.2)
 internal/reqctx            the one piece of per-request state internal/authn and internal/authz both need (breaks their import cycle)
 internal/authz             RBAC: Principal, Require/Public route markers, permission matrix (task 1.4/1.5)
 internal/authn             OAuth (1.1), handoff (1.2), sessions (1.3), onboarding (1.6), invitations (1.7), API tokens (1.8)

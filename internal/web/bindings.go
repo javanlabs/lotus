@@ -12,6 +12,7 @@ import (
 	"github.com/uyab/lotus/internal/netguard"
 	"github.com/uyab/lotus/internal/repo"
 	"github.com/uyab/lotus/internal/repo/global"
+	"github.com/uyab/lotus/internal/scheduler"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -52,6 +53,12 @@ func (h bindingHandlers) create(c *fiber.Ctx) error {
 	if err != nil {
 		return writeBindingErr(c, err)
 	}
+	// Task 3.2's deliberate behavior change: a new binding gets data
+	// within seconds, not after waiting out a full sync interval.
+	// Best-effort — the periodic enqueuer will pick it up on its next
+	// tick regardless, so a transient failure here isn't worth failing
+	// the whole creation over.
+	_ = scheduler.EnqueueImmediate(c.Context(), h.d.DB, s.OrgID(), binding.ConnectionID, binding.ID, binding.Kind)
 	return c.Status(fiber.StatusCreated).JSON(binding)
 }
 

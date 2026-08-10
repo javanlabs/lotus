@@ -21,7 +21,9 @@ import (
 	"github.com/uyab/lotus/internal/db"
 	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/mailer"
+	"github.com/uyab/lotus/internal/netguard"
 	"github.com/uyab/lotus/internal/repo/global"
+	"github.com/uyab/lotus/internal/scheduler"
 	"github.com/uyab/lotus/internal/tenant"
 	"github.com/uyab/lotus/internal/web"
 	lotusweb "github.com/uyab/lotus/web"
@@ -120,6 +122,19 @@ func runServe(cfg config.Config) {
 	})
 
 	go sweepExpiredSessions(sqlDB)
+
+	// Task 3.2: enqueuer + reaper + worker pool. Safe to run in every
+	// replica — the enqueuer no-ops in every process but the one that
+	// wins the advisory lock, and the claim query's SKIP LOCKED makes
+	// concurrent workers (in this process or another) safe by
+	// construction. Runs until the process exits; no graceful-shutdown
+	// signal wiring yet (systemd just SIGKILLs on redeploy today — a
+	// run this kills mid-lease is exactly what the reaper exists for).
+	go scheduler.Run(context.Background(), scheduler.Options{
+		DB:          sqlDB,
+		Execute:     scheduler.DefaultExecute(sqlDB, kek, netguard.Config{AllowHTTP: cfg.Dev}, scheduler.NewLimiters(2, 5)),
+		WorkerCount: cfg.WorkerCount,
+	})
 
 	log.Printf("lotus serving on %s (dev=%v)", cfg.Addr, cfg.Dev)
 	if err := app.Listen(cfg.Addr); err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/uyab/lotus/internal/netguard"
 	"github.com/uyab/lotus/internal/repo"
 	"github.com/uyab/lotus/internal/repo/global"
+	"github.com/uyab/lotus/internal/scheduler"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -187,6 +188,12 @@ func (h discoveryHandlers) claim(c *fiber.Ctx) error {
 	results, err := repo.ClaimDiscoveredResources(c.Context(), s, connID, bindingKind, targets)
 	if err != nil {
 		return writeBindingErr(c, err)
+	}
+	// Same "data within seconds" behavior as a single binding creation
+	// (task 3.2) — every binding this bulk claim just created gets its
+	// own immediate run.
+	for _, r := range results {
+		_ = scheduler.EnqueueImmediate(c.Context(), h.d.DB, s.OrgID(), connID, r.BindingID, bindingKind)
 	}
 	return c.Status(fiber.StatusCreated).JSON(results)
 }
