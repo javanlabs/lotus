@@ -92,6 +92,17 @@ type CollectRequest struct {
 	ExternalKey string
 	Config      json.RawMessage
 	State       json.RawMessage
+
+	// OrgSettings is organizations.settings (already a generic jsonb
+	// column, task 0.2) — the org-level policy knobs a Collect needs but
+	// that don't belong on the binding itself. First use: task 3.4's
+	// trivy_fail_on (critical|high|any), which must affect a binding's
+	// computed Headline.Status on every future collect the instant an
+	// admin changes it, with no per-binding config edit required. A
+	// Collector has no DB access of its own (task 3.1's own boundary — it
+	// never touches RLS/credentials directly), so the scheduler reads
+	// this once per run and passes it in here.
+	OrgSettings json.RawMessage
 }
 
 type Status string
@@ -252,6 +263,10 @@ type IngestMeta struct {
 	OrgID       uuid.UUID
 	ComponentID uuid.UUID
 	BindingID   uuid.UUID
+	// OrgSettings mirrors CollectRequest.OrgSettings — the web handler
+	// behind /ingest/trivy/:binding_id has DB access an Ingestor doesn't,
+	// so it reads organizations.settings itself and passes it through.
+	OrgSettings json.RawMessage
 }
 
 // Ingestor is the push-direction integration contract — Parse turns a

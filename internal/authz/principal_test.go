@@ -24,6 +24,7 @@ var permissionMatrix = map[string][]string{
 	"connection.secret.write": {"owner", "admin"},
 	"sync.trigger":            {"owner", "admin", "member"},
 	"sync.schedule":           {"owner", "admin"},
+	"metrics.ingest":          {"owner", "admin", "member"},
 	"member.invite":           {"owner", "admin"},
 	"member.remove":           {"owner", "admin"},
 	"member.role.change":      {"owner", "admin"},

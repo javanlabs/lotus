@@ -34,6 +34,7 @@ import (
 	// 5-step checklist a fifth integration follows.
 	_ "github.com/uyab/lotus/internal/collector/gitlab"
 	_ "github.com/uyab/lotus/internal/collector/sonarqube"
+	_ "github.com/uyab/lotus/internal/collector/trivy"
 )
 
 func main() {

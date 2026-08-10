@@ -157,6 +157,10 @@ func New(d Deps) *fiber.App {
 	// panel + bulk claim. JSON handlers — the wizard UI is task 4.3.
 	registerDiscoveryRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
+	// Tenant host only (task 3.4): push-direction Trivy ingest, authenticated
+	// by a service token — see internal/web/ingest.go's own doc comment.
+	registerIngestRoutes(app, d, authDeps)
+
 	return app
 }
 
