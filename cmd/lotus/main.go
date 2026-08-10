@@ -27,6 +27,13 @@ import (
 	"github.com/uyab/lotus/internal/tenant"
 	"github.com/uyab/lotus/internal/web"
 	lotusweb "github.com/uyab/lotus/web"
+
+	// Blank-imported for their init() registration into the collector
+	// registry (task 3.1) — this is the entire wiring a collector package
+	// needs; see internal/collector's own doc comment for the full
+	// 5-step checklist a fifth integration follows.
+	_ "github.com/uyab/lotus/internal/collector/gitlab"
+	_ "github.com/uyab/lotus/internal/collector/sonarqube"
 )
 
 func main() {

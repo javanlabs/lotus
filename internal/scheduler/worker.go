@@ -82,12 +82,28 @@ func (p *Pool) handleResult(ctx context.Context, run *global.SyncRun, result col
 		return err
 	}
 
+	// Persist the kind's own detail snapshot — task 3.3's own acceptance
+	// criteria requires a partial-failure Collect to still leave a saved
+	// snapshot behind, even though the dashboard projection that reads
+	// alongside it (component_metrics_current, metric_facts) is task
+	// 3.6/3.7's job, not wired here. A kind with no registered persister
+	// (true for any kind that hasn't shipped a snapshot table yet) simply
+	// skips this step rather than failing the run over it.
+	binding, err := repo.BindingByID(ctx, scope, run.BindingID)
+	if err != nil {
+		return err
+	}
+	if persist, ok := collector.GetPersister(collector.Kind(run.Kind)); ok {
+		if err := persist(ctx, scope, binding.ComponentID, run.BindingID, result); err != nil {
+			return err
+		}
+	}
+
 	status := "ok"
 	var warningsJSON []byte
 	if len(result.Warnings) > 0 {
 		// Partial failure is a first-class result (task 3.1): the run
-		// still succeeded, and whatever was collected is still stored —
-		// storage itself is task 3.6/3.7's job, out of scope here.
+		// still succeeded, and whatever was collected is still stored.
 		status = "partial"
 		warningsJSON, _ = json.Marshal(result.Warnings)
 	}

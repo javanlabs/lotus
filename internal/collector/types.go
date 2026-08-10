@@ -33,6 +33,17 @@ import (
 // distinction is bridged.
 type Kind string
 
+// These four are the fixed kind space (task 2.3's own metric_bindings.kind
+// CHECK constraint) — "trivy", not connections.provider's "harbor_trivy";
+// see internal/integrations.BindingKindForProvider for where that
+// distinction is bridged.
+const (
+	KindGitLab    Kind = "gitlab"
+	KindSonarQube Kind = "sonarqube"
+	KindTrivy     Kind = "trivy"
+	KindSentry    Kind = "sentry"
+)
+
 // ConnConfig is what Open needs to establish a Session: the connection's
 // base_url and already-decrypted secret (the caller — the scheduler or a
 // synchronous handler — is responsible for decryption; a Collector never

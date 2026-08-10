@@ -1,0 +1,104 @@
+package repo
+
+import (
+	"context"
+	"encoding/json"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
+
+	"github.com/uyab/lotus/internal/tenant"
+)
+
+type SonarSnapshot struct {
+	ID          uuid.UUID `db:"id"`
+	OrgID       uuid.UUID `db:"org_id"`
+	BindingID   uuid.UUID `db:"binding_id"`
+	ComponentID uuid.UUID `db:"component_id"`
+	CapturedAt  time.Time `db:"captured_at"`
+
+	QualityGate            *string    `db:"quality_gate"`
+	Coverage               *float64   `db:"coverage"`
+	Bugs                   *int       `db:"bugs"`
+	Vulnerabilities        *int       `db:"vulnerabilities"`
+	CodeSmells             *int       `db:"code_smells"`
+	SecurityHotspots       *int       `db:"security_hotspots"`
+	DuplicatedLinesDensity *float64   `db:"duplicated_lines_density"`
+	NCLOC                  *int       `db:"ncloc"`
+	Complexity             *int       `db:"complexity"`
+	ReliabilityRating      *string    `db:"reliability_rating"`
+	SecurityRating         *string    `db:"security_rating"`
+	SqaleRating            *string    `db:"sqale_rating"`
+	SqaleIndexMin          *int       `db:"sqale_index_min"`
+	TestExecutionTimeMs    *int       `db:"test_execution_time_ms"`
+	Languages              *string    `db:"languages"`
+	LastScanAt             *time.Time `db:"last_scan_at"`
+
+	RawJSON []byte `db:"raw_json"`
+}
+
+type NewSonarSnapshot struct {
+	BindingID   uuid.UUID
+	ComponentID uuid.UUID
+
+	QualityGate            *string
+	Coverage               *float64
+	Bugs                   *int
+	Vulnerabilities        *int
+	CodeSmells             *int
+	SecurityHotspots       *int
+	DuplicatedLinesDensity *float64
+	NCLOC                  *int
+	Complexity             *int
+	ReliabilityRating      *string
+	SecurityRating         *string
+	SqaleRating            *string
+	SqaleIndexMin          *int
+	TestExecutionTimeMs    *int
+	Languages              *string
+	LastScanAt             *time.Time
+
+	RawJSON json.RawMessage
+}
+
+func InsertSonarSnapshot(ctx context.Context, s tenant.Scope, in NewSonarSnapshot) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.GetContext(ctx, &id, `
+			INSERT INTO sonar_snapshots (
+				org_id, binding_id, component_id,
+				quality_gate, coverage, bugs, vulnerabilities, code_smells, security_hotspots,
+				duplicated_lines_density, ncloc, complexity,
+				reliability_rating, security_rating, sqale_rating, sqale_index_min, test_execution_time_ms,
+				languages, last_scan_at, raw_json
+			) VALUES (
+				$1, $2, $3,
+				$4, $5, $6, $7, $8, $9,
+				$10, $11, $12,
+				$13, $14, $15, $16, $17,
+				$18, $19, $20
+			) RETURNING id`,
+			s.OrgID(), in.BindingID, in.ComponentID,
+			in.QualityGate, in.Coverage, in.Bugs, in.Vulnerabilities, in.CodeSmells, in.SecurityHotspots,
+			in.DuplicatedLinesDensity, in.NCLOC, in.Complexity,
+			in.ReliabilityRating, in.SecurityRating, in.SqaleRating, in.SqaleIndexMin, in.TestExecutionTimeMs,
+			in.Languages, in.LastScanAt, nullIfEmptyJSONBytes(in.RawJSON))
+	})
+	return id, err
+}
+
+func LatestSonarSnapshot(ctx context.Context, s tenant.Scope, bindingID uuid.UUID) (*SonarSnapshot, error) {
+	var out SonarSnapshot
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.GetContext(ctx, &out, `
+			SELECT * FROM sonar_snapshots WHERE binding_id = $1 ORDER BY captured_at DESC LIMIT 1`, bindingID)
+	})
+	if err != nil {
+		if isNoRows(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &out, nil
+}
