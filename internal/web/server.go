@@ -2,7 +2,9 @@
 package web
 
 import (
+	"context"
 	"io/fs"
+	"net"
 	"net/http"
 
 	"github.com/gofiber/fiber/v2"
@@ -14,6 +16,7 @@ import (
 	"github.com/uyab/lotus/internal/authn"
 	"github.com/uyab/lotus/internal/authz"
 	"github.com/uyab/lotus/internal/config"
+	"github.com/uyab/lotus/internal/crypto"
 	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/mailer"
 	"github.com/uyab/lotus/internal/tenant"
@@ -30,6 +33,22 @@ type Deps struct {
 	OAuthProviders authn.Registry
 	CookieSecure   bool
 	Mailer         *mailer.Mailer
+	KEK            *crypto.KEK
+
+	// NetguardResolver overrides task 2.2's SSRF-guarded HTTP client's DNS
+	// resolution. Nil in every real deployment (real DNS). Tests set this
+	// to a fake resolver so connection-creation tests don't depend on
+	// outbound network access — see internal/netguard.Config's own doc
+	// comment for why this needs to be injectable at all.
+	NetguardResolver func(ctx context.Context, host string) ([]net.IP, error)
+
+	// NetguardIsBlocked overrides which resolved IPs the SSRF guard
+	// rejects. Nil in every real deployment (the real, restrictive
+	// default). Task 2.4's discovery tests need to point the guarded
+	// client at a real httptest.Server, which always binds loopback — see
+	// internal/netguard.Config's own doc comment for why this needs to be
+	// injectable, same reasoning as NetguardResolver.
+	NetguardIsBlocked func(net.IP) bool
 }
 
 // New builds the Fiber app. Every route carries an explicit authz.Require
@@ -120,6 +139,23 @@ func New(d Deps) *fiber.App {
 		authz.Public("explicit user-confirmed accept for a mismatched-email invite"), authn.InviteConfirm(authDeps))
 	app.Post("/invite/:token/decline", tenant.RequireAuth(),
 		authz.Public("declining must not require a login the person never wanted"), authn.InviteDecline(authDeps))
+
+	// Tenant host only (task 2.1): Project & Component CRUD. JSON handlers
+	// — the screens that call them are task 4.3.
+	registerProjectRoutes(app, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+
+	// Tenant host only (task 2.2): Connection CRUD, secret rotation, and
+	// Test Connection. JSON handlers — the screens are task 4.5.
+	registerConnectionRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+
+	// Tenant host only (task 2.3): Metric binding CRUD, descriptor-driven
+	// config validation, and Test Binding. JSON handlers — the wizard UI
+	// is task 4.3.
+	registerBindingRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+
+	// Tenant host only (task 2.4): Discovery + the unclaimed-resources
+	// panel + bulk claim. JSON handlers — the wizard UI is task 4.3.
+	registerDiscoveryRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
 	return app
 }

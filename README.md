@@ -66,7 +66,7 @@ EnvironmentFile is the only source of config — see `deploy/`, added in task
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | unset | GitHub OAuth app credentials (task 1.1). Login via GitHub is simply not offered when the secret is empty. Redirect URI to register: `<scheme>://auth.<LOTUS_BASE_DOMAIN>/login/github/callback`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset | Google OAuth app credentials (task 1.1). Same on/off behavior as GitHub's. Redirect URI: `<scheme>://auth.<LOTUS_BASE_DOMAIN>/login/google/callback`. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | unset (`SMTP_PORT` defaults `587`) | Sends invitation emails (task 1.7). With `SMTP_HOST` empty, no mail is sent — invitations still work via the copyable link. |
-| `LOTUS_KEK` | unset | Base64 key-encryption-key for envelope-encrypting per-organization integration credentials (task 2.2, not yet implemented). Required once that lands; unused in Fase 0. |
+| `LOTUS_KEK` | dev-only fixed value (see warning below) | Base64, 32-byte key-encryption-key that wraps each organization's per-org DEK (task 2.2). Every integration credential is sealed under its org's DEK, AES-256-GCM, with the org's id as AAD — a credential row copied to another organization fails to decrypt even with the right key. **The dev default is checked into source control (`internal/config.devOnlyKEK`) — production must always set a real `LOTUS_KEK`, or every credential is encrypted under a key anyone with this repo already has.** Rotate with `lotus rewrap-keys --old-kek=<base64>` (new key read from `LOTUS_KEK`) — re-wraps every org's DEK without touching a single credential row, so reads never see downtime. |
 | `LOTUS_WORKER_COUNT` | `4` | Sync worker pool size (task 3.2, not yet implemented). Unused in Fase 0. |
 | `COOKIE_SECURE` | `!LOTUS_DEV` | Forces the `Secure` cookie flag on/off. Defaults to on outside dev mode. |
 | `X-Lotus-Org` (header, not env) | — | Dev-only fallback so `curl`/tests can hit a tenant without wildcard DNS or a custom Host header. Only honored when `LOTUS_DEV=1`. |
@@ -103,25 +103,52 @@ Test-only (set by `make test` / CI, never needed by hand):
 - **Migrations run only via `lotus migrate`, never at boot** — with
   multiple replicas, running DDL at process start means processes race on
   schema changes; the app's own DB role has no DDL rights at all.
+- **The app's runtime connection always `SET ROLE lotus_app`** (`internal/db.OpenApp`,
+  used by `cmd/lotus serve` and by `internal/dbtest` for every Go test) —
+  never the raw DSN role directly. `DATABASE_URL`/`TEST_DATABASE_URL` connect
+  as the `postgres` superuser in local dev for convenience, and a superuser
+  session bypasses Row-Level Security unconditionally, `FORCE ROW LEVEL
+  SECURITY` notwithstanding. Without this, RLS (the tenant-isolation
+  fail-safe net described above) would silently do nothing in dev and in
+  every test — found while building task 2.1, logged to ActiveCollab.
+  `db.Open` (no role switch) is still used for `lotus migrate`, which needs
+  its real DDL rights.
 - **`html/template` + htmx + Alpine + Tailwind v4, no component framework.**
   Assets are `//go:embed`ed for production and read from disk in
   `LOTUS_DEV=1` mode (see `web/assets.go`, `internal/httpx/render.go`).
+- **Every outbound fetch of a user-supplied URL goes through `internal/netguard`**
+  (task 2.2). `Connection.BaseURL` is attacker-reachable input this server
+  itself later fetches while carrying a credential — `netguard.NewClient`
+  refuses to connect to private/loopback/link-local/cloud-metadata
+  addresses, re-validating on every redirect hop, and validates the
+  *actually-dialed* IP (not a separately-resolved one) specifically to
+  close a DNS-rebinding gap between check-time and connect-time.
+- **Credentials are write-only by construction, not by convention.**
+  `repo.Connection` (task 2.2) has no ciphertext, nonce, or plaintext
+  field at all — there is no struct a handler could accidentally
+  serialize into a response even by mistake. The only function that ever
+  produces plaintext, `repo.DecryptConnectionSecret`, is called from
+  exactly one place (`internal/web/connections.go`'s Test Connection
+  handler), and the plaintext never leaves that function's stack.
 
 ## Layout
 
 ```
-cmd/lotus                serve | migrate | import-legacy (last one: task 5.1, not yet implemented)
+cmd/lotus                serve | migrate | rewrap-keys (task 2.2) | import-legacy (task 5.1, not yet implemented)
 internal/config          env / .env loading
 internal/db               Postgres connection + goose migrations (embedded)
 internal/db/migrations    schema (goose SQL migrations)
 internal/dbtest           per-test isolated-schema Postgres harness
 internal/tenant           subdomain resolver + Scope type (task 0.4/0.5)
-internal/repo              tenant-scoped queries only (task 0.4) — empty until Phase 2 adds real queries
-internal/repo/global       the one exception: control-plane queries (no org scope)
+internal/repo              tenant-scoped queries only (task 0.4) — Project & Component (2.1), Connection & audit (2.2), Metric binding (2.3), Discovery (2.4)
+internal/repo/global       the one exception: control-plane queries (no org scope) — includes per-org DEK storage (task 2.2)
 internal/reqctx            the one piece of per-request state internal/authn and internal/authz both need (breaks their import cycle)
 internal/authz             RBAC: Principal, Require/Public route markers, permission matrix (task 1.4/1.5)
 internal/authn             OAuth (1.1), handoff (1.2), sessions (1.3), onboarding (1.6), invitations (1.7), API tokens (1.8)
 internal/mailer             SMTP sender (task 1.7), no-op when unconfigured
+internal/crypto             envelope encryption: KEK/DEK, AES-256-GCM with org-id AAD (task 2.2)
+internal/netguard            SSRF-guarded http.Client for fetching user-supplied URLs (task 2.2)
+internal/integrations        Descriptor/ValidateConfig (2.3), Discover per provider (2.4), + minimal per-provider live checks for Test Connection (2.2) and Test Binding (2.3); full collectors are Fase 3
 internal/httpx             html/template renderer (layout + page + htmx partial)
 internal/web                HTTP routes + task 1.5's route-coverage test
 web/templates, web/static  layout, pages, vendored htmx/Alpine, Tailwind source

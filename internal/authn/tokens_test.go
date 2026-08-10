@@ -165,17 +165,18 @@ func TestServiceToken_ComponentPinEnforced(t *testing.T) {
 	app, db, cfg, deps := newTokenTestApp(t)
 	orgID, ownerID := seedActiveMember(t, db, "acme")
 
-	var projectID uuid.UUID
-	if err := db.Get(&projectID, `INSERT INTO projects (org_id, slug, name) VALUES ($1, 'p', 'P') RETURNING id`, orgID); err != nil {
-		t.Fatalf("insert project: %v", err)
-	}
-	var componentA, componentB uuid.UUID
-	if err := db.Get(&componentA, `INSERT INTO components (org_id, project_id, slug, name, kind) VALUES ($1, $2, 'a', 'A', 'service') RETURNING id`, orgID, projectID); err != nil {
-		t.Fatalf("insert component A: %v", err)
-	}
-	if err := db.Get(&componentB, `INSERT INTO components (org_id, project_id, slug, name, kind) VALUES ($1, $2, 'b', 'B', 'service') RETURNING id`, orgID, projectID); err != nil {
-		t.Fatalf("insert component B: %v", err)
-	}
+	var projectID, componentA, componentB uuid.UUID
+	withOrgTxForTokenTest(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&projectID, `INSERT INTO projects (org_id, slug, name) VALUES ($1, 'p', 'P') RETURNING id`, orgID); err != nil {
+			t.Fatalf("insert project: %v", err)
+		}
+		if err := tx.Get(&componentA, `INSERT INTO components (org_id, project_id, slug, name, kind) VALUES ($1, $2, 'a', 'A', 'service') RETURNING id`, orgID, projectID); err != nil {
+			t.Fatalf("insert component A: %v", err)
+		}
+		if err := tx.Get(&componentB, `INSERT INTO components (org_id, project_id, slug, name, kind) VALUES ($1, $2, 'b', 'B', 'service') RETURNING id`, orgID, projectID); err != nil {
+			t.Fatalf("insert component B: %v", err)
+		}
+	})
 
 	raw, err := authn.IssueServiceToken(context.Background(), deps, authn.NewServiceTokenParams{
 		OrgID: orgID, ActorID: ownerID, ActorRole: "owner", Name: "ci",
@@ -277,4 +278,24 @@ func TestQueryParamTokenNeverAccepted(t *testing.T) {
 		t.Fatal("a query-string token must never authenticate a request")
 	}
 	_ = userID
+}
+
+// withOrgTxForTokenTest runs fn inside a transaction with app.org_id set —
+// every tenant-plane table is FORCE RLS (task 0.3), so seeding
+// projects/components directly (rather than through tenant.Scope) must set
+// this itself, same as tenant.Scope.Tx does for real request handling.
+func withOrgTxForTokenTest(t *testing.T, db *sqlx.DB, orgID uuid.UUID, fn func(tx *sqlx.Tx)) {
+	t.Helper()
+	tx, err := db.Beginx()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec(`SELECT set_config('app.org_id', $1, true)`, orgID.String()); err != nil {
+		t.Fatalf("set app.org_id: %v", err)
+	}
+	fn(tx)
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
 }

@@ -65,10 +65,18 @@ func DSN(t *testing.T) string {
 
 // Open creates a fresh schema, migrates it with goose, and returns a
 // *sqlx.DB whose connections default to that schema.
+//
+// Uses db.OpenApp, not db.Open: TEST_DATABASE_URL connects as the
+// `postgres` superuser, which bypasses Row-Level Security unconditionally
+// (FORCE ROW LEVEL SECURITY has no effect on a superuser session) — a
+// plain Open here would make every tenant-isolation test pass for the
+// wrong reason, having verified nothing about RLS at all. OpenApp's SET
+// ROLE lotus_app makes tests see exactly what production's RLS-restricted
+// connection sees.
 func Open(t *testing.T) *sqlx.DB {
 	t.Helper()
 	scoped := DSN(t)
-	sqlxDB, err := db.Open(scoped)
+	sqlxDB, err := db.OpenApp(scoped)
 	if err != nil {
 		t.Fatalf("open sqlx conn: %v", err)
 	}

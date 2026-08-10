@@ -8,9 +8,11 @@
 package db
 
 import (
+	"context"
 	"embed"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 	"github.com/pressly/goose/v3"
 )
@@ -20,9 +22,48 @@ var migrationsFS embed.FS
 
 // Open connects to Postgres via the pure-Go pgx driver under sqlx, so the
 // `db.Select`/`db.Get` + `db:"col"` struct-tag style carries over unchanged
-// wherever it's ported from the old Lotus codebase.
+// wherever it's ported from the old Lotus codebase. Used only for
+// migrations (task 0.4's lotus_migrate role needs its real DDL rights, not
+// lotus_app's restricted ones) — application code should use OpenApp.
 func Open(dsn string) (*sqlx.DB, error) {
 	return sqlx.Open("pgx", dsn)
+}
+
+// OpenApp connects for application/runtime use and forces every physical
+// connection onto the lotus_app role via SET ROLE before it's ever handed
+// out of the pool.
+//
+// Why this exists: FORCE ROW LEVEL SECURITY (migration 00003) does not
+// apply to a session's role if that role is a superuser — RLS is bypassed
+// unconditionally for superusers, no matter how the policy is written.
+// DATABASE_URL in local dev (and TEST_DATABASE_URL in CI) both connect as
+// the bootstrap `postgres` superuser for convenience (README: "one role is
+// fine" locally), which means tenant.Scope's SET LOCAL app.org_id was
+// having zero effect on query results in every environment except a
+// production deploy that happens to hand the app a real non-superuser
+// lotus_app credential — RLS, the fail-safe net the architecture notes
+// describe, was silently a no-op everywhere else. This surfaced only when
+// task 2.1 added the first tenant-plane query path that actually depends
+// on RLS to reject a cross-org id (see the TENSION task logged alongside
+// this fix).
+//
+// SET ROLE lotus_app succeeds whether the connecting role is the `postgres`
+// superuser (can SET ROLE to anything) or is already `lotus_app` itself (a
+// role can always switch to itself) — so this is safe to use unconditionally
+// in every environment rather than branching dev/test vs. production
+// behavior. If DATABASE_URL is ever pointed at a role that is neither a
+// superuser nor a member of lotus_app, connections fail closed instead of
+// silently running with elevated, RLS-bypassing privileges.
+func OpenApp(dsn string) (*sqlx.DB, error) {
+	cfg, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	sqlDB := stdlib.OpenDB(*cfg, stdlib.OptionAfterConnect(func(ctx context.Context, conn *pgx.Conn) error {
+		_, err := conn.Exec(ctx, "SET ROLE lotus_app")
+		return err
+	}))
+	return sqlx.NewDb(sqlDB, "pgx"), nil
 }
 
 // Migrate applies all pending migrations. Called only from `lotus migrate

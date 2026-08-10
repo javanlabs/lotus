@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io/fs"
 	"log"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/uyab/lotus/internal/authn"
 	"github.com/uyab/lotus/internal/config"
+	"github.com/uyab/lotus/internal/crypto"
 	"github.com/uyab/lotus/internal/db"
 	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/mailer"
@@ -38,6 +40,8 @@ func main() {
 		runServe(cfg)
 	case "migrate":
 		runMigrate(cfg, os.Args[2:])
+	case "rewrap-keys":
+		runRewrapKeys(cfg, os.Args[2:])
 	case "import-legacy":
 		log.Fatal("import-legacy is not implemented yet (task 5.1)")
 	default:
@@ -47,15 +51,58 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: lotus <serve|migrate up|migrate down|import-legacy>")
+	fmt.Fprintln(os.Stderr, "usage: lotus <serve|migrate up|migrate down|rewrap-keys --old-kek=<base64>|import-legacy>")
 }
 
-func runServe(cfg config.Config) {
-	sqlDB, err := db.Open(cfg.DatabaseURL)
+// runRewrapKeys is task 2.2's KEK rotation command: unwraps every
+// organization's DEK under --old-kek and re-wraps it under the KEK
+// currently in LOTUS_KEK, touching only organizations.dek_ciphertext/
+// dek_nonce/dek_kek_version — no credential row is read or written, so
+// every already-open connection keeps decrypting fine throughout ("tanpa
+// downtime baca").
+func runRewrapKeys(cfg config.Config, args []string) {
+	fs := flag.NewFlagSet("rewrap-keys", flag.ExitOnError)
+	oldKEKFlag := fs.String("old-kek", "", "base64-encoded KEK currently wrapping every org's DEK")
+	if err := fs.Parse(args); err != nil {
+		log.Fatalf("parse args: %v", err)
+	}
+	if *oldKEKFlag == "" {
+		log.Fatal("usage: lotus rewrap-keys --old-kek=<base64>  (new KEK is read from LOTUS_KEK)")
+	}
+
+	oldKEK, err := crypto.LoadKEK(*oldKEKFlag, 0)
+	if err != nil {
+		log.Fatalf("load --old-kek: %v", err)
+	}
+	newKEK, err := crypto.LoadKEK(cfg.KEK, oldKEK.Version+1)
+	if err != nil {
+		log.Fatalf("load LOTUS_KEK: %v", err)
+	}
+
+	sqlDB, err := db.OpenApp(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("open db: %v", err)
 	}
 	defer sqlDB.Close()
+
+	n, err := global.RewrapOrgDEKs(context.Background(), sqlDB, oldKEK, newKEK)
+	if err != nil {
+		log.Fatalf("rewrap-keys: %v (rewrapped %d organization(s) before this error)", err, n)
+	}
+	log.Printf("rewrap-keys: ok, rewrapped %d organization(s) to KEK version %d", n, newKEK.Version)
+}
+
+func runServe(cfg config.Config) {
+	sqlDB, err := db.OpenApp(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("open db: %v", err)
+	}
+	defer sqlDB.Close()
+
+	kek, err := crypto.LoadKEK(cfg.KEK, 1)
+	if err != nil {
+		log.Fatalf("load KEK: %v", err)
+	}
 
 	templatesFS, staticFS := assetFilesystems(cfg.Dev)
 	renderer := httpx.NewRenderer(templatesFS, cfg.Dev)
@@ -69,6 +116,7 @@ func runServe(cfg config.Config) {
 		OAuthProviders: oauthProviders(cfg),
 		CookieSecure:   cfg.CookieSecure,
 		Mailer:         mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom),
+		KEK:            kek,
 	})
 
 	go sweepExpiredSessions(sqlDB)

@@ -10,6 +10,12 @@ import (
 	"strings"
 )
 
+// devOnlyKEK is a fixed, public, 32-byte AES-256 key used only when
+// LOTUS_KEK is unset (local dev). Being checked into source control is
+// exactly why it must never be relied on outside dev — production sets
+// LOTUS_KEK explicitly (README), so this value is never in scope there.
+const devOnlyKEK = "bG90dXMtZGV2LW9ubHkta2VrLW5vdC1mb3ItcHJvZAA="
+
 type Config struct {
 	Addr        string
 	DatabaseURL string
@@ -30,9 +36,10 @@ type Config struct {
 	BaseDomain string
 
 	// KEK is the base64-encoded key-encryption-key for envelope-encrypting
-	// per-organization integration credentials (task 2.2). Required in
-	// production; a fixed dev-only value is used when unset so local runs
-	// don't need it set before Phase 2 exists.
+	// per-organization integration credentials (task 2.2). A fixed,
+	// published-in-this-source dev-only value is used when unset, so local
+	// runs don't need it set — which also means that default must never be
+	// reachable in production; set LOTUS_KEK there always.
 	KEK string
 
 	WorkerCount int
@@ -86,7 +93,7 @@ func Load() Config {
 		Dev:                os.Getenv("LOTUS_DEV") == "1",
 		SessionSecret:      os.Getenv("SESSION_SECRET"),
 		BaseDomain:         envOr("LOTUS_BASE_DOMAIN", "lotus.localhost"),
-		KEK:                os.Getenv("LOTUS_KEK"),
+		KEK:                envOr("LOTUS_KEK", devOnlyKEK),
 		WorkerCount:        envInt("LOTUS_WORKER_COUNT", 4),
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
