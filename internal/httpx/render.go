@@ -1,23 +1,91 @@
 // Package httpx renders html/template pages against a layout.
 //
-// Templates are parsed once from the embedded filesystem in production;
-// task 4.1 extends this with RenderPartial (htmx fragment rendering without
-// the layout) and an Org field on ViewData once the tenant plane exists.
-// This first cut only needs to prove the embed-vs-disk toggle and one
-// working page, per task 0.1's acceptance criteria.
+// Templates are re-parsed on every Render call — cheap enough at Lotus's
+// scale, and it's what makes LOTUS_DEV=1 (os.DirFS instead of the embedded
+// build) a genuine hot-reload rather than a restart. A page ("pages/x.html")
+// is parsed together with layout/layout.html and every components/*.html
+// (task 4.1's app-shell partials — sidebar, breadcrumb, logo, badges),
+// so a page's {{define "content"}} can freely {{template}} any of them.
+// RenderPartial renders a partials/*.html fragment standalone, without the
+// layout, for htmx responses.
 package httpx
 
 import (
+	"errors"
 	"html/template"
 	"io"
 	"io/fs"
 	"path"
+	"strings"
 )
 
 // ViewData is passed to every page template.
 type ViewData struct {
 	Title string
 	Data  any
+
+	// Org, User, and Nav are set by every tenant-host authenticated page
+	// (task 4.1) so the app-shell components (sidebar, user box,
+	// breadcrumb) have what they need without each handler re-deriving it
+	// into Data. Nil on auth-flow and apex pages, which render without
+	// the shell.
+	Org  *Org
+	User *User
+	Nav  *Nav
+}
+
+// Org is the current organization, for the app shell's breadcrumb.
+type Org struct {
+	Name      string
+	Subdomain string
+}
+
+// User is the current signed-in user, for the app shell's sidebar user box.
+type User struct {
+	Name  string
+	Email string
+	Role  string
+}
+
+// Nav is the app shell's sidebar + breadcrumb state for the current page.
+type Nav struct {
+	// Active is the Key of the NavItem to highlight.
+	Active string
+	Items  []NavItem
+	// Crumb is the current page's label, shown as the last, unclickable
+	// breadcrumb segment (e.g. "Software health").
+	Crumb string
+}
+
+// NavItem is one sidebar link. Href empty means "not built yet" — the
+// shell renders it disabled rather than as a dead link.
+type NavItem struct {
+	Key   string
+	Label string
+	Href  string
+	Count string
+	Icon  template.HTML
+}
+
+// Initials returns up to two uppercase initials for the sidebar avatar
+// badge (e.g. "Rizky Hartono" -> "RH"), falling back to the first letter
+// of Email when Name is blank.
+func (u User) Initials() string {
+	fields := strings.Fields(u.Name)
+	switch {
+	case len(fields) >= 2:
+		return strings.ToUpper(string([]rune(fields[0])[:1]) + string([]rune(fields[1])[:1]))
+	case len(fields) == 1:
+		r := []rune(fields[0])
+		if len(r) >= 2 {
+			return strings.ToUpper(string(r[:2]))
+		}
+		return strings.ToUpper(string(r))
+	case u.Email != "":
+		return strings.ToUpper(u.Email[:1])
+	default:
+		return "?"
+	}
 }
 
 // Renderer parses and renders html/template pages against layout.html.
@@ -53,7 +121,7 @@ func (r *Renderer) RenderPartial(w io.Writer, name string, data any) error {
 	if err != nil {
 		return err
 	}
-	tmpl, err := template.New(path.Base(name)).Parse(string(body))
+	tmpl, err := template.New(path.Base(name)).Funcs(funcMap).Parse(string(body))
 	if err != nil {
 		return err
 	}
@@ -61,12 +129,21 @@ func (r *Renderer) RenderPartial(w io.Writer, name string, data any) error {
 }
 
 func (r *Renderer) parse(page string) (*template.Template, error) {
-	tmpl := template.New("layout")
+	tmpl := template.New("layout").Funcs(funcMap)
 	layout, err := fs.ReadFile(r.fsys, path.Join("layout", "layout.html"))
 	if err != nil {
 		return nil, err
 	}
 	if _, err := tmpl.Parse(string(layout)); err != nil {
+		return nil, err
+	}
+	// components/*.html (task 4.1) are the app shell's reusable pieces —
+	// sidebar, breadcrumb, logo, status badge — each wrapped in its own
+	// {{define "name"}}, so parsing them here just registers named
+	// templates a page can {{template "name" .}} into itself; unlike
+	// partials/ (RenderPartial's raw htmx fragments, no {{define}}
+	// wrapper), components are never rendered standalone.
+	if err := r.parseComponents(tmpl); err != nil {
 		return nil, err
 	}
 	body, err := fs.ReadFile(r.fsys, page)
@@ -79,4 +156,27 @@ func (r *Renderer) parse(page string) (*template.Template, error) {
 		return nil, err
 	}
 	return tmpl, nil
+}
+
+func (r *Renderer) parseComponents(tmpl *template.Template) error {
+	entries, err := fs.ReadDir(r.fsys, "components")
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".html") {
+			continue
+		}
+		body, err := fs.ReadFile(r.fsys, path.Join("components", e.Name()))
+		if err != nil {
+			return err
+		}
+		if _, err := tmpl.Parse(string(body)); err != nil {
+			return err
+		}
+	}
+	return nil
 }

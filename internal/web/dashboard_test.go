@@ -1,0 +1,148 @@
+package web
+
+import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
+
+	"github.com/uyab/lotus/internal/authn"
+	"github.com/uyab/lotus/internal/config"
+	"github.com/uyab/lotus/internal/dbtest"
+	"github.com/uyab/lotus/internal/httpx"
+	"github.com/uyab/lotus/internal/tenant"
+)
+
+const dashboardTestDomain = "lotus.test"
+
+func newDashboardTestApp(t *testing.T) (*fiber.App, *sqlx.DB) {
+	t.Helper()
+	renderer := httpx.NewRenderer(os.DirFS("../../web/templates"), true)
+	db := dbtest.Open(t)
+	resolver := tenant.NewResolver(config.Config{BaseDomain: dashboardTestDomain, Dev: true}, db)
+	app := New(Deps{
+		Renderer:       renderer,
+		StaticFS:       os.DirFS("../../web/static"),
+		Resolver:       resolver,
+		DB:             db,
+		OAuthProviders: authn.Registry{},
+	})
+	return app, db
+}
+
+func TestDashboard_NoSessionRedirectsRatherThanShowingData(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, _ := seedMember(t, db, "acme-nosession", "owner")
+	_ = orgID
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	req.Host = "acme-nosession." + dashboardTestDomain
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Fatalf("status = 200 with no session, want an auth failure status")
+	}
+}
+
+func TestDashboard_EmptyOrgShowsEmptyState(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-empty", "owner")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-empty." + dashboardTestDomain
+
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/dashboard", raw))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "No projects yet") {
+		t.Fatalf("body missing empty-state copy:\n%s", body)
+	}
+}
+
+func TestDashboard_ShowsRealComponentAndKPIData(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-full", "owner")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-full." + dashboardTestDomain
+
+	var projectID, componentID uuid.UUID
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&projectID, `INSERT INTO projects (org_id, slug, name) VALUES ($1,'p','Payments') RETURNING id`, orgID); err != nil {
+			t.Fatalf("insert project: %v", err)
+		}
+		if err := tx.Get(&componentID, `INSERT INTO components (org_id, project_id, slug, name, kind) VALUES ($1,$2,'c','billing-api','backend') RETURNING id`, orgID, projectID); err != nil {
+			t.Fatalf("insert component: %v", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO component_metrics_current (org_id, project_id, component_id, metrics, status, score, updated_at)
+			VALUES ($1,$2,$3,'{"gitlab":{"status":"pass"}}'::jsonb,'pass',77,now())`,
+			orgID, projectID, componentID); err != nil {
+			t.Fatalf("insert component metric: %v", err)
+		}
+	})
+
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/dashboard", raw))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	for _, want := range []string{"billing-api", "Payments", "77", "Software health"} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestNewProject_SubmitCreatesAndRedirects(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-newproj", "owner")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-newproj." + dashboardTestDomain
+
+	form := url.Values{"name": {"Billing"}, "slug": {"billing"}}
+	req := httptest.NewRequest(http.MethodPost, "http://"+host+"/projects/new", strings.NewReader(form.Encode()))
+	req.Host = host
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 302 redirect:\n%s", resp.StatusCode, body)
+	}
+	if loc := resp.Header.Get("Location"); loc != "/dashboard" {
+		t.Fatalf("Location = %q, want /dashboard", loc)
+	}
+
+	var count int
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&count, `SELECT count(*) FROM projects WHERE org_id = $1 AND slug = 'billing'`, orgID); err != nil {
+			t.Fatalf("count: %v", err)
+		}
+	})
+	if count != 1 {
+		t.Fatalf("projects with slug=billing = %d, want 1", count)
+	}
+}

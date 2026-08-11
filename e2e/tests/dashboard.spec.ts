@@ -1,0 +1,108 @@
+import { expect, test } from '@playwright/test';
+import { seedOwnerSession, withDB } from './helpers/db';
+
+const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
+const BASE_DOMAIN = process.env.LOTUS_BASE_DOMAIN ?? 'lotus.localhost';
+
+function tenantOrigin(subdomain: string): string {
+  return `http://${subdomain}.${BASE_DOMAIN}:${PORT}`;
+}
+
+test('dashboard on a tenant host with no session does not show dashboard content', async ({ page }) => {
+  const res = await page.goto(`${tenantOrigin('no-session-e2e')}/dashboard`);
+  expect(res?.status()).toBeGreaterThanOrEqual(400);
+  await expect(page.getByRole('heading', { name: 'Software health' })).not.toBeVisible();
+});
+
+test('dashboard shows the app shell and an empty state for a fresh org', async ({ page, context }) => {
+  const { sessionToken, subdomain } = await seedOwnerSession('empty-e2e', 'placeholder');
+  const origin = tenantOrigin(subdomain);
+
+  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+  await page.goto(`${origin}/dashboard`);
+
+  // The app shell (task 4.1): sidebar with the signed-in user, Dashboard
+  // highlighted, the Lotus wordmark — proves the design-system layout
+  // rendered, not just raw content.
+  await expect(page.getByText('E2E Owner')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Software health' })).toBeVisible();
+  await expect(page.getByText('No projects yet')).toBeVisible();
+
+  // The user-box dropdown is real Alpine.js interactivity, not a static
+  // mockup — clicking it must actually reveal Log out.
+  await expect(page.getByRole('button', { name: 'Log out' })).not.toBeVisible();
+  await page.getByText('E2E Owner').click();
+  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
+});
+
+test('creating a project through the real form, then seeing it reflected on the dashboard', async ({ page, context }) => {
+  const { sessionToken, orgId, subdomain } = await seedOwnerSession('newproj-e2e', 'placeholder');
+  const origin = tenantOrigin(subdomain);
+
+  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+  await page.goto(`${origin}/projects/new`);
+
+  await page.getByLabel('PROJECT NAME').fill('E2E Payments');
+  await page.getByLabel('SLUG').fill('e2e-payments');
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await expect(page).toHaveURL(`${origin}/dashboard`);
+  // A project with zero components is a distinct empty state from "no
+  // projects at all" (task 4.2's empty-state copy must track which case
+  // it actually is — a real bug caught during manual QA of this feature).
+  await expect(page.getByText('No repositories yet')).toBeVisible();
+  await expect(page.getByText('No projects yet')).not.toBeVisible();
+
+  await withDB(async (client) => {
+    const { rows } = await client.query('SELECT count(*) FROM projects WHERE org_id = $1 AND slug = $2', [orgId, 'e2e-payments']);
+    expect(Number(rows[0].count)).toBe(1);
+  });
+});
+
+test('dashboard renders real component metrics as KPI cards and a filterable repositories table', async ({ page, context }) => {
+  const { sessionToken, orgId, subdomain } = await seedOwnerSession('full-e2e', 'placeholder');
+  const origin = tenantOrigin(subdomain);
+
+  await withDB(async (client) => {
+    const project = await client.query<{ id: string }>(
+      `INSERT INTO projects (org_id, slug, name) VALUES ($1, 'p', 'Payments') RETURNING id`,
+      [orgId],
+    );
+    const component = await client.query<{ id: string }>(
+      `INSERT INTO components (org_id, project_id, slug, name, kind) VALUES ($1, $2, 'c', 'billing-api', 'backend') RETURNING id`,
+      [orgId, project.rows[0].id],
+    );
+    await client.query(
+      `INSERT INTO component_metrics_current (org_id, project_id, component_id, metrics, status, score, updated_at)
+       VALUES ($1, $2, $3, $4::jsonb, 'fail', 30, now())`,
+      [
+        orgId,
+        project.rows[0].id,
+        component.rows[0].id,
+        JSON.stringify({ gitlab: { status: 'fail', count_value: 5, count_label: 'stale branch' } }),
+      ],
+    );
+  });
+
+  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+  await page.goto(`${origin}/dashboard`);
+
+  await expect(page.getByText('billing-api')).toBeVisible();
+  await expect(page.getByText('Payments', { exact: true })).toBeVisible();
+  await expect(page.getByText('5 stale branches')).toBeVisible();
+
+  // Client-side filtering (Alpine x-show) — a real regression this
+  // feature hit in manual QA: combining an inline `display:grid` with
+  // x-show made Alpine collapse the row to block layout on toggle. This
+  // asserts the row is both present and still grid-laid-out after a
+  // filter round-trip, not just present in the DOM.
+  // .first(): "At risk" also appears inside the Lotus Score card's "N at
+  // risk" summary text, further down the page — the segmented-control
+  // button is the first match in DOM order.
+  await page.getByText('At risk', { exact: false }).first().click();
+  await expect(page.getByText('billing-api')).not.toBeVisible();
+  await page.getByText('All', { exact: false }).first().click();
+  await expect(page.getByText('billing-api')).toBeVisible();
+  await expect(page.locator('.lotus-repo-row', { hasText: 'billing-api' })).toHaveCSS('display', 'grid');
+});

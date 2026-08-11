@@ -1,7 +1,161 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
+/* Lotus design system (task 4.1) — tokens translated from the Claude
+   Design mockup "Lotus Dashboard.dc.html". Each --color-* below becomes a
+   Tailwind utility automatically (bg-brand, text-status-pass, etc). */
 @theme {
-  /* Placeholder tokens — replaced with the real Claude Design tokens
-     (colors, radius, typography, spacing) in task 4.1. */
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --color-brand: #43284E;
+  --color-brand-accent: #EDBCC3;
+  --color-brand-ink: #F7EDE1;
+
+  --color-status-pass: #23808F;
+  --color-status-warn: #E08DA0;
+  --color-status-warn-ink: #A94D68;
+  --color-status-fail: #9E2B47;
+  --color-status-none: #9CA3AF;
+
+  --color-surface: #F9FAFB;
+  --color-ink: #111827;
+  --color-ink-soft: #6B7280;
+  --color-ink-faint: #9CA3AF;
 }
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+[x-cloak] { display: none !important; }
+
+/* The signature asymmetric shape language: every card, button, and pill
+   in the mockup uses this exact non-uniform radius, never a plain
+   rounded-lg. Two sizes cover every instance observed. */
+.lotus-shape { border-radius: 16px 6px 16px 6px; }
+.lotus-shape-sm { border-radius: 14px 4px 14px 4px; }
+.lotus-shape-xs { border-radius: 5px 2px 5px 2px; }
+
+/* Glassmorphic card: translucent white, blurred backdrop, layered inset
+   highlight + a thin pink accent stripe along the bottom edge. */
+.lotus-card {
+  background: rgba(255, 255, 255, .72);
+  border: 1px solid rgba(67, 40, 78, .1);
+  backdrop-filter: blur(12px) saturate(1.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    inset 0 0 0 4px rgba(255, 255, 255, .55),
+    inset 0 0 0 5px rgba(67, 40, 78, .09),
+    inset 0 -2px 0 rgba(224, 141, 160, .5),
+    0 1px 1px rgba(17, 24, 39, .04),
+    0 4px 10px -8px rgba(67, 40, 78, .22);
+}
+
+.lotus-card-dark {
+  background: var(--color-brand);
+  color: var(--color-brand-ink);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .22),
+    inset 0 0 0 4px rgba(247, 237, 225, .07),
+    inset 0 0 0 5px rgba(237, 188, 195, .28),
+    inset 0 -2px 0 rgba(237, 188, 195, .75),
+    0 4px 10px -8px rgba(67, 40, 78, .32);
+}
+
+.btn-lotus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 14px;
+  border-radius: 8px;
+}
+
+.btn-lotus-secondary {
+  color: var(--color-brand);
+  background: linear-gradient(180deg, #FFFFFF 0%, #FAF9FB 55%, #F1EFF4 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    inset 0 0 0 1px rgba(67, 40, 78, .12),
+    0 1px 2px rgba(67, 40, 78, .08);
+}
+.btn-lotus-secondary:hover {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F6F4F8 55%, #EBE8EF 100%);
+}
+
+.btn-lotus-primary {
+  color: var(--color-brand-ink);
+  background: linear-gradient(180deg, #5C3A69 0%, #46294F 55%, #3A2143 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .3),
+    inset 0 0 0 1px rgba(45, 25, 52, .9),
+    0 1px 2px rgba(67, 40, 78, .24);
+}
+.btn-lotus-primary:hover {
+  background: linear-gradient(180deg, #6B4478 0%, #523060 55%, #432749 100%);
+}
+
+/* Status badge pill — used by the repositories table and the legend. */
+.lotus-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 5px 2px 5px 2px;
+}
+.lotus-badge-pass { color: var(--color-status-pass); background: #E6F2F4; }
+.lotus-badge-warn { color: var(--color-status-warn-ink); background: #FCEDF0; }
+.lotus-badge-fail { color: var(--color-status-fail); background: #F6E0E5; }
+.lotus-badge-none { color: var(--color-status-none); background: #F3F4F6; }
+
+.lotus-status-dot { display: block; width: 3px; height: 16px; border-radius: 2px; flex: none; }
+.lotus-status-dot-pass { background: var(--color-status-pass); }
+.lotus-status-dot-warn { background: var(--color-status-warn); }
+.lotus-status-dot-fail { background: var(--color-status-fail); }
+.lotus-status-dot-none { background: var(--color-status-none); }
+
+.lotus-text-pass { color: var(--color-status-pass); }
+.lotus-text-warn { color: var(--color-status-warn); }
+.lotus-text-fail { color: var(--color-status-fail); }
+.lotus-text-none { color: var(--color-status-none); }
+
+.lotus-bar-pass { background: var(--color-status-pass); }
+.lotus-bar-warn { background: var(--color-status-warn); }
+.lotus-bar-fail { background: var(--color-status-fail); }
+.lotus-bar-none { background: var(--color-status-none); }
+
+/* x-show toggles the inline `display` property directly — combining it
+   with an inline `display:grid` loses the grid declaration entirely once
+   Alpine clears the inline override back to '' (falls back to the
+   default block, not grid). Class-based display survives that toggle. */
+.lotus-repo-row {
+  display: grid;
+  min-width: 700px;
+  grid-template-columns: 26px minmax(190px, 1.5fr) 84px repeat(4, minmax(78px, .9fr));
+  align-items: center;
+  padding: 0 14px;
+  height: 38px;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.lotus-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: #4B5563;
+}
+.lotus-nav-item:hover { background: #F3F4F6; color: var(--color-ink); }
+.lotus-nav-item.is-active { background: #F3EFF6; color: var(--color-brand); font-weight: 600; }
+.lotus-nav-item.is-disabled { color: #C4C1C8; cursor: default; }
+.lotus-nav-item.is-disabled:hover { background: transparent; color: #C4C1C8; }

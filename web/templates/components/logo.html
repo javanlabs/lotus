@@ -1,0 +1,18 @@
+{{/* lotus_logo renders the three-layer gradient lotus mark. Takes
+     (dict "ID" "sb" "Width" 30 "Height" 19) — ID must be unique per
+     instance on the page since SVG gradient ids live in one document-wide
+     namespace (the shell renders this twice: sidebar footer + breadcrumb). */}}
+{{define "lotus_logo"}}<svg viewBox="18 44 164 106" width="{{.Width}}" height="{{.Height}}" style="display:block;flex:none" aria-hidden="true">
+<defs>
+<linearGradient id="{{.ID}}F" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#43284E" stop-opacity=".95"></stop><stop offset="100%" stop-color="#43284E" stop-opacity=".6"></stop></linearGradient>
+<linearGradient id="{{.ID}}M" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#43284E" stop-opacity=".75"></stop><stop offset="100%" stop-color="#43284E" stop-opacity=".4"></stop></linearGradient>
+<linearGradient id="{{.ID}}B" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#43284E" stop-opacity=".45"></stop><stop offset="100%" stop-color="#43284E" stop-opacity=".18"></stop></linearGradient>
+</defs>
+<path d="M100 145 C 40 140, 20 118, 22 100 C 48 100, 78 118, 100 145 Z" fill="url(#{{.ID}}B)"></path>
+<path d="M100 145 C 160 140, 180 118, 178 100 C 152 100, 122 118, 100 145 Z" fill="url(#{{.ID}}B)"></path>
+<path d="M100 145 C 64 130, 50 96, 60 74 C 84 86, 96 116, 100 145 Z" fill="url(#{{.ID}}M)"></path>
+<path d="M100 145 C 136 130, 150 96, 140 74 C 116 86, 104 116, 100 145 Z" fill="url(#{{.ID}}M)"></path>
+<path d="M100 145 C 80 115, 76 78, 88 56 C 100 78, 102 116, 100 145 Z" fill="url(#{{.ID}}F)" fill-opacity=".85"></path>
+<path d="M100 145 C 120 115, 124 78, 112 56 C 100 78, 98 116, 100 145 Z" fill="url(#{{.ID}}F)" fill-opacity=".85"></path>
+<path d="M100 145 C 90 110, 90 78, 100 50 C 110 78, 110 110, 100 145 Z" fill="url(#{{.ID}}F)"></path>
+</svg>{{end}}

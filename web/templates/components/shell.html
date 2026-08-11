@@ -1,0 +1,75 @@
+{{/* shell_open/shell_close (task 4.1) wrap every authenticated tenant page
+     in the sidebar + breadcrumb app shell. A page's content block does:
+       {{template "shell_open" .}} ...page markup... {{template "shell_close" .}}
+     "." is the page's top-level httpx.ViewData — Org/User/Nav must be set. */}}
+{{define "shell_open"}}
+<div style="display:flex;min-height:100vh;background:#F9FAFB;color:#111827">
+
+  <aside style="width:238px;flex:none;background:#FFFFFF;box-shadow:inset -1px 0 0 rgba(67,40,78,.10),inset -5px 0 6px -5px rgba(67,40,78,.14);display:flex;flex-direction:column;padding:18px 0 16px;position:sticky;top:0;height:100vh;box-sizing:border-box;isolation:isolate">
+    <div style="position:absolute;inset:0;z-index:0;pointer-events:none;background:linear-gradient(180deg,rgba(237,188,195,.20) 0%,rgba(67,40,78,.05) 34%,rgba(249,250,251,.6) 72%,#F9FAFB 100%);-webkit-mask-image:linear-gradient(90deg,transparent 0,transparent 46%,#000 100%),linear-gradient(180deg,transparent 0,#000 64px,#000 calc(100% - 96px),transparent 100%);-webkit-mask-composite:source-in;mask-image:linear-gradient(90deg,transparent 0,transparent 46%,#000 100%),linear-gradient(180deg,transparent 0,#000 64px,#000 calc(100% - 96px),transparent 100%);mask-composite:intersect"></div>
+
+    {{if .User}}
+    <div style="position:relative;z-index:1;padding:0 12px;margin:0 0 12px" x-data="{open:false}">
+      <div class="lotus-shape-sm" style="background:#FCFCFD;border:1px solid #E5E7EB;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 9px;cursor:pointer" @click="open = !open" @click.outside="open = false">
+          <div class="lotus-shape-sm" style="width:28px;height:28px;flex:none;background:linear-gradient(180deg,#5C3A69 0%,#43284E 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font:600 11px 'IBM Plex Mono',monospace;color:#EDBCC3;letter-spacing:.02em">{{.User.Initials}}</div>
+          <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+            <div style="font-size:12.5px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.User.Name}}</div>
+            <div style="font:400 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF;text-transform:capitalize">{{.User.Role}}</div>
+          </div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style="color:#9CA3AF;flex:none;margin-left:auto;transition:transform .2s" :style="open ? 'transform:rotate(180deg)' : ''"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 9s-4.419 6-6 6s-6-6-6-6"></path></svg>
+        </div>
+        <div x-show="open" x-cloak style="overflow:hidden">
+          <div style="height:1px;background:#E5E7EB;margin:0 9px"></div>
+          <div style="padding:5px;display:flex;flex-direction:column;gap:1px">
+            <a href="/settings/organization" class="lotus-nav-item" style="padding:7px 9px;font-size:12.5px;color:#111827">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#6B7280;flex:none"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M20 21a7.53 7.53 0 0 0-7.005-6.934L12 14q-.531.015-1 .038c-3.7.181-6.716 3.268-7 6.962"></path><circle cx="12" cy="7" r="4"></circle></g></svg>Profile</a>
+            <form method="post" action="/logout">
+              <button type="submit" class="lotus-nav-item" style="width:100%;padding:7px 9px;font-size:12.5px;color:#9E2B47;border:none;background:none;text-align:left;cursor:pointer">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#9E2B47;flex:none"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M18 18c0 .464 0 .697-.022.892a3.5 3.5 0 0 1-3.086 3.086C14.697 22 14.464 22 14 22h-3c-3.3 0-4.95 0-5.975-1.025S4 18.3 4 15V9c0-3.3 0-4.95 1.025-5.975S7.7 2 11 2h3c.464 0 .697 0 .892.022a3.5 3.5 0 0 1 3.086 3.086C18 5.303 18 5.536 18 6"></path><path d="M8.076 11.118C8 11.302 8 11.535 8 12.001s0 .699.076.883a1 1 0 0 0 .541.54c.184.077.417.077.883.077h5c0 1.75.011 2.629.562 2.885q.03.015.063.026c.58.223 1.275-.398 2.666-1.64c1.467-1.312 2.2-1.987 2.209-2.815c-.009-.828-.742-1.503-2.21-2.814c-1.39-1.243-2.085-1.864-2.665-1.641l-.063.026c-.56.26-.562 1.165-.562 2.973h-5c-.466 0-.699 0-.883.076a1 1 0 0 0-.54.541"></path></g></svg>Log out
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    {{end}}
+
+    <div style="position:relative;z-index:1;padding:0 12px;display:flex;flex-direction:column;gap:1px">
+      {{range .Nav.Items}}
+      {{if .Href}}
+      <a href="{{.Href}}" class="lotus-nav-item{{if eq .Key $.Nav.Active}} is-active{{end}}">
+        {{.Icon}}{{.Label}}
+        {{if .Count}}<span style="margin-left:auto;font:500 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.Count}}</span>{{end}}
+      </a>
+      {{else}}
+      <div class="lotus-nav-item is-disabled" title="Coming soon">
+        {{.Icon}}{{.Label}}
+        <span style="margin-left:auto;font:500 8.5px 'IBM Plex Mono',monospace;color:#D1D5DB;letter-spacing:.05em">SOON</span>
+      </div>
+      {{end}}
+      {{end}}
+    </div>
+
+    <div style="position:relative;z-index:1;margin-top:auto;display:flex;align-items:center;gap:9px;padding:12px 18px 0;box-shadow:inset 0 1px 0 rgba(67,40,78,.08)">
+      {{template "lotus_logo" (dict "ID" "sb" "Width" 30 "Height" 19)}}
+      <div style="font-size:15px;font-weight:600;letter-spacing:.02em;color:#111827">Lotus</div>
+      <div style="margin-left:auto;font:500 9px 'IBM Plex Mono',monospace;color:#9CA3AF">v1</div>
+    </div>
+  </aside>
+
+  <main style="flex:1;min-width:0;padding:22px 26px 40px;background:radial-gradient(900px 420px at 12% -8%,rgba(237,188,195,.4),transparent 60%),radial-gradient(760px 380px at 88% 4%,rgba(67,40,78,.1),transparent 62%),#F9FAFB">
+
+    <nav style="display:flex;align-items:center;gap:7px;margin-bottom:14px;font-size:11.5px;color:#6B7280">
+      <a href="/dashboard" aria-label="Lotus" style="display:inline-flex;align-items:center;padding:3px 5px;border-radius:5px">{{template "lotus_logo" (dict "ID" "bc" "Width" 20 "Height" 13)}}</a>
+      <span style="color:#D1D5DB">/</span>
+      <span style="color:#6B7280">{{if .Org}}{{.Org.Name}}{{end}}</span>
+      {{if .Nav.Crumb}}<span style="color:#D1D5DB">/</span>
+      <span style="color:#43284E;font-weight:600">{{.Nav.Crumb}}</span>{{end}}
+    </nav>
+{{end}}
+
+{{define "shell_close"}}
+  </main>
+</div>
+{{end}}

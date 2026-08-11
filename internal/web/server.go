@@ -140,6 +140,13 @@ func New(d Deps) *fiber.App {
 	app.Post("/invite/:token/decline", tenant.RequireAuth(),
 		authz.Public("declining must not require a login the person never wanted"), authn.InviteDecline(authDeps))
 
+	// Tenant host only (task 4.1/4.2): the app shell's dashboard, plus a
+	// minimal real project-creation page (name+slug only — the fuller
+	// wizard that also adds GitLab repos and a Sentry DSN is task 4.3's
+	// bind-metric wizard).
+	registerDashboardRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+	registerProjectPageRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+
 	// Tenant host only (task 2.1): Project & Component CRUD. JSON handlers
 	// — the screens that call them are task 4.3.
 	registerProjectRoutes(app, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
