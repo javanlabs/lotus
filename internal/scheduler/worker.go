@@ -84,9 +84,8 @@ func (p *Pool) handleResult(ctx context.Context, run *global.SyncRun, result col
 
 	// Persist the kind's own detail snapshot — task 3.3's own acceptance
 	// criteria requires a partial-failure Collect to still leave a saved
-	// snapshot behind, even though the dashboard projection that reads
-	// alongside it (component_metrics_current, metric_facts) is task
-	// 3.6/3.7's job, not wired here. A kind with no registered persister
+	// snapshot behind. component_metrics_current (task 3.6) is upserted
+	// from inside persist itself. A kind with no registered persister
 	// (true for any kind that hasn't shipped a snapshot table yet) simply
 	// skips this step rather than failing the run over it.
 	binding, err := repo.BindingByID(ctx, scope, run.BindingID)
@@ -97,6 +96,14 @@ func (p *Pool) handleResult(ctx context.Context, run *global.SyncRun, result col
 		if err := persist(ctx, scope, binding.ComponentID, run.BindingID, result); err != nil {
 			return err
 		}
+	}
+
+	// metric_facts (task 3.7) — generic, kind-agnostic: every Fact any
+	// collector emitted (including on Children, for a kind like Sentry
+	// that fans out per environment) is written the same way regardless
+	// of kind, same as the dashboard projection above.
+	if err := repo.InsertMetricFacts(ctx, scope, binding.ComponentID, run.BindingID, run.Kind, result); err != nil {
+		return err
 	}
 
 	status := "ok"

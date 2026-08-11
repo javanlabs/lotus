@@ -26,6 +26,7 @@ import (
 	"github.com/uyab/lotus/internal/retention"
 	"github.com/uyab/lotus/internal/scheduler"
 	"github.com/uyab/lotus/internal/tenant"
+	"github.com/uyab/lotus/internal/timeseries"
 	"github.com/uyab/lotus/internal/web"
 	lotusweb "github.com/uyab/lotus/web"
 
@@ -158,6 +159,15 @@ func runServe(cfg config.Config) {
 	}
 	defer retentionDB.Close()
 	go retention.Run(context.Background(), retentionDB, retention.Options{})
+
+	// Timeseries (task 3.7): rollup + partition management, same
+	// DDL-capable connection and reasoning as retention above.
+	timeseriesDB, err := db.Open(cfg.MigrateDatabaseURL)
+	if err != nil {
+		log.Fatalf("open timeseries db: %v", err)
+	}
+	defer timeseriesDB.Close()
+	go timeseries.Run(context.Background(), timeseriesDB, timeseries.Options{})
 
 	log.Printf("lotus serving on %s (dev=%v)", cfg.Addr, cfg.Dev)
 	if err := app.Listen(cfg.Addr); err != nil {
