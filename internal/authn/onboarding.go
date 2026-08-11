@@ -101,7 +101,7 @@ func SlugCheck(deps Deps) fiber.Handler {
 		slug := strings.ToLower(strings.TrimSpace(c.Query("slug")))
 		result := SlugCheckResult{Slug: slug}
 
-		if err := validateSignupSlugFormat(slug); err != nil {
+		if err := ValidateSignupSlugFormat(slug); err != nil {
 			result.Reason = err.Error()
 		} else if reserved, err := global.IsReservedSubdomain(c.Context(), deps.DB, slug); err != nil {
 			return err
@@ -132,7 +132,7 @@ func SubmitOnboardingOrg(deps Deps) fiber.Handler {
 		name := strings.TrimSpace(c.FormValue("name"))
 		slug := strings.ToLower(strings.TrimSpace(c.FormValue("slug")))
 
-		if err := validateSignupSlugFormat(slug); err != nil {
+		if err := ValidateSignupSlugFormat(slug); err != nil {
 			return renderOnboardingOrgError(c, deps.Renderer, name, slug, err.Error())
 		}
 		if reserved, err := global.IsReservedSubdomain(c.Context(), deps.DB, slug); err != nil {
@@ -265,7 +265,11 @@ func parseEmailList(raw string) []string {
 	return out
 }
 
-func validateSignupSlugFormat(slug string) error {
+// ValidateSignupSlugFormat is exported so internal/web's own subdomain-
+// change flow (task 4.5's /settings/organization danger zone) can reuse
+// the exact same format rule signup already enforces, rather than a
+// second copy of it drifting out of sync.
+func ValidateSignupSlugFormat(slug string) error {
 	if !signupSlugFormat.MatchString(slug) {
 		return errors.New("must be 3-40 characters: lowercase letters, numbers, and hyphens, not starting or ending with a hyphen")
 	}

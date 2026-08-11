@@ -42,11 +42,12 @@ type Connection struct {
 	Status            string          `db:"status"`
 	LastVerifiedAt    *time.Time      `db:"last_verified_at"`
 	LastError         *string         `db:"last_error"`
+	DeletedAt         *time.Time      `db:"deleted_at"`
 	CreatedAt         time.Time       `db:"created_at"`
 }
 
 const connectionColumns = `id, org_id, provider, name, base_url, config, secret_last4, secret_fingerprint,
-	secret_updated_at, status, last_verified_at, last_error, created_at`
+	secret_updated_at, status, last_verified_at, last_error, deleted_at, created_at`
 
 type NewConnection struct {
 	Provider string
@@ -100,10 +101,14 @@ func CreateConnection(ctx context.Context, s tenant.Scope, dek []byte, in NewCon
 	return &out, nil
 }
 
+// ConnectionByID returns a live connection — deleted_at IS NULL. Callers
+// that legitimately need a deleted row (none exist yet) would need a
+// separate function, the same split every other soft-deletable table in
+// this codebase uses.
 func ConnectionByID(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Connection, error) {
 	var out Connection
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		return tx.GetContext(ctx, &out, `SELECT `+connectionColumns+` FROM integration_connections WHERE id = $1`, id)
+		return tx.GetContext(ctx, &out, `SELECT `+connectionColumns+` FROM integration_connections WHERE id = $1 AND deleted_at IS NULL`, id)
 	})
 	if err != nil {
 		if isNoRows(err) {
@@ -117,9 +122,46 @@ func ConnectionByID(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Connect
 func ListConnections(ctx context.Context, s tenant.Scope) ([]Connection, error) {
 	var out []Connection
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		return tx.SelectContext(ctx, &out, `SELECT `+connectionColumns+` FROM integration_connections ORDER BY created_at`)
+		return tx.SelectContext(ctx, &out, `SELECT `+connectionColumns+` FROM integration_connections WHERE deleted_at IS NULL ORDER BY created_at`)
 	})
 	return out, err
+}
+
+// DeleteConnection soft-deletes a connection and every live binding on it,
+// in one transaction — task 4.5's spec ("delete yang nampilin berapa
+// binding bakal ikut mati") requires the count be shown before this is
+// called (see CountActiveBindingsForConnection, bindings.go), and this
+// function is what actually carries it out atomically: both the
+// connection and its bindings disappear from every listing together, or
+// neither does. Returns the number of bindings that were soft-deleted
+// alongside it, for the caller's confirmation/audit message.
+func DeleteConnection(ctx context.Context, s tenant.Scope, id uuid.UUID) (bindingsDeleted int, err error) {
+	err = s.Tx(ctx, func(tx *sqlx.Tx) error {
+		res, err := tx.ExecContext(ctx, `
+			UPDATE integration_connections SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, id)
+		if err != nil {
+			return err
+		}
+		if err := checkRowsAffected(res); err != nil {
+			return err
+		}
+		res, err = tx.ExecContext(ctx, `
+			UPDATE metric_bindings SET enabled = false, deleted_at = now()
+			WHERE connection_id = $1 AND deleted_at IS NULL`, id)
+		if err != nil {
+			return err
+		}
+		affected, err := res.RowsAffected()
+		bindingsDeleted = int(affected)
+		return err
+	})
+	if err != nil {
+		if isNoRows(err) {
+			return 0, ErrNotFound
+		}
+		return 0, err
+	}
+	return bindingsDeleted, nil
 }
 
 // UpdateConnectionMeta changes name/config only — never base_url or the

@@ -1,0 +1,91 @@
+{{define "content"}}
+{{template "shell_open" .}}
+<header style="margin-bottom:18px">
+  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">Settings</h1>
+</header>
+{{template "settings_nav" .Data.SettingsNav}}
+
+<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px;margin-bottom:16px">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="font-size:13px;font-weight:600;color:#43284E">Members</div>
+  </div>
+  {{range .Data.Members}}
+  <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1">
+      <span style="font-size:12.5px;font-weight:600;color:#111827">{{.Name}}{{if eq .UserID $.Data.Self}} (you){{end}}</span>
+      <span style="font:400 10px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.Email}}{{if .SSOExempt}} · SSO-exempt{{end}}</span>
+    </div>
+    {{if and $.Data.CanChangeRole (ne .UserID $.Data.Self)}}
+    <form method="post" action="/settings/members/{{.UserID}}/role">
+      <select name="role" onchange="this.form.submit()"
+              style="padding:6px 10px;font-size:12px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:7px 2px 7px 2px;outline:none;cursor:pointer">
+        <option value="owner" {{if eq .RoleKey "owner"}}selected{{end}} {{if ne $.Data.ActorRole "owner"}}disabled{{end}}>Owner</option>
+        <option value="admin" {{if eq .RoleKey "admin"}}selected{{end}}>Admin</option>
+        <option value="member" {{if eq .RoleKey "member"}}selected{{end}}>Member</option>
+        <option value="viewer" {{if eq .RoleKey "viewer"}}selected{{end}}>Viewer</option>
+      </select>
+    </form>
+    {{else}}
+    <span class="lotus-badge" style="text-transform:capitalize">{{.RoleKey}}</span>
+    {{end}}
+    {{if and $.Data.CanRemove (ne .UserID $.Data.Self)}}
+    <form method="post" action="/settings/members/{{.UserID}}/remove" onsubmit="return confirm('Remove {{.Name}} from this organization?')">
+      <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:#FCEDF0;color:#9E2B47">Remove</button>
+    </form>
+    {{end}}
+  </div>
+  {{end}}
+</section>
+
+{{if .Data.Invitations}}
+<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px;margin-bottom:16px">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="font-size:13px;font-weight:600;color:#43284E">Pending invitations</div>
+  </div>
+  {{range .Data.Invitations}}
+  <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1">
+      <span style="font-size:12.5px;font-weight:600;color:#111827">{{.Email}}</span>
+      <span style="font:400 10px 'IBM Plex Mono',monospace;color:#9CA3AF">as {{.RoleKey}} · expires {{.ExpiresAt}}</span>
+    </div>
+    {{if $.Data.CanInvite}}
+    <div style="display:flex;gap:6px">
+      <form method="post" action="/settings/members/invitations/{{.ID}}/resend">
+        <button type="submit" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px">Resend</button>
+      </form>
+      <form method="post" action="/settings/members/invitations/{{.ID}}/revoke">
+        <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:#FCEDF0;color:#9E2B47">Revoke</button>
+      </form>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+</section>
+{{end}}
+
+{{if .Data.CanInvite}}
+<section class="lotus-card lotus-shape" style="max-width:480px;padding:20px 22px;display:flex;flex-direction:column;gap:14px">
+  <div style="font-size:13px;font-weight:600;color:#43284E">Invite a member</div>
+  <form method="post" action="/settings/members/invite" style="display:flex;flex-direction:column;gap:14px">
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">EMAIL</span>
+      <input type="email" name="email" required
+             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12.5px system-ui;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+    </label>
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">ROLE</span>
+      <select name="role" style="padding:9px 11px;font-size:12.5px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+        <option value="member" selected>Member</option>
+        <option value="admin">Admin</option>
+        <option value="viewer">Viewer</option>
+      </select>
+    </label>
+    <div style="display:flex;justify-content:flex-end">
+      <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none">Send invite</button>
+    </div>
+  </form>
+</section>
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}

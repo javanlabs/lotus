@@ -1,0 +1,11 @@
+{{/* settings_nav (task 4.5): the tab strip every /settings/* page shares.
+     Usage: {{template "settings_nav" .Data.SettingsNav}} where the argument
+     is a []web.settingsNavItem (Key/Label/Href/Active), built by
+     buildSettingsNav in Go rather than a template-side list literal. */}}
+{{define "settings_nav"}}
+<div style="display:flex;gap:2px;margin-bottom:16px;border-bottom:1px solid rgba(67,40,78,.10)">
+  {{range .}}
+  <a href="{{.Href}}" style="padding:9px 14px;font-size:12.5px;font-weight:600;text-decoration:none;border-bottom:2px solid {{if .Active}}#43284E{{else}}transparent{{end}};color:{{if .Active}}#43284E{{else}}#6B7280{{end}}">{{.Label}}</a>
+  {{end}}
+</div>
+{{end}}

@@ -170,6 +170,25 @@ func ResendInvitation(ctx context.Context, db *sqlx.DB, oldInvitationID uuid.UUI
 	return newID, tx.Commit()
 }
 
+// ListPendingInvitationsForOrg lists org's still-usable invitations
+// (unexpired, unaccepted, undeclined, unrevoked) — Settings -> Members'
+// pending-invites panel, resend/revoke's own list view.
+func ListPendingInvitationsForOrg(ctx context.Context, db *sqlx.DB, orgID uuid.UUID) ([]Invitation, error) {
+	var out []Invitation
+	err := sqlx.SelectContext(ctx, db, &out, `
+		SELECT i.id, i.org_id, i.email, i.role_id, r.key AS role_key, i.invited_by,
+		       i.expires_at, i.accepted_at, i.revoked_at, i.declined_at
+		FROM invitations i
+		JOIN roles r ON r.id = i.role_id
+		WHERE i.org_id = $1
+		  AND i.expires_at > now()
+		  AND i.accepted_at IS NULL
+		  AND i.revoked_at IS NULL
+		  AND i.declined_at IS NULL
+		ORDER BY i.expires_at`, orgID)
+	return out, err
+}
+
 // CountRecentInvitationsByOrg supports task 1.7's per-organization rate
 // limit — invite spam is a real abuse vector against the sending domain's
 // reputation, not a hypothetical.

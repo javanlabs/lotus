@@ -1,0 +1,79 @@
+{{define "content"}}
+{{template "shell_open" .}}
+<header style="margin-bottom:18px">
+  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">Settings</h1>
+</header>
+{{template "settings_nav" .Data.SettingsNav}}
+
+{{if not .Data.Connections}}
+<section class="lotus-card lotus-shape" style="padding:32px;text-align:center;color:#6B7280;font-size:12.5px;margin-bottom:16px">
+  No connections yet — create one below.
+</section>
+{{else}}
+<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px;margin-bottom:16px">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="font-size:13px;font-weight:600;color:#43284E">Connections</div>
+  </div>
+  {{range .Data.Connections}}
+  <div {{if $.Data.CanWrite}}x-data="{rotate:false}"{{end}}>
+    <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-bottom:1px solid #F3F4F6">
+      <span class="lotus-badge" style="min-width:96px;justify-content:center">{{.ProviderLabel}}</span>
+      <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1;overflow:hidden">
+        <span style="font-size:12.5px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
+        <span style="font:400 10px 'IBM Plex Mono',monospace;color:#9CA3AF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.BaseURL}} · secret {{.SecretLast4}} · rotated {{.SecretUpdatedAt}}</span>
+      </div>
+      <span class="lotus-badge lotus-badge-{{.StatusTone}}">{{.StatusLabel}}</span>
+      <span style="font-size:10.5px;color:#9CA3AF;width:110px">{{.ActiveBindings}} binding{{if ne .ActiveBindings 1}}s{{end}}</span>
+      <span id="conn-test-{{.ID}}" style="flex:none;max-width:200px;text-align:right"></span>
+      {{if $.Data.CanWrite}}
+      <div style="display:flex;gap:6px;flex:none">
+        <button type="button" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px"
+                hx-post="/settings/connections/{{.ID}}/test-ui" hx-target="#conn-test-{{.ID}}" hx-swap="innerHTML">Test</button>
+        <button type="button" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px" @click="rotate = !rotate">Rotate</button>
+        <form method="post" action="/settings/connections/{{.ID}}/delete"
+              onsubmit="return confirm('Delete {{.Name}}? {{.ActiveBindings}} binding(s) will be disabled along with it.')">
+          <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:#FCEDF0;color:#9E2B47">Delete</button>
+        </form>
+      </div>
+      {{end}}
+    </div>
+    {{if $.Data.CanWrite}}
+    <div x-show="rotate" x-cloak style="padding:10px 14px 14px 124px;border-bottom:1px solid #F3F4F6;background:rgba(67,40,78,.02)">
+      <form method="post" action="/settings/connections/{{.ID}}/rotate" style="display:flex;gap:8px;max-width:420px">
+        <input type="password" name="secret" placeholder="New credential" required autocomplete="off"
+               style="flex:1;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+        <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none;padding:8px 14px;font-size:11px">Save</button>
+      </form>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+</section>
+{{end}}
+
+{{if .Data.CanWrite}}
+<section class="lotus-card lotus-shape" style="max-width:560px;padding:20px 22px;display:flex;flex-direction:column;gap:16px">
+  <div style="font-size:13px;font-weight:600;color:#43284E">New connection</div>
+  <div style="display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:9px;padding:3px;width:fit-content">
+    {{$current := .Data.SelectedKind}}
+    {{range .Data.Kinds}}
+    <a href="/settings/connections?kind={{.}}" style="padding:6px 13px;border-radius:6px;white-space:nowrap;font-size:12px;text-decoration:none;{{if eq . $current}}font-weight:600;color:#43284E;background:linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 1px 2px rgba(67,40,78,.1),0 0 0 1px rgba(67,40,78,.07){{else}}font-weight:500;color:#6B7280{{end}}">{{index $.Data.KindLabels .}}</a>
+    {{end}}
+  </div>
+  <form method="post" action="/settings/connections" style="display:flex;flex-direction:column;gap:14px">
+    <input type="hidden" name="kind" value="{{.Data.SelectedKind}}">
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">CONNECTION NAME</span>
+      <input type="text" name="name" required placeholder="e.g. gitlab.com"
+             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12.5px system-ui;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+    </label>
+    {{range .Data.ConnectionFields}}{{template "field_input" .}}{{end}}
+    <div style="display:flex;justify-content:flex-end;padding-top:4px">
+      <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none">Create connection</button>
+    </div>
+  </form>
+</section>
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}

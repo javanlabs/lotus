@@ -161,6 +161,12 @@ func New(d Deps) *fiber.App {
 	// false-positive annotations.
 	registerMetricDetailRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
+	// Tenant host only (task 4.5): the organization administration
+	// surface — Connections, Members, Organization, Tokens, Ingest docs,
+	// and the org-wide Activity feed. SSO (/settings/sso) is not part of
+	// this — deferred to its own follow-up task.
+	registerSettingsRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+
 	// Tenant host only (task 2.1): Project & Component CRUD. JSON handlers
 	// — the screens that call them are task 4.3.
 	registerProjectRoutes(app, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))

@@ -149,6 +149,19 @@ func FreezeBindingsForConnection(ctx context.Context, s tenant.Scope, connection
 	})
 }
 
+// CountActiveBindingsForConnection is the pre-delete confirmation count
+// task 4.5's /settings/connections spec calls for explicitly ("delete
+// yang nampilin berapa binding bakal ikut mati") — read-only, so the UI
+// can show the number before the user commits to the delete.
+func CountActiveBindingsForConnection(ctx context.Context, s tenant.Scope, connectionID uuid.UUID) (int, error) {
+	var n int
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.GetContext(ctx, &n, `
+			SELECT count(*) FROM metric_bindings WHERE connection_id = $1 AND deleted_at IS NULL`, connectionID)
+	})
+	return n, err
+}
+
 // ListBindingsForComponent returns live bindings by default (deleted_at
 // IS NULL) — soft-deleted bindings still exist for their history but
 // don't belong in a normal listing.
@@ -161,6 +174,37 @@ func ListBindingsForComponent(ctx context.Context, s tenant.Scope, componentID u
 		}
 		q += ` ORDER BY created_at`
 		return tx.SelectContext(ctx, &out, q, componentID)
+	})
+	return out, err
+}
+
+// BindingWithPath is one binding plus enough of its project/component
+// chain to link back to it — /settings/ingest (task 4.5) needs a
+// binding's ingest URL alongside where it actually lives, not just its id.
+type BindingWithPath struct {
+	Binding
+	ProjectID     uuid.UUID `db:"project_id_path"`
+	ProjectName   string    `db:"project_name"`
+	ComponentName string    `db:"component_name"`
+}
+
+// ListBindingsForOrgByKind lists every live binding of kind across the
+// whole organization, joined out to its project/component names — used
+// by the ingest-docs screen, which is about "every push-ingestible
+// binding in this org", not one component's own bindings the way
+// ListBindingsForComponent above is.
+func ListBindingsForOrgByKind(ctx context.Context, s tenant.Scope, kind string) ([]BindingWithPath, error) {
+	var out []BindingWithPath
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &out, `
+			SELECT mb.id, mb.org_id, mb.component_id, mb.connection_id, mb.kind, mb.external_key, mb.config, mb.enabled,
+			       mb.sync_interval_seconds, mb.next_sync_at, mb.last_status, mb.consecutive_failures, mb.deleted_at, mb.created_at,
+			       p.id AS project_id_path, p.name AS project_name, c.name AS component_name
+			FROM metric_bindings mb
+			JOIN components c ON c.id = mb.component_id
+			JOIN projects p ON p.id = c.project_id
+			WHERE mb.kind = $1 AND mb.deleted_at IS NULL
+			ORDER BY p.name, c.name`, kind)
 	})
 	return out, err
 }

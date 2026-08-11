@@ -1,0 +1,75 @@
+{{define "content"}}
+{{template "shell_open" .}}
+<header style="margin-bottom:18px">
+  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">Settings</h1>
+</header>
+{{template "settings_nav" .Data.SettingsNav}}
+
+{{if .Data.Error}}
+<div style="max-width:520px;margin-bottom:14px;padding:10px 12px;border-radius:8px 3px 8px 3px;background:#F6E0E5;color:#9E2B47;font-size:12.5px">{{.Data.Error}}</div>
+{{end}}
+{{if .Data.NewTokenPlain}}
+<div style="max-width:640px;margin-bottom:16px;padding:14px 16px;border-radius:10px 3px 10px 3px;background:#E6F2F4;border:1px solid #B9DEE3;display:flex;flex-direction:column;gap:8px">
+  <div style="font-size:12px;font-weight:600;color:#23808F">"{{.Data.NewTokenLabel}}" created — copy it now, it won't be shown again</div>
+  <code style="display:block;padding:9px 11px;background:#FFFFFF;border-radius:6px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;word-break:break-all;user-select:all">{{.Data.NewTokenPlain}}</code>
+</div>
+{{end}}
+
+<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px;margin-bottom:16px">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="font-size:13px;font-weight:600;color:#43284E">Personal access tokens</div>
+  </div>
+  {{if not .Data.PATs}}
+  <div style="padding:24px;text-align:center;color:#9CA3AF;font-size:12px">No personal tokens yet.</div>
+  {{end}}
+  {{range .Data.PATs}}
+  <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1">
+      <span style="font-size:12.5px;font-weight:600;color:#111827">{{.Name}}</span>
+      <span style="font:400 10px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.TokenPrefix}}••••••• · last used {{.LastUsedAt}} · expires {{.ExpiresAt}}</span>
+    </div>
+    <form method="post" action="/settings/tokens/{{.ID}}/revoke" onsubmit="return confirm('Revoke {{.Name}}? Anything using it will stop working immediately.')">
+      <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:#FCEDF0;color:#9E2B47">Revoke</button>
+    </form>
+  </div>
+  {{end}}
+  <div style="padding:12px 14px">
+    <form method="post" action="/settings/tokens/pat" style="display:flex;gap:8px">
+      <input type="text" name="name" placeholder="Token name (e.g. laptop CLI)" required
+             style="flex:1;box-sizing:border-box;padding:8px 10px;font:400 12.5px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+      <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none;padding:8px 14px;font-size:11px">Create token</button>
+    </form>
+  </div>
+</section>
+
+{{if .Data.CanManageOrg}}
+<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="font-size:13px;font-weight:600;color:#43284E">Organization service tokens</div>
+  </div>
+  {{if not .Data.ServiceTokens}}
+  <div style="padding:24px;text-align:center;color:#9CA3AF;font-size:12px">No service tokens yet — used by CI to push metrics on the organization's behalf, not a specific user.</div>
+  {{end}}
+  {{range .Data.ServiceTokens}}
+  <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1">
+      <span style="font-size:12.5px;font-weight:600;color:#111827">{{.Name}}</span>
+      <span style="font:400 10px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.TokenPrefix}}••••••• · last used {{.LastUsedAt}} · expires {{.ExpiresAt}}</span>
+    </div>
+    <form method="post" action="/settings/tokens/{{.ID}}/revoke" onsubmit="return confirm('Revoke {{.Name}}? Anything using it will stop working immediately.')">
+      <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:#FCEDF0;color:#9E2B47">Revoke</button>
+    </form>
+  </div>
+  {{end}}
+  <div style="padding:12px 14px">
+    <form method="post" action="/settings/tokens/service" style="display:flex;gap:8px">
+      <input type="text" name="name" placeholder="Token name (e.g. gitlab-ci)" required
+             style="flex:1;box-sizing:border-box;padding:8px 10px;font:400 12.5px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+      <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none;padding:8px 14px;font-size:11px">Create service token</button>
+    </form>
+  </div>
+</section>
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}

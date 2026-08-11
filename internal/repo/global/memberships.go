@@ -57,6 +57,33 @@ func UpdateMembershipRole(ctx context.Context, db *sqlx.DB, orgID, userID, roleI
 	return tx.Commit()
 }
 
+// MemberRow is one row of /settings/members — a membership joined out to
+// the user's own name/email, since that screen has nothing else to show
+// per member.
+type MemberRow struct {
+	UserID    uuid.UUID `db:"user_id"`
+	Name      string    `db:"name"`
+	Email     string    `db:"email"`
+	RoleKey   string    `db:"role_key"`
+	SSOExempt bool      `db:"sso_exempt"`
+}
+
+// ListMembersForOrg lists every active member of org, most-recently-joined
+// first — Settings -> Members (task 4.5 builds the page; this is its
+// engine, matching the doc-comment pattern already used for the
+// invitation/token engines below).
+func ListMembersForOrg(ctx context.Context, db *sqlx.DB, orgID uuid.UUID) ([]MemberRow, error) {
+	var out []MemberRow
+	err := sqlx.SelectContext(ctx, db, &out, `
+		SELECT m.user_id, u.name, u.email, r.key AS role_key, m.sso_exempt
+		FROM memberships m
+		JOIN users u ON u.id = m.user_id
+		JOIN roles r ON r.id = m.role_id
+		WHERE m.org_id = $1 AND m.status = 'active'
+		ORDER BY m.created_at DESC`, orgID)
+	return out, err
+}
+
 // RemoveMembership deletes a membership and bumps the org's perm_epoch in
 // the same transaction. Blocked by the database if this would remove the
 // organization's last Owner (task 0.2's trigger).

@@ -204,6 +204,22 @@ func ListRunsForBinding(ctx context.Context, db *sqlx.DB, orgID uuid.UUID, bindi
 	return out, err
 }
 
+// ListRunsForOrg returns an organization's most recent sync_runs across
+// every binding, newest first — /activity (task 4.5). orgID is the actual
+// security boundary here (not defense-in-depth, unlike ListRunsForBinding
+// above): there is no per-binding tenant.Scope resolution step to lean on
+// first, since this reads across the whole org at once, so the caller
+// must pass the org id from an already-authenticated session/principal,
+// never from request input.
+func ListRunsForOrg(ctx context.Context, db *sqlx.DB, orgID uuid.UUID, limit int) ([]SyncRun, error) {
+	var out []SyncRun
+	err := db.SelectContext(ctx, &out, `
+		SELECT `+syncRunColumns+` FROM sync_runs
+		WHERE org_id = $1
+		ORDER BY created_at DESC LIMIT $2`, orgID, limit)
+	return out, err
+}
+
 func isNoRowsGlobal(err error) bool {
 	return errors.Is(err, sql.ErrNoRows)
 }

@@ -26,14 +26,16 @@ const (
 	iconPerformance = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="color:#9CA3AF;flex:none"><g fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" d="M13.5 13L17 9m-3 6a2 2 0 1 1-4 0a2 2 0 0 1 4 0Zm-8-3a6 6 0 0 1 9-5.197"></path><path d="M2.5 12c0-4.478 0-6.717 1.391-8.109c1.392-1.39 3.63-1.39 8.11-1.39c4.477 0 6.717 0 8.108 1.39c1.391 1.392 1.391 3.63 1.391 8.11c0 4.477 0 6.717-1.391 8.108S16.479 21.5 12 21.5c-4.478 0-6.717 0-8.109-1.391c-1.39-1.391-1.39-3.63-1.39-8.109Z"></path></g></svg>`
 	iconGitHygiene  = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="color:#9CA3AF;flex:none"><g fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 19h6c2.828 0 4.243 0 5.121-.879C19 17.243 19 15.828 19 13v-3m0 0c.7 0 2.009 1.994 2.5 2.5M19 10c-.7 0-2.009 1.994-2.5 2.5M5 7v10"></path><circle cx="5" cy="5" r="2"></circle><circle cx="19" cy="5" r="2"></circle><circle cx="5" cy="19" r="2"></circle></g></svg>`
 	iconIntegration = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="color:#9CA3AF;flex:none"><g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.854 12.16c-.383.45-1.09.454-1.537.007l-4.484-4.483c-.447-.447-.444-1.155.007-1.538l1.231-1.047a6.5 6.5 0 0 1 3.133-1.448l.725-.122c.685-.116 1.405.123 1.919.637l.986.987c.514.513.753 1.233.637 1.918l-.122.725a6.5 6.5 0 0 1-1.448 3.133z"></path><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 4.5l2-2m-19 19l2-2"></path><path d="M6.146 11.84c.383-.45 1.09-.454 1.538-.007l4.483 4.484c.447.446.444 1.154-.007 1.537l-1.231 1.047a6.5 6.5 0 0 1-3.133 1.448l-.725.122c-.685.116-1.405-.123-1.918-.637l-.987-.986c-.514-.514-.753-1.234-.637-1.919l.122-.725a6.5 6.5 0 0 1 1.448-3.133z"></path><path stroke-linecap="round" stroke-linejoin="round" d="m8.5 12.5l2-2m1 5l2-2"></path></g></svg>`
+	iconActivity    = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="color:#9CA3AF;flex:none"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>`
 )
 
-// buildNav assembles the sidebar for the given active item. Only Dashboard
-// and Projects have real destinations today (task 4.1); the rest of the
-// mockup's sidebar (Security, Code quality, Errors, Performance, Git
-// hygiene, Integrations) map to tasks 4.3-4.5's pages, not yet built —
-// they render present-but-disabled rather than as dead links, and their
-// counts are intentionally blank rather than fabricated.
+// buildNav assembles the sidebar for the given active item. Dashboard,
+// Projects, Integrations (-> /settings/connections, task 4.5), and
+// Activity (-> /activity, task 4.5) have real destinations; the rest of
+// the mockup's sidebar (Security, Code quality, Errors, Performance, Git
+// hygiene) map to future per-category rollup views, not yet built — they
+// render present-but-disabled rather than as dead links, and their counts
+// are intentionally blank rather than fabricated.
 func buildNav(active string, projectCount int) *httpx.Nav {
 	return &httpx.Nav{
 		Active: active,
@@ -45,7 +47,8 @@ func buildNav(active string, projectCount int) *httpx.Nav {
 			{Key: "errors", Label: "Errors", Icon: template.HTML(iconErrors)},
 			{Key: "performance", Label: "Performance", Icon: template.HTML(iconPerformance)},
 			{Key: "git_hygiene", Label: "Git hygiene", Icon: template.HTML(iconGitHygiene)},
-			{Key: "integrations", Label: "Integrations", Icon: template.HTML(iconIntegration)},
+			{Key: "integrations", Label: "Integrations", Href: "/settings/connections", Icon: template.HTML(iconIntegration)},
+			{Key: "activity", Label: "Activity", Href: "/activity", Icon: template.HTML(iconActivity)},
 		},
 	}
 }

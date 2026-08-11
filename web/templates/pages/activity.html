@@ -1,0 +1,36 @@
+{{define "content"}}
+{{template "shell_open" .}}
+<header style="margin-bottom:18px">
+  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">Activity</h1>
+  <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">Every collector run across this organization, most recent first.</p>
+</header>
+
+{{if not .Data.Runs}}
+<section class="lotus-card lotus-shape" style="padding:40px 32px;text-align:center;color:#6B7280;font-size:12.5px">
+  No sync runs recorded for this organization yet.
+</section>
+{{else}}
+<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px">
+  <div style="display:grid;grid-template-columns:90px 100px 90px 140px 90px 1fr;gap:10px;align-items:center;padding:0 14px;height:32px;font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63;border-bottom:1px solid rgba(67,40,78,.12)">
+    <div>STATUS</div><div>KIND</div><div>TRIGGER</div><div>STARTED</div><div>DURATION</div><div>ERROR / WARNINGS</div>
+  </div>
+  {{range .Data.Runs}}
+  <div style="display:grid;grid-template-columns:90px 100px 90px 140px 90px 1fr;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid #F3F4F6">
+    <div>{{template "status_badge" (dict "Text" .Status "Tone" .Tone)}}</div>
+    <div style="font-size:11px;color:#6B7280;text-transform:capitalize">{{.Kind}}</div>
+    <div style="font-size:11px;color:#6B7280">{{.Trigger}}</div>
+    <div style="font-size:11px;color:#6B7280">{{.StartedAt}}</div>
+    <div style="font:400 11px 'IBM Plex Mono',monospace;color:#6B7280">{{.Duration}}</div>
+    <div style="font-size:11px;min-width:0">
+      {{if .ErrorClass}}<span class="lotus-badge lotus-badge-fail" style="margin-right:6px">{{.ErrorClass}}</span>{{end}}
+      {{if .Error}}<span style="color:#9E2B47">{{.Error}}</span>{{end}}
+      {{if .HasWarnings}}<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#A94D68;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Warnings}}</div>{{end}}
+      {{if and (not .ErrorClass) (not .Error) (not .HasWarnings)}}<span style="color:#D1D5DB">–</span>{{end}}
+    </div>
+  </div>
+  {{end}}
+</section>
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}

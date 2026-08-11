@@ -115,6 +115,21 @@ func setOf(perms ...string) map[string]bool {
 	return out
 }
 
+// PermissionsForRole returns every permission key role currently carries —
+// exported for task 4.5's self-serve token creation (Settings -> Tokens),
+// which has no scope-picker UI in v1: a token created there defaults to
+// the same effective access its creator already has, rather than the
+// empty scope set Principal.Can's slices.Contains check would otherwise
+// treat as "authorized for nothing at all". An unknown role returns nil.
+func PermissionsForRole(role string) []string {
+	perms := rolePermissions[role]
+	out := make([]string, 0, len(perms))
+	for p := range perms {
+		out = append(out, p)
+	}
+	return out
+}
+
 // CanChangeRole implements the Owner-promotion/demotion guard from task
 // 1.4: an Admin can change roles among Member/Viewer/Admin, but can never
 // touch anyone currently Owner, and can never promote anyone to Owner.

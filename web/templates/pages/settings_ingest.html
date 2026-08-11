@@ -1,0 +1,31 @@
+{{define "content"}}
+{{template "shell_open" .}}
+<header style="margin-bottom:18px">
+  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">Settings</h1>
+</header>
+{{template "settings_nav" .Data.SettingsNav}}
+
+<p style="max-width:640px;margin:0 0 16px;font-size:12.5px;color:#6B7280;line-height:1.6">
+  A Trivy binding can either be pulled from Harbor on a schedule, or pushed here directly by your own CI — run <code>trivy image --format json</code> (or <code>trivy fs</code>) and POST the report to the binding's own URL below, authenticated with an organization service token (see <a href="/settings/tokens" style="color:#23808F">Tokens</a>).
+</p>
+
+{{if not .Data.Bindings}}
+<section class="lotus-card lotus-shape" style="padding:32px;text-align:center;color:#6B7280;font-size:12.5px">
+  No Trivy bindings yet — bind one from a component page first.
+</section>
+{{else}}
+<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="font-size:13px;font-weight:600;color:#43284E">Push-ingest URLs</div>
+  </div>
+  {{range .Data.Bindings}}
+  <div style="padding:12px 14px;border-bottom:1px solid #F3F4F6;display:flex;flex-direction:column;gap:6px">
+    <div style="font-size:12px;font-weight:600;color:#111827">{{.ProjectName}} / {{.ComponentName}} <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.ExternalKey}}</span></div>
+    <code style="display:block;padding:8px 10px;background:rgba(67,40,78,.03);border-radius:6px;font:400 11px 'IBM Plex Mono',monospace;color:#43284E;overflow-x:auto;white-space:pre">curl -X POST -H "Authorization: Bearer &lt;service_token&gt;" -H "Content-Type: application/json" --data-binary @trivy-report.json {{.URL}}</code>
+  </div>
+  {{end}}
+</section>
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}
