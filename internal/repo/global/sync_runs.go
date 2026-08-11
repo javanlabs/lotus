@@ -188,6 +188,22 @@ func OrgsAtCapacity(ctx context.Context, db *sqlx.DB) ([]uuid.UUID, error) {
 	return ids, err
 }
 
+// ListRunsForBinding returns a binding's most recent sync_runs, newest
+// first — task 4.4's run-history page. orgID is a defense-in-depth
+// filter, not the security boundary: sync_runs has no RLS (see this
+// table's own migration comment — the claim query above is inherently
+// cross-tenant), so every caller must resolve and verify the binding via
+// a tenant.Scope-scoped repo.BindingByID first; passing its org_id here
+// just makes a resolver bug fail closed instead of leaking a row.
+func ListRunsForBinding(ctx context.Context, db *sqlx.DB, orgID uuid.UUID, bindingID uuid.UUID, limit int) ([]SyncRun, error) {
+	var out []SyncRun
+	err := db.SelectContext(ctx, &out, `
+		SELECT `+syncRunColumns+` FROM sync_runs
+		WHERE org_id = $1 AND binding_id = $2
+		ORDER BY created_at DESC LIMIT $3`, orgID, bindingID, limit)
+	return out, err
+}
+
 func isNoRowsGlobal(err error) bool {
 	return errors.Is(err, sql.ErrNoRows)
 }

@@ -108,3 +108,44 @@ func LatestSonarSnapshot(ctx context.Context, s tenant.Scope, bindingID uuid.UUI
 	}
 	return &out, nil
 }
+
+// SonarSnapshotAt returns the snapshot captured at or before asOf — task
+// 4.4's historical date picker, ported from the legacy Lotus's
+// SonarPerServiceAsOf (same "MAX id captured_at <= cutoff" idea, here
+// scoped to one binding instead of joined across every service). asOf
+// nil means "latest", matching LatestSonarSnapshot above exactly (kept
+// as a separate function rather than folding the nil case in here, so a
+// caller that always wants the plain latest doesn't have to reason about
+// the pointer).
+func SonarSnapshotAt(ctx context.Context, s tenant.Scope, bindingID uuid.UUID, asOf *time.Time) (*SonarSnapshot, error) {
+	var out SonarSnapshot
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		if asOf == nil {
+			return tx.GetContext(ctx, &out, `
+				SELECT * FROM sonar_snapshots WHERE binding_id = $1 ORDER BY captured_at DESC LIMIT 1`, bindingID)
+		}
+		return tx.GetContext(ctx, &out, `
+			SELECT * FROM sonar_snapshots WHERE binding_id = $1 AND captured_at <= $2
+			ORDER BY captured_at DESC LIMIT 1`, bindingID, *asOf)
+	})
+	if err != nil {
+		if isNoRows(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SonarSnapshotDatesForBinding returns every distinct calendar date (most
+// recent first) this binding has at least one snapshot for — populates
+// the date picker's option list.
+func SonarSnapshotDatesForBinding(ctx context.Context, s tenant.Scope, bindingID uuid.UUID) ([]string, error) {
+	var out []string
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &out, `
+			SELECT DISTINCT to_char(captured_at, 'YYYY-MM-DD') FROM sonar_snapshots
+			WHERE binding_id = $1 ORDER BY 1 DESC`, bindingID)
+	})
+	return out, err
+}

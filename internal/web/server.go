@@ -155,6 +155,12 @@ func New(d Deps) *fiber.App {
 	registerComponentPageRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerBindWizardRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
+	// Tenant host only (task 4.4): the four integration-specific metric
+	// detail pages, keyed by binding_id — /p/:project/c/:component/m/:binding
+	// — plus that binding's own run history and (Trivy only) its
+	// false-positive annotations.
+	registerMetricDetailRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+
 	// Tenant host only (task 2.1): Project & Component CRUD. JSON handlers
 	// — the screens that call them are task 4.3.
 	registerProjectRoutes(app, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))

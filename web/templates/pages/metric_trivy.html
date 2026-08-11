@@ -1,0 +1,77 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" "Trivy (Harbor)")}}
+
+{{if not .Data.Header.HasData}}
+<section class="lotus-card lotus-shape" style="padding:40px 32px;text-align:center;color:#6B7280;font-size:12.5px">
+  No Trivy scan collected for this repository yet.
+</section>
+{{else}}
+<p style="margin:0 0 14px;font-size:11px;color:#9CA3AF">
+  source: {{.Data.Header.Source}}{{if .Data.Header.Digest}} · digest <span style="font-family:'IBM Plex Mono',monospace">{{.Data.Header.Digest}}</span>{{end}}{{if .Data.Header.Tags}} · tags {{.Data.Header.Tags}}{{end}}
+  · pushed {{.Data.Header.ImagePushedAt}} · scanned {{.Data.Header.ScanFinishedAt}} · captured {{.Data.Header.CapturedAt}}
+</p>
+
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px">
+  {{template "stat_card" dict "Label" "TOTAL CVE" "Value" (printf "%d" .Data.Header.Total) "Tone" "none"}}
+  {{template "stat_card" dict "Label" "CRITICAL" "Value" (printf "%d" .Data.Header.Critical) "Tone" (ternary (gt .Data.Header.Critical 0) "fail" "pass")}}
+  {{template "stat_card" dict "Label" "HIGH" "Value" (printf "%d" .Data.Header.High) "Tone" (ternary (gt .Data.Header.High 0) "warn" "pass")}}
+  {{template "stat_card" dict "Label" "MEDIUM" "Value" (printf "%d" .Data.Header.Medium) "Tone" "none"}}
+  {{template "stat_card" dict "Label" "LOW" "Value" (printf "%d" .Data.Header.Low) "Tone" "none"}}
+  {{template "stat_card" dict "Label" "FIXABLE" "Value" (printf "%d" .Data.Header.Fixable) "Tone" "none"}}
+</div>
+
+{{template "chart_slot" "Severity counts over the last 30 scans"}}
+
+<div style="height:14px"></div>
+
+{{if .Data.Rows}}
+<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px" x-data="{openRow:null}">
+  <div style="display:grid;grid-template-columns:26px 1fr 90px 1fr 100px 100px 2fr;align-items:center;padding:0 14px;height:32px;font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63;border-bottom:1px solid rgba(67,40,78,.12)">
+    <div></div><div>CVE</div><div>SEVERITY</div><div>PACKAGE</div><div>VERSION</div><div>FIX</div><div>DESCRIPTION</div>
+  </div>
+  {{range $i, $row := .Data.Rows}}
+  <div style="display:grid;grid-template-columns:26px 1fr 90px 1fr 100px 100px 2fr;align-items:center;padding:8px 14px;border-bottom:1px solid #F3F4F6;{{if $row.HasNote}}background:#FFFBEB;{{end}}">
+    <button type="button" @click="openRow = (openRow === {{$i}} ? null : {{$i}})" style="border:none;background:none;cursor:pointer;color:{{if $row.HasNote}}#B45309{{else}}#9CA3AF{{end}}" title="Annotate">💬</button>
+    <div style="font:400 11px 'IBM Plex Mono',monospace">
+      {{if $row.Link}}<a href="{{$row.Link}}" target="_blank" style="color:#23808F">{{$row.CVE}}</a>{{else}}{{$row.CVE}}{{end}}
+      {{if $row.HasNote}}<span class="lotus-badge" style="background:#FEF3C7;color:#92400E;margin-left:4px">FP</span>{{end}}
+    </div>
+    <div>{{template "status_badge" (dict "Text" $row.Severity "Tone" (ternary (eq $row.Severity "Critical") "fail" (ternary (eq $row.Severity "High") "warn" "none")))}}</div>
+    <div style="font:400 11px 'IBM Plex Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{$row.Package}}</div>
+    <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#6B7280">{{$row.Version}}</div>
+    <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:{{if $row.FixVersion}}#23808F{{else}}#9CA3AF{{end}}">{{if $row.FixVersion}}{{$row.FixVersion}}{{else}}–{{end}}</div>
+    <div style="font-size:11px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{$row.Description}}</div>
+  </div>
+  <div x-show="openRow === {{$i}}" x-cloak style="padding:12px 14px 16px 46px;border-bottom:1px solid #F3F4F6;background:rgba(67,40,78,.02)">
+    <form method="post" action="/p/{{$.Data.Chrome.Project.ID}}/c/{{$.Data.Chrome.Component.ID}}/m/{{$.Data.Chrome.Binding.ID}}/trivy-notes" style="display:flex;flex-direction:column;gap:8px;max-width:560px">
+      <input type="hidden" name="cve_id" value="{{$row.CVE}}">
+      <input type="hidden" name="package" value="{{$row.Package}}">
+      <span style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#5B4A63">FALSE-POSITIVE NOTE</span>
+      <textarea name="comment" rows="3" placeholder="Why doesn't this finding apply?"
+                style="width:100%;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">{{$row.NoteComment}}</textarea>
+      <div style="display:flex;gap:8px">
+        <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none;padding:6px 12px;font-size:11px">Save</button>
+        {{if $row.HasNote}}
+        <button type="submit" formaction="/p/{{$.Data.Chrome.Project.ID}}/c/{{$.Data.Chrome.Component.ID}}/m/{{$.Data.Chrome.Binding.ID}}/trivy-notes/{{$row.NoteID}}/delete" class="btn-lotus" style="padding:6px 12px;font-size:11px;background:#FCEDF0;color:#9E2B47">Remove</button>
+        {{end}}
+      </div>
+    </form>
+  </div>
+  {{end}}
+</section>
+{{else}}
+{{if .Data.RawDetailMissing}}
+<section class="lotus-card lotus-shape" style="padding:32px;text-align:center;color:#6B7280;font-size:12.5px">
+  Trivy found {{.Data.Header.Total}} CVE(s), but this snapshot only stored the summary counts, not the per-CVE detail. A future collect will include it.
+</section>
+{{else}}
+<section class="lotus-card lotus-shape" style="padding:32px;text-align:center;color:#23808F;font-size:13px;font-weight:600">
+  🎉 No vulnerabilities found — clean scan
+</section>
+{{end}}
+{{end}}
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}

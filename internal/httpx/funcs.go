@@ -12,6 +12,15 @@ var funcMap = template.FuncMap{
 	// passing multiple values into a {{template "name" (dict ...)}} call —
 	// html/template has no literal map syntax of its own.
 	"dict": dict,
+	// ternary picks yes/no by cond — for a one-line tone/class choice
+	// inline in an attribute value, where {{if}}...{{else}}...{{end}} is
+	// too heavy a construct for the surrounding markup to read cleanly.
+	"ternary": func(cond bool, yes, no string) string {
+		if cond {
+			return yes
+		}
+		return no
+	},
 }
 
 func dict(kv ...any) (map[string]any, error) {

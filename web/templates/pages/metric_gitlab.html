@@ -1,0 +1,42 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" "GitLab")}}
+
+{{if not .Data.View.HasData}}
+<section class="lotus-card lotus-shape" style="padding:40px 32px;text-align:center;color:#6B7280;font-size:12.5px">
+  No GitLab data collected for this repository yet.
+</section>
+{{else}}
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+  {{template "stat_card" dict "Label" "LANGUAGE" "Value" (or .Data.View.Language "–") "Tone" "none"}}
+  {{template "stat_card" dict "Label" "DEFAULT BRANCH" "Value" .Data.View.DefaultBranch "Tone" "none"}}
+  {{template "stat_card" dict "Label" "BRANCHES" "Value" (printf "%d" .Data.View.BranchesTotal) "Tone" "none" "Sub" (printf "%d active · %d stale" .Data.View.BranchesActive .Data.View.BranchesStale)}}
+  {{template "stat_card" dict "Label" "COMMITS (30D)" "Value" .Data.View.Commits30d "Tone" "none"}}
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+  <div class="lotus-card lotus-shape" style="padding:16px">
+    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:10px">LAST PIPELINE</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      {{template "status_badge" (dict "Text" (or .Data.View.PipelineStatus "no data") "Tone" .Data.View.PipelineTone)}}
+      {{if .Data.View.PipelineWebURL}}<a href="{{.Data.View.PipelineWebURL}}" target="_blank" style="font-size:11px;color:#23808F">open in GitLab ↗</a>{{end}}
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:#6B7280">duration {{.Data.View.LastDuration}} · finished {{.Data.View.PipelineFinished}}</div>
+    <div style="margin-top:4px;font-size:11px;color:#6B7280">success rate (recent sample): {{.Data.View.SuccessRate}}</div>
+  </div>
+  <div class="lotus-card lotus-shape" style="padding:16px">
+    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:10px">GOVERNANCE</div>
+    <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px;color:#111827">
+      <div>{{if .Data.View.Protected}}🔒 default branch protected{{else}}🔓 default branch NOT protected{{end}}</div>
+      <div>visibility: {{or .Data.View.Visibility "–"}}{{if .Data.View.Archived}} · archived{{end}}</div>
+      <div style="color:#6B7280">last activity {{.Data.View.LastActivity}}{{if .Data.View.LastCommitter}} by {{.Data.View.LastCommitter}}{{end}}</div>
+      {{if .Data.View.WebURL}}<a href="{{.Data.View.WebURL}}" target="_blank" style="color:#23808F;font-size:11px">open repository ↗</a>{{end}}
+    </div>
+  </div>
+</div>
+
+{{template "chart_slot" "Pipeline success rate & branch counts over time"}}
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}

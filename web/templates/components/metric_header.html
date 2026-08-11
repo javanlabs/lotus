@@ -1,0 +1,21 @@
+{{/* metric_header (task 4.4) is the shared chrome every one of the four
+     metric detail pages (and /runs) opens with: breadcrumb back to the
+     component, the binding's kind + external key, which connection it
+     runs through, and a link to that binding's run history. Takes a
+     dict: Chrome (metricChrome), KindLabel (string). */}}
+{{define "metric_header"}}
+<header style="margin-bottom:18px">
+  <p style="margin:0 0 4px;font-size:11px;color:#9CA3AF">
+    <a href="/projects/{{.Chrome.Project.ID}}" style="color:#9CA3AF">{{.Chrome.Project.Name}}</a>
+    <span style="color:#D1D5DB"> / </span>
+    <a href="/components/{{.Chrome.Component.ID}}" style="color:#9CA3AF">{{.Chrome.Component.Name}}</a>
+  </p>
+  <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px">
+    <div style="flex:1;min-width:220px">
+      <h1 style="margin:0;font-size:21px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{.KindLabel}} <span style="font:400 14px 'IBM Plex Mono',monospace;color:#6B7280">{{.Chrome.Binding.ExternalKey}}</span></h1>
+      <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">via {{.Chrome.Connection.Name}}{{if not .Chrome.Binding.Enabled}} · disabled{{end}}</p>
+    </div>
+    <a href="/p/{{.Chrome.Project.ID}}/c/{{.Chrome.Component.ID}}/m/{{.Chrome.Binding.ID}}/runs" class="btn-lotus btn-lotus-secondary">Run history</a>
+  </div>
+</header>
+{{end}}

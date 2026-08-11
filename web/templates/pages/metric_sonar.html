@@ -1,0 +1,64 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" "SonarQube")}}
+
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+  {{if .Data.SelectedDate}}
+  <span style="font-size:11px;padding:4px 9px;border-radius:5px 2px 5px 2px;background:#E6F2F4;color:#23808F">📅 snapshot as of {{.Data.SelectedDate}} — not the latest</span>
+  {{end}}
+  {{if .Data.Dates}}
+  <form method="get" style="margin-left:auto">
+    <select name="date" onchange="this.form.submit()"
+            style="padding:6px 10px;font-size:12px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:7px 2px 7px 2px;outline:none;cursor:pointer">
+      <option value="">📅 Latest</option>
+      {{$sel := .Data.SelectedDate}}
+      {{range .Data.Dates}}<option value="{{.}}" {{if eq . $sel}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </form>
+  {{end}}
+</div>
+
+{{if not .Data.View.HasData}}
+<section class="lotus-card lotus-shape" style="padding:40px 32px;text-align:center;color:#6B7280;font-size:12.5px">
+  {{if .Data.SelectedDate}}No SonarQube snapshot exists for this repository on {{.Data.SelectedDate}}.{{else}}No SonarQube data collected for this repository yet.{{end}}
+</section>
+{{else}}
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+  <span class="lotus-badge {{if .Data.View.QualityGatePass}}lotus-badge-pass{{else}}lotus-badge-fail{{end}}" style="font-size:11px;padding:5px 12px">Quality gate: {{.Data.View.QualityGate}}</span>
+  <span style="font-size:11px;color:#9CA3AF">last scan {{.Data.View.LastScanAt}} · snapshot captured {{.Data.View.CapturedAt}}</span>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">
+  {{template "stat_card" dict "Label" "COVERAGE" "Value" .Data.View.Coverage "Tone" (ternary .Data.View.CoverageFailed "fail" "pass")}}
+  {{template "stat_card" dict "Label" "BUGS" "Value" .Data.View.Bugs "Tone" (ternary .Data.View.BugsFailed "fail" "pass")}}
+  {{template "stat_card" dict "Label" "VULNERABILITIES" "Value" .Data.View.Vulnerabilities "Tone" (ternary .Data.View.VulnerabilitiesFailed "fail" "pass")}}
+  {{template "stat_card" dict "Label" "CODE SMELLS" "Value" .Data.View.CodeSmells "Tone" (ternary .Data.View.CodeSmellsFailed "fail" "pass")}}
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+  {{template "stat_card" dict "Label" "SECURITY HOTSPOTS" "Value" .Data.View.SecurityHotspots "Tone" "none"}}
+  {{template "stat_card" dict "Label" "DUPLICATIONS" "Value" .Data.View.Duplications "Tone" (ternary .Data.View.DuplicationsFailed "fail" "pass")}}
+  {{template "stat_card" dict "Label" "LINES OF CODE" "Value" .Data.View.NCLOC "Tone" "none"}}
+  {{template "stat_card" dict "Label" "COMPLEXITY" "Value" .Data.View.Complexity "Tone" "none"}}
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+  <div class="lotus-card lotus-shape" style="padding:16px">
+    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:10px">RATINGS</div>
+    <div style="display:flex;gap:18px">
+      <div><div style="font-size:9.5px;color:#9CA3AF">Reliability</div><div style="font-size:18px;font-weight:700;color:#111827">{{.Data.View.Reliability}}</div></div>
+      <div><div style="font-size:9.5px;color:#9CA3AF">Security</div><div style="font-size:18px;font-weight:700;color:#111827">{{.Data.View.Security}}</div></div>
+      <div><div style="font-size:9.5px;color:#9CA3AF">Maintainability</div><div style="font-size:18px;font-weight:700;color:#111827">{{.Data.View.Maintainability}}</div></div>
+    </div>
+  </div>
+  <div class="lotus-card lotus-shape" style="padding:16px">
+    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:10px">OTHER</div>
+    <div style="font-size:11.5px;color:#111827">languages: {{.Data.View.Languages}}</div>
+    <div style="margin-top:6px;font-size:11.5px;color:#111827">unit-test execution time: {{.Data.View.TestDuration}}</div>
+  </div>
+</div>
+
+{{template "chart_slot" "Coverage, bugs, vulnerabilities over time"}}
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}

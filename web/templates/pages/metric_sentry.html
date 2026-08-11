@@ -1,0 +1,79 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" "Sentry")}}
+
+{{if not .Data.HasData}}
+<section class="lotus-card lotus-shape" style="padding:40px 32px;text-align:center;color:#6B7280;font-size:12.5px">
+  No Sentry data collected for this binding yet.
+</section>
+{{else}}
+
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px">
+  {{if gt (len .Data.Environments) 1}}
+  <form method="get">
+    <select name="env" onchange="this.form.submit()"
+            style="padding:6px 10px;font-size:12px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:7px 2px 7px 2px;outline:none;cursor:pointer">
+      {{$sel := .Data.SelectedEnv}}
+      {{range .Data.Environments}}<option value="{{.}}" {{if eq . $sel}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </form>
+  {{else}}
+  <span class="lotus-badge lotus-badge-none">{{.Data.SelectedEnv}}</span>
+  {{end}}
+  <span style="font-size:11px;color:#9CA3AF">{{.Data.ProjectSlug}}{{if .Data.Platform}} · {{.Data.Platform}}{{end}} · captured {{.Data.CapturedAt}}</span>
+</div>
+
+<div style="display:grid;grid-template-columns:auto 1fr;gap:10px;margin-bottom:14px">
+  <div class="lotus-card-dark lotus-shape" style="padding:16px 20px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:120px">
+    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#EDBCC3">SCORE</div>
+    <div style="font-size:34px;font-weight:700;line-height:1;margin-top:6px">{{.Data.ScoreText}}</div>
+    <div class="lotus-text-{{.Data.Tone}}" style="font-size:16px;font-weight:700;margin-top:2px;background:rgba(255,255,255,.15);padding:1px 8px;border-radius:4px 1px 4px 1px">{{.Data.Grade}}</div>
+  </div>
+  <div class="lotus-card lotus-shape" style="padding:14px 16px">
+    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:6px">HOW THIS SCORE IS CALCULATED</div>
+    <p style="margin:0;font-size:11px;line-height:1.6;color:#374151">{{.Data.Explainer}}</p>
+  </div>
+</div>
+
+{{template "chart_slot" "Score & event volume over time"}}
+
+<div style="height:14px"></div>
+
+<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="font-size:13px;font-weight:600;color:#43284E">Issues</div>
+    {{if .Data.Statuses}}
+    <form method="get" style="margin-left:auto;display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:9px;padding:3px">
+      <input type="hidden" name="env" value="{{.Data.SelectedEnv}}">
+      <button type="submit" name="status" value="" style="padding:5px 11px;border-radius:6px;border:none;background:{{if eq .Data.SelectedStatus ""}}#FFFFFF{{else}}transparent{{end}};font-size:11px;font-weight:{{if eq .Data.SelectedStatus ""}}600{{else}}500{{end}};color:{{if eq .Data.SelectedStatus ""}}#43284E{{else}}#6B7280{{end}};cursor:pointer">All</button>
+      {{range .Data.Statuses}}
+      <button type="submit" name="status" value="{{.Value}}" style="padding:5px 11px;border-radius:6px;border:none;background:{{if .Selected}}#FFFFFF{{else}}transparent{{end}};font-size:11px;font-weight:{{if .Selected}}600{{else}}500{{end}};color:{{if .Selected}}#43284E{{else}}#6B7280{{end}};cursor:pointer">{{.Value}} ({{.Count}})</button>
+      {{end}}
+    </form>
+    {{end}}
+  </div>
+
+  {{if .Data.Rows}}
+  <div style="display:grid;grid-template-columns:2fr 90px 90px 110px 110px;gap:10px;align-items:center;padding:0 14px;height:32px;font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63;border-bottom:1px solid rgba(67,40,78,.12)">
+    <div>ISSUE</div><div>STATUS</div><div style="text-align:right">EVENTS</div><div>FIRST SEEN</div><div>LAST SEEN</div>
+  </div>
+  {{range .Data.Rows}}
+  <a href="{{.Permalink}}" target="_blank" style="display:grid;grid-template-columns:2fr 90px 90px 110px 110px;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid #F3F4F6;text-decoration:none;color:inherit">
+    <div style="min-width:0">
+      <div style="font-size:12px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Title}}</div>
+      <div style="font:400 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.ShortID}}{{if .Substatus}} · {{.Substatus}}{{end}}</div>
+    </div>
+    <div>{{template "status_badge" (dict "Text" .Status "Tone" "none")}}</div>
+    <div style="text-align:right;font:600 12px 'IBM Plex Mono',monospace;color:#111827">{{.EventCount}}</div>
+    <div style="font-size:10.5px;color:#6B7280">{{.FirstSeen}}</div>
+    <div style="font-size:10.5px;color:#6B7280">{{.LastSeen}}</div>
+  </a>
+  {{end}}
+  {{else}}
+  <div style="padding:32px;text-align:center;color:#23808F;font-size:12.5px">No unresolved issues in this environment.</div>
+  {{end}}
+</section>
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}
