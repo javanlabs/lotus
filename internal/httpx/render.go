@@ -128,6 +128,24 @@ func (r *Renderer) RenderPartial(w io.Writer, name string, data any) error {
 	return tmpl.Execute(w, data)
 }
 
+// RenderNamed executes one components/*.html definition standalone,
+// without the layout — task 4.6's chart grid is the first consumer: it
+// needs to be both part of a full page's first render (via
+// {{template "name" .}} from that page, once parseComponents has
+// registered it) and, unchanged, the htmx swap target when its own range
+// selector changes. RenderPartial can't serve the second case here since
+// it parses only the one named file in isolation, with no access to
+// component definitions registered from other files — this instead runs
+// the same layout+components parse Render itself does, then executes the
+// requested definition directly instead of "layout".
+func (r *Renderer) RenderNamed(w io.Writer, name string, data any) error {
+	tmpl := template.New(name).Funcs(funcMap)
+	if err := r.parseComponents(tmpl); err != nil {
+		return err
+	}
+	return tmpl.ExecuteTemplate(w, name, data)
+}
+
 func (r *Renderer) parse(page string) (*template.Template, error) {
 	tmpl := template.New("layout").Funcs(funcMap)
 	layout, err := fs.ReadFile(r.fsys, path.Join("layout", "layout.html"))

@@ -56,9 +56,16 @@
     <div style="margin-top:6px;font-size:11.5px;color:#111827">unit-test execution time: {{.Data.View.TestDuration}}</div>
   </div>
 </div>
-
-{{template "chart_slot" "Coverage, bugs, vulnerabilities over time"}}
 {{end}}
+
+{{/* Charts read from metric_facts/metric_keys directly (task 3.7), a
+     different source than the "current snapshot" view above (sonar_
+     snapshots) — an inactive-but-previously-collected metric must still
+     render its own history (task 4.6's own acceptance criterion) even
+     when there's no current snapshot row to show above, so this is
+     deliberately outside the HasData branch, not nested inside its
+     {{else}}. */}}
+{{template "metric_charts" .Data.Charts}}
 
 {{template "shell_close" .}}
 {{end}}

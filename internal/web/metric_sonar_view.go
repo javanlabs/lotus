@@ -162,6 +162,10 @@ func renderSonarDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 	}
 
 	view := buildSonarDetailView(snap)
+	cards, err := buildMetricChartCards(c.Context(), s, chrome.Binding.ID, chrome.Binding.Kind, "7d")
+	if err != nil {
+		return writeRepoErr(c, err)
+	}
 
 	c.Type("html")
 	return d.Renderer.Render(c, "pages/metric_sonar.html", httpx.ViewData{
@@ -171,6 +175,7 @@ func renderSonarDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 			View         sonarDetailView
 			Dates        []string
 			SelectedDate string
-		}{Chrome: chrome, View: view, Dates: dates, SelectedDate: selectedDate},
+			Charts       chartGridData
+		}{Chrome: chrome, View: view, Dates: dates, SelectedDate: selectedDate, Charts: newChartGridData(cards, "7d", chrome.basePath())},
 	})
 }

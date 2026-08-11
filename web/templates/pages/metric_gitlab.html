@@ -34,9 +34,13 @@
     </div>
   </div>
 </div>
-
-{{template "chart_slot" "Pipeline success rate & branch counts over time"}}
 {{end}}
+
+{{/* Outside the HasData branch — see metric_sonar.html's own comment:
+     charts read metric_facts/metric_keys, a different source than the
+     "current snapshot" view above, and an inactive metric must still
+     show its own history even with no current snapshot. */}}
+{{template "metric_charts" .Data.Charts}}
 
 {{template "shell_close" .}}
 {{end}}

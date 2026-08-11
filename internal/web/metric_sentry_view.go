@@ -92,6 +92,11 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 		}
 	}
 
+	cards, err := buildMetricChartCards(c.Context(), s, chrome.Binding.ID, chrome.Binding.Kind, "7d")
+	if err != nil {
+		return writeRepoErr(c, err)
+	}
+
 	data := struct {
 		Chrome         metricChrome
 		HasData        bool
@@ -110,7 +115,8 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 		Statuses       []sentryStatusOption
 		SelectedStatus string
 		Rows           []sentryIssueRow
-	}{Chrome: chrome, Explainer: sentryScoreExplainer}
+		Charts         chartGridData
+	}{Chrome: chrome, Explainer: sentryScoreExplainer, Charts: newChartGridData(cards, "7d", chrome.basePath())}
 
 	if selectedEnv == "" {
 		c.Type("html")

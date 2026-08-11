@@ -21,8 +21,6 @@
   {{template "stat_card" dict "Label" "FIXABLE" "Value" (printf "%d" .Data.Header.Fixable) "Tone" "none"}}
 </div>
 
-{{template "chart_slot" "Severity counts over the last 30 scans"}}
-
 <div style="height:14px"></div>
 
 {{if .Data.Rows}}
@@ -72,6 +70,12 @@
 {{end}}
 {{end}}
 {{end}}
+
+{{/* Outside the Header.HasData branch — see metric_sonar.html's own
+     comment: severity charts read metric_facts/metric_keys, a different
+     source than the "current scan" summary above, and an inactive
+     metric must still show its own history even with no current scan. */}}
+{{template "metric_charts" .Data.Charts}}
 
 {{template "shell_close" .}}
 {{end}}

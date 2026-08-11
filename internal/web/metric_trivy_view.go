@@ -183,6 +183,11 @@ func renderTrivyDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 		return rows[i].CVE < rows[j].CVE
 	})
 
+	cards, err := buildMetricChartCards(c.Context(), s, chrome.Binding.ID, chrome.Binding.Kind, "7d")
+	if err != nil {
+		return writeRepoErr(c, err)
+	}
+
 	c.Type("html")
 	return d.Renderer.Render(c, "pages/metric_trivy.html", httpx.ViewData{
 		Title: chrome.Component.Name + " · Trivy", Org: org, User: user, Nav: nav,
@@ -192,7 +197,8 @@ func renderTrivyDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 			Rows             []trivyCVERow
 			RawDetailMissing bool
 			Flash            string
-		}{Chrome: chrome, Header: header, Rows: rows, RawDetailMissing: rawDetailMissing, Flash: flash},
+			Charts           chartGridData
+		}{Chrome: chrome, Header: header, Rows: rows, RawDetailMissing: rawDetailMissing, Flash: flash, Charts: newChartGridData(cards, "7d", chrome.basePath())},
 	})
 }
 

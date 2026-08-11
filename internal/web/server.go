@@ -155,6 +155,12 @@ func New(d Deps) *fiber.App {
 	registerComponentPageRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerBindWizardRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
+	// Tenant host only (task 4.6): each component-page binding row's own
+	// htmx-lazy-loaded sparkline — kept separate from
+	// registerComponentPageRoutes above since it's a follow-up fragment
+	// request per row, not part of the page's own first render.
+	registerSparklineRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+
 	// Tenant host only (task 4.4): the four integration-specific metric
 	// detail pages, keyed by binding_id — /p/:project/c/:component/m/:binding
 	// — plus that binding's own run history and (Trivy only) its

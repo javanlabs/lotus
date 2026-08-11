@@ -1,0 +1,46 @@
+{{/* metric_charts (task 4.6): one chart per active numeric metric_keys
+     row for a binding, plus the 7d/30d/1y range selector. Registered as a
+     component (not a partials/ fragment) specifically so the exact same
+     definition serves both a full page's first render and the htmx swap
+     target when the range selector changes — see httpx.Renderer.RenderNamed.
+     Takes (dict "Cards" []metricChartCard "SelectedRange" "7d"
+     "RangeOptions" []string "BasePath" "/p/.../m/..."). */}}
+{{define "metric_charts"}}
+<div id="metric-charts" style="display:flex;flex-direction:column;gap:10px">
+  <div style="display:flex;align-items:center;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:9px;padding:3px;width:fit-content">
+    {{$base := .BasePath}}{{$current := .SelectedRange}}
+    {{range .RangeOptions}}
+    <button type="button" hx-get="{{$base}}/charts?range={{.}}" hx-target="#metric-charts" hx-swap="outerHTML"
+            style="padding:6px 13px;border-radius:6px;border:none;white-space:nowrap;font-size:12px;cursor:pointer;{{if eq . $current}}font-weight:600;color:#43284E;background:linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 1px 2px rgba(67,40,78,.1),0 0 0 1px rgba(67,40,78,.07){{else}}font-weight:500;color:#6B7280;background:none{{end}}">{{.}}</button>
+    {{end}}
+  </div>
+
+  {{if not .Cards}}
+  <div class="lotus-card lotus-shape" style="padding:32px;text-align:center;color:#9CA3AF;font-size:12px">
+    No numeric metrics declared for this binding yet.
+  </div>
+  {{else}}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
+    {{range .Cards}}
+    <div class="lotus-card lotus-shape" style="padding:13px 14px;display:flex;flex-direction:column;gap:8px;{{if not .Active}}opacity:.6{{end}}">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+        <span style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.Label}}</span>
+        {{if .Chart.HasData}}<span class="lotus-text-{{.Chart.Tone}}" style="font-size:15px;font-weight:700;white-space:nowrap">{{.Chart.Latest}}</span>{{end}}
+      </div>
+      {{if .Chart.HasData}}
+      <div style="height:70px">{{.Chart.SVG}}</div>
+      <div style="display:flex;justify-content:space-between;font:400 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF">
+        <span>{{.Chart.MinLabel}}</span><span>{{.Chart.MaxLabel}}</span>
+      </div>
+      {{else}}
+      <div style="height:70px;display:flex;align-items:center;justify-content:center;color:#D1D5DB;font-size:11px">no data in this range</div>
+      {{end}}
+      {{if not .Active}}
+      <div style="font-size:10px;color:#A94D68">not collected since {{.InactiveSince}}</div>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}

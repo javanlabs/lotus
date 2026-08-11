@@ -35,8 +35,6 @@
   </div>
 </div>
 
-{{template "chart_slot" "Score & event volume over time"}}
-
 <div style="height:14px"></div>
 
 <section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px">
@@ -74,6 +72,12 @@
   {{end}}
 </section>
 {{end}}
+
+{{/* Outside the HasData branch — see metric_sonar.html's own comment:
+     charts read metric_facts/metric_keys, a different source than the
+     "current snapshot" view above, and an inactive metric must still
+     show its own history even with no environment currently selected. */}}
+{{template "metric_charts" .Data.Charts}}
 
 {{template "shell_close" .}}
 {{end}}

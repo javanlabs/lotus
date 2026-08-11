@@ -147,6 +147,10 @@ func renderGitlabDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 		snap = nil
 	}
 	view := buildGitlabDetailView(snap)
+	cards, err := buildMetricChartCards(c.Context(), s, chrome.Binding.ID, chrome.Binding.Kind, "7d")
+	if err != nil {
+		return writeRepoErr(c, err)
+	}
 
 	c.Type("html")
 	return d.Renderer.Render(c, "pages/metric_gitlab.html", httpx.ViewData{
@@ -154,6 +158,7 @@ func renderGitlabDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 		Data: struct {
 			Chrome metricChrome
 			View   gitlabDetailView
-		}{Chrome: chrome, View: view},
+			Charts chartGridData
+		}{Chrome: chrome, View: view, Charts: newChartGridData(cards, "7d", chrome.basePath())},
 	})
 }

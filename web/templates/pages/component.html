@@ -42,6 +42,7 @@
       <span style="font:400 10px 'IBM Plex Mono',monospace;color:#9CA3AF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">via {{.ConnectionName}}{{if not .Enabled}} · disabled{{end}}{{if .LastStatus}} · last: {{.LastStatus}}{{end}}</span>
     </a>
     <span id="test-result-{{.ID}}" style="flex:none;max-width:220px;text-align:right;line-height:1.4"></span>
+    <div hx-get="/bindings/{{.ID}}/sparkline" hx-trigger="load" hx-swap="innerHTML" style="flex:none;width:90px;height:26px;display:flex;align-items:center;justify-content:center"></div>
     <div style="display:flex;gap:6px;flex:none">
       <button type="button" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px"
               hx-post="/bindings/{{.ID}}/test-ui" hx-target="#test-result-{{.ID}}" hx-swap="innerHTML">Test</button>

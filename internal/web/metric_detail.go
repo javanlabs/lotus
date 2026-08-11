@@ -248,4 +248,5 @@ func registerMetricDetailRoutes(app *fiber.App, d Deps, requireSession, loadPrin
 	app.Get(base+"/runs", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("dashboard.read"), runHistoryPage(d))
 	registerTrivyNoteRoutes(app, base, requireSession, loadPrincipal)
+	registerMetricChartRoutes(app, base, d, requireSession, loadPrincipal)
 }
