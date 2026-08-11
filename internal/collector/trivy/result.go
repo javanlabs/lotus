@@ -162,7 +162,7 @@ func Persist(ctx context.Context, s tenant.Scope, componentID, bindingID uuid.UU
 	if err := json.Unmarshal(r.Detail, &d); err != nil {
 		return err
 	}
-	_, err := repo.InsertTrivySnapshot(ctx, s, repo.NewTrivySnapshot{
+	_, _, err := repo.InsertTrivySnapshot(ctx, s, repo.NewTrivySnapshot{
 		BindingID: bindingID, ComponentID: componentID,
 		Source: d.Source, Digest: strPtr(d.Digest), Tags: d.Tags, Severity: strPtr(d.Severity),
 		Total: d.Counts.Total, Fixable: d.Counts.Fixable, Critical: d.Counts.Critical,
@@ -170,7 +170,7 @@ func Persist(ctx context.Context, s tenant.Scope, componentID, bindingID uuid.UU
 		Pulls: d.Pulls, ArtifactCount: d.ArtifactCount,
 		ImagePushedAt: d.ImagePushedAt, ScanFinishedAt: d.ScanFinishedAt,
 		RawJSON: d.RawReport,
-	})
+	}, collector.ContentHash(r), r.Headline)
 	return err
 }
 

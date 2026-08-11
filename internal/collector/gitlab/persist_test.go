@@ -144,6 +144,64 @@ func TestPersist_CrossOrgSnapshotsNeverMixDespiteIdenticalExternalKey(t *testing
 	}
 }
 
+// TestPersist_IdenticalSecondCollectDoesNotAddSnapshotRow is task 3.6's
+// own acceptance criterion: a second collect against identical upstream
+// data must not add a new detail snapshot row (it should bump
+// collected_at on the existing one instead).
+func TestPersist_IdenticalSecondCollectDoesNotAddSnapshotRow(t *testing.T) {
+	db := dbtest.Open(t)
+	orgID, componentID, bindingID := seedGLFixture(t, db, "acme")
+	scope := tenant.FromRun(db, orgID)
+
+	srv := fakeGitLabServer(t, false) // deterministic, nothing fails
+	defer srv.Close()
+	c := glcollector.Collector{}
+
+	collectAndPersist := func() {
+		session, err := c.Open(context.Background(), collector.ConnConfig{BaseURL: srv.URL, Secret: "token", Client: srv.Client()})
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		defer session.Close()
+		result, err := session.Collect(context.Background(), collector.CollectRequest{ExternalKey: "group/repo"})
+		if err != nil {
+			t.Fatalf("Collect: %v", err)
+		}
+		if err := glcollector.Persist(context.Background(), scope, componentID, bindingID, result); err != nil {
+			t.Fatalf("Persist: %v", err)
+		}
+	}
+
+	collectAndPersist()
+	first, err := repo.LatestGitlabSnapshot(context.Background(), scope, bindingID)
+	if err != nil {
+		t.Fatalf("LatestGitlabSnapshot (1st): %v", err)
+	}
+
+	collectAndPersist()
+	second, err := repo.LatestGitlabSnapshot(context.Background(), scope, bindingID)
+	if err != nil {
+		t.Fatalf("LatestGitlabSnapshot (2nd): %v", err)
+	}
+
+	if second.ID != first.ID {
+		t.Fatalf("a second identical collect must touch the existing row, not insert a new one (first=%s, second=%s)", first.ID, second.ID)
+	}
+	if !second.CollectedAt.After(first.CollectedAt) {
+		t.Fatalf("collected_at must advance on a touch (first=%v, second=%v)", first.CollectedAt, second.CollectedAt)
+	}
+
+	var count int
+	withOrgTxGL(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&count, `SELECT count(*) FROM gitlab_snapshots WHERE binding_id = $1`, bindingID); err != nil {
+			t.Fatalf("count: %v", err)
+		}
+	})
+	if count != 1 {
+		t.Fatalf("row count = %d, want exactly 1 (dedupe must not have inserted a second row)", count)
+	}
+}
+
 func TestRateLimiter_ThrottlesOutboundCalls(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"username":"tester"}`)

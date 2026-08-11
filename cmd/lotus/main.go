@@ -23,6 +23,7 @@ import (
 	"github.com/uyab/lotus/internal/mailer"
 	"github.com/uyab/lotus/internal/netguard"
 	"github.com/uyab/lotus/internal/repo/global"
+	"github.com/uyab/lotus/internal/retention"
 	"github.com/uyab/lotus/internal/scheduler"
 	"github.com/uyab/lotus/internal/tenant"
 	"github.com/uyab/lotus/internal/web"
@@ -144,6 +145,19 @@ func runServe(cfg config.Config) {
 		Execute:     scheduler.DefaultExecute(sqlDB, kek, netguard.Config{AllowHTTP: cfg.Dev}, scheduler.NewLimiters(2, 5)),
 		WorkerCount: cfg.WorkerCount,
 	})
+
+	// Retention (task 3.6) needs DDL — CREATE TABLE ... PARTITION OF,
+	// DROP TABLE on an aged-out partition — which lotus_app was
+	// deliberately never granted (db.OpenApp's own doc comment: it's the
+	// RLS-restricted role). Reuses the same MigrateDatabaseURL role
+	// `lotus migrate` already runs schema changes as, rather than
+	// widening lotus_app's own privileges just for this.
+	retentionDB, err := db.Open(cfg.MigrateDatabaseURL)
+	if err != nil {
+		log.Fatalf("open retention db: %v", err)
+	}
+	defer retentionDB.Close()
+	go retention.Run(context.Background(), retentionDB, retention.Options{})
 
 	log.Printf("lotus serving on %s (dev=%v)", cfg.Addr, cfg.Dev)
 	if err := app.Listen(cfg.Addr); err != nil {

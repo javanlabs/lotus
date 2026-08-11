@@ -113,7 +113,7 @@ func Persist(ctx context.Context, s tenant.Scope, componentID, bindingID uuid.UU
 	if err := json.Unmarshal(r.Detail, &m); err != nil {
 		return err
 	}
-	_, err := repo.InsertSonarSnapshot(ctx, s, repo.NewSonarSnapshot{
+	_, _, err := repo.InsertSonarSnapshot(ctx, s, repo.NewSonarSnapshot{
 		BindingID: bindingID, ComponentID: componentID,
 		QualityGate:            strPtr(m.QualityGate),
 		Coverage:               m.Coverage,
@@ -132,7 +132,7 @@ func Persist(ctx context.Context, s tenant.Scope, componentID, bindingID uuid.UU
 		Languages:              strPtr(m.Languages),
 		LastScanAt:             m.LastScan,
 		RawJSON:                r.Detail,
-	})
+	}, collector.ContentHash(r), r.Headline)
 	return err
 }
 

@@ -2,11 +2,13 @@ package repo
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
+	"github.com/uyab/lotus/internal/collector"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -21,6 +23,8 @@ type SentrySnapshot struct {
 	BindingID   uuid.UUID `db:"binding_id"`
 	ComponentID uuid.UUID `db:"component_id"`
 	CapturedAt  time.Time `db:"captured_at"`
+	ContentHash *string   `db:"content_hash"`
+	CollectedAt time.Time `db:"collected_at"`
 
 	Environment     string `db:"environment"`
 	ServiceName     string `db:"service_name"`
@@ -41,11 +45,18 @@ type SentrySnapshot struct {
 	Load  *float64 `db:"load"`
 }
 
-// SentryIssue is one issue row within a snapshot.
+// SentryIssue is one issue row within a snapshot. SnapshotCapturedAt is
+// denormalized from its parent row so internal/retention can delete a
+// partition's issues by the same captured_at range it's dropping,
+// without a join back to (a possibly already-gone) sentry_snapshots —
+// there is deliberately no FK here at all; see migration 00018's own
+// comment on why one is impossible for a table referencing a partitioned
+// parent that must still be droppable partition-by-partition.
 type SentryIssue struct {
-	ID         uuid.UUID `db:"id"`
-	OrgID      uuid.UUID `db:"org_id"`
-	SnapshotID uuid.UUID `db:"snapshot_id"`
+	ID                 uuid.UUID `db:"id"`
+	OrgID              uuid.UUID `db:"org_id"`
+	SnapshotID         uuid.UUID `db:"snapshot_id"`
+	SnapshotCapturedAt time.Time `db:"snapshot_captured_at"`
 
 	IssueID    string     `db:"issue_id"`
 	ShortID    string     `db:"short_id"`
@@ -72,6 +83,7 @@ type NewSentryIssue struct {
 
 type NewSentrySnapshot struct {
 	ComponentID uuid.UUID
+	ContentHash string
 
 	Environment     string
 	ServiceName     string
@@ -94,54 +106,120 @@ type NewSentrySnapshot struct {
 	Issues []NewSentryIssue
 }
 
-// ReplaceSentrySnapshots atomically swaps every environment snapshot for
-// one binding: delete everything currently stored for binding_id, then
-// insert the fresh set — task 3.5's own simplification of the legacy
-// REPLACE-per-environment-plus-a-separate-prune-pass into one
-// binding-scoped operation. A Collect always returns every environment
-// the binding is configured for in one Result (never an incremental
-// subset), so a full delete+reinsert can never lose an environment the
-// caller didn't mean to drop; an environment missing from the fresh set
-// (because Sentry stopped reporting it) is exactly what should disappear.
-func ReplaceSentrySnapshots(ctx context.Context, s tenant.Scope, bindingID uuid.UUID, snaps []NewSentrySnapshot) error {
+// ReplaceSentrySnapshots swaps every environment snapshot for one
+// binding: any environment no longer in snaps is dropped (task 3.5's
+// per-binding environment pruning), and each environment that is present
+// gets either a bumped captured_at (its content_hash matches what's
+// already stored — task 3.6's write dedupe) or a fresh row (cascading a
+// delete of its old one first, if it had one, so its issues never
+// accumulate across collects). Finishes by upserting componentID's
+// dashboard projection row from headline, atomically with everything
+// above — task 3.6's "same transaction as the snapshot write" rule.
+func ReplaceSentrySnapshots(ctx context.Context, s tenant.Scope, componentID, bindingID uuid.UUID, headline collector.Headline, snaps []NewSentrySnapshot) error {
 	return s.Tx(ctx, func(tx *sqlx.Tx) error {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM sentry_snapshots WHERE binding_id = $1`, bindingID); err != nil {
-			return err
-		}
+		keepEnvs := make([]string, 0, len(snaps))
 		for _, snap := range snaps {
+			keepEnvs = append(keepEnvs, snap.Environment)
+		}
+		// sentry_snapshots has no FK from sentry_issues (see migration
+		// 00018's own comment on why not — partitioning), so every delete
+		// below removes the matching sentry_issues rows explicitly first;
+		// nothing here cascades.
+		if len(keepEnvs) == 0 {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM sentry_issues WHERE snapshot_id IN (SELECT id FROM sentry_snapshots WHERE binding_id = $1)`, bindingID); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM sentry_snapshots WHERE binding_id = $1`, bindingID); err != nil {
+				return err
+			}
+		} else {
+			iq, iargs, err := sqlx.In(`DELETE FROM sentry_issues WHERE snapshot_id IN (
+				SELECT id FROM sentry_snapshots WHERE binding_id = ? AND environment NOT IN (?))`, bindingID, keepEnvs)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, tx.Rebind(iq), iargs...); err != nil {
+				return err
+			}
+			q, args, err := sqlx.In(`DELETE FROM sentry_snapshots WHERE binding_id = ? AND environment NOT IN (?)`, bindingID, keepEnvs)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, tx.Rebind(q), args...); err != nil {
+				return err
+			}
+		}
+
+		for _, snap := range snaps {
+			var existingID uuid.UUID
+			var existingHash sql.NullString
+			lookupErr := tx.QueryRowContext(ctx, `
+				SELECT id, content_hash FROM sentry_snapshots WHERE binding_id = $1 AND environment = $2 AND service_name = $3`,
+				bindingID, snap.Environment, snap.ServiceName).Scan(&existingID, &existingHash)
+			switch {
+			case lookupErr != nil && !isNoRows(lookupErr):
+				return lookupErr
+			case lookupErr == nil && snap.ContentHash != "" && existingHash.Valid && existingHash.String == snap.ContentHash:
+				// Bump collected_at only — never captured_at, which is
+				// the partition key; see snapshot_write.go's
+				// dedupeOrTouch for the same rule applied to the other
+				// three kinds.
+				if _, err := tx.ExecContext(ctx, `UPDATE sentry_snapshots SET collected_at = now() WHERE id = $1`, existingID); err != nil {
+					return err
+				}
+				continue
+			case lookupErr == nil:
+				// A row exists for this (binding, environment, service)
+				// but its content changed — replace it. No FK/CASCADE
+				// here (see migration 00018's comment), so its old issues
+				// are deleted explicitly first.
+				if _, err := tx.ExecContext(ctx, `DELETE FROM sentry_issues WHERE snapshot_id = $1`, existingID); err != nil {
+					return err
+				}
+				if _, err := tx.ExecContext(ctx, `DELETE FROM sentry_snapshots WHERE id = $1`, existingID); err != nil {
+					return err
+				}
+			}
+
 			var snapID uuid.UUID
-			err := tx.GetContext(ctx, &snapID, `
+			var capturedAt time.Time
+			err := tx.QueryRowContext(ctx, `
 				INSERT INTO sentry_snapshots (
-					org_id, binding_id, component_id, environment, service_name,
+					org_id, binding_id, component_id, content_hash, environment, service_name,
 					sentry_project_id, project_slug, project_name, platform, sentry_org,
 					team_id, team_slug, status_filter, generated_at, total_issues,
 					score, grade, load
 				) VALUES (
-					$1, $2, $3, $4, $5,
-					$6, $7, $8, $9, $10,
-					$11, $12, $13, $14, $15,
-					$16, $17, $18
-				) RETURNING id`,
-				s.OrgID(), bindingID, snap.ComponentID, snap.Environment, snap.ServiceName,
+					$1, $2, $3, $4, $5, $6,
+					$7, $8, $9, $10, $11,
+					$12, $13, $14, $15, $16,
+					$17, $18, $19
+				) RETURNING id, captured_at`,
+				s.OrgID(), bindingID, snap.ComponentID, snap.ContentHash, snap.Environment, snap.ServiceName,
 				snap.SentryProjectID, snap.ProjectSlug, snap.ProjectName, snap.Platform, snap.SentryOrg,
 				snap.TeamID, snap.TeamSlug, snap.StatusFilter, snap.GeneratedAt, snap.TotalIssues,
-				snap.Score, snap.Grade, snap.Load)
+				snap.Score, snap.Grade, snap.Load).Scan(&snapID, &capturedAt)
 			if err != nil {
 				return err
 			}
 			for _, is := range snap.Issues {
 				if _, err := tx.ExecContext(ctx, `
 					INSERT INTO sentry_issues (
-						org_id, snapshot_id, issue_id, short_id, title, status, substatus,
+						org_id, snapshot_id, snapshot_captured_at, issue_id, short_id, title, status, substatus,
 						event_count, first_seen, last_seen, permalink
-					) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-					s.OrgID(), snapID, is.IssueID, is.ShortID, is.Title, is.Status, is.Substatus,
+					) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+					s.OrgID(), snapID, capturedAt, is.IssueID, is.ShortID, is.Title, is.Status, is.Substatus,
 					is.EventCount, is.FirstSeen, is.LastSeen, is.Permalink); err != nil {
 					return err
 				}
 			}
 		}
-		return nil
+
+		projectID, err := componentProjectID(ctx, tx, componentID)
+		if err != nil {
+			return err
+		}
+		return upsertComponentMetricTx(ctx, tx, s.OrgID(), projectID, componentID, "sentry", headline)
 	})
 }
 
@@ -151,7 +229,7 @@ func ListSentrySnapshotsForBinding(ctx context.Context, s tenant.Scope, bindingI
 	var out []SentrySnapshot
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.SelectContext(ctx, &out, `
-			SELECT id, org_id, binding_id, component_id, captured_at, environment, service_name,
+			SELECT id, org_id, binding_id, component_id, captured_at, content_hash, collected_at, environment, service_name,
 			       sentry_project_id, project_slug, project_name, platform, sentry_org,
 			       team_id, team_slug, status_filter, generated_at, total_issues, score, grade, load
 			FROM sentry_snapshots WHERE binding_id = $1 ORDER BY environment`, bindingID)
@@ -167,7 +245,7 @@ func ListSentrySnapshotsForComponent(ctx context.Context, s tenant.Scope, compon
 	var out []SentrySnapshot
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.SelectContext(ctx, &out, `
-			SELECT id, org_id, binding_id, component_id, captured_at, environment, service_name,
+			SELECT id, org_id, binding_id, component_id, captured_at, content_hash, collected_at, environment, service_name,
 			       sentry_project_id, project_slug, project_name, platform, sentry_org,
 			       team_id, team_slug, status_filter, generated_at, total_issues, score, grade, load
 			FROM sentry_snapshots WHERE component_id = $1 ORDER BY binding_id, environment`, componentID)
@@ -181,7 +259,7 @@ func ListSentryIssuesForSnapshot(ctx context.Context, s tenant.Scope, snapshotID
 	var out []SentryIssue
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.SelectContext(ctx, &out, `
-			SELECT id, org_id, snapshot_id, issue_id, short_id, title, status, substatus,
+			SELECT id, org_id, snapshot_id, snapshot_captured_at, issue_id, short_id, title, status, substatus,
 			       event_count, first_seen, last_seen, permalink
 			FROM sentry_issues WHERE snapshot_id = $1 ORDER BY event_count DESC`, snapshotID)
 	})

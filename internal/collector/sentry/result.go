@@ -95,10 +95,46 @@ func (s *session) Collect(ctx context.Context, req collector.CollectRequest) (co
 	}
 
 	return collector.Result{
+		Headline:   rollupHeadline(children),
 		Children:   children,
 		Warnings:   warnings,
 		DetailKind: string(collector.KindSentry),
 	}, nil
+}
+
+// rollupHeadline is the binding-level summary task 3.6's dashboard
+// projection reads generically (it never looks at Children — "generic
+// code only reads Headline" is the rule this task exists to enforce).
+// Picks the worst environment by Status (fail > warn > pass > unknown,
+// task 3.6's own ordering), tying-break on the lower score, since that's
+// the environment an operator would actually want surfaced first.
+func rollupHeadline(children []collector.Result) collector.Headline {
+	severity := func(s collector.Status) int {
+		switch s {
+		case collector.StatusFail:
+			return 3
+		case collector.StatusWarn:
+			return 2
+		case collector.StatusPass:
+			return 1
+		default:
+			return 0
+		}
+	}
+	worst := children[0].Headline
+	for _, c := range children[1:] {
+		h := c.Headline
+		switch {
+		case severity(h.Status) > severity(worst.Status):
+			worst = h
+		case severity(h.Status) == severity(worst.Status) && h.Score != nil && worst.Score != nil && *h.Score < *worst.Score:
+			worst = h
+		}
+	}
+	if len(children) > 1 {
+		worst.Summary = fmt.Sprintf("%s (worst of %d environments)", worst.Summary, len(children))
+	}
+	return worst
 }
 
 // environmentDetail is what gets marshaled into each child Result's
@@ -235,6 +271,19 @@ func nullTimeFrom(t *time.Time) sql.NullTime {
 	return sql.NullTime{Time: *t, Valid: true}
 }
 
+// environmentContentHash hashes d with GeneratedAt zeroed out — task
+// 3.6's dedupe rule needs "did the upstream data change", and GeneratedAt
+// is stamped from time.Now() fresh on every single Collect regardless of
+// whether the issue list changed at all, so including it would make every
+// collect look different and defeat dedupe entirely for this kind (the
+// other three kinds don't have this problem: none of them stamp a
+// collect-time timestamp into their own Detail).
+func environmentContentHash(d environmentDetail) string {
+	d.GeneratedAt = nil
+	b, _ := json.Marshal(d)
+	return collector.ContentHash(collector.Result{Detail: b})
+}
+
 // Persist writes a Collect's per-environment Children into
 // sentry_snapshots (+ sentry_issues), replacing every environment
 // currently stored for this binding in one transaction.
@@ -253,12 +302,13 @@ func Persist(ctx context.Context, s tenant.Scope, componentID, bindingID uuid.UU
 			})
 		}
 		snaps = append(snaps, repo.NewSentrySnapshot{
-			ComponentID: componentID, Environment: d.Environment, ServiceName: d.ServiceName,
+			ComponentID: componentID, ContentHash: environmentContentHash(d),
+			Environment: d.Environment, ServiceName: d.ServiceName,
 			SentryProjectID: d.SentryProjectID, ProjectSlug: d.ProjectSlug, ProjectName: d.ProjectName,
 			Platform: d.Platform, SentryOrg: d.SentryOrg, TeamID: d.TeamID, TeamSlug: d.TeamSlug,
 			StatusFilter: d.StatusFilter, GeneratedAt: d.GeneratedAt, TotalIssues: d.TotalIssues,
 			Score: d.Score, Grade: d.Grade, Load: d.Load, Issues: issues,
 		})
 	}
-	return repo.ReplaceSentrySnapshots(ctx, s, bindingID, snaps)
+	return repo.ReplaceSentrySnapshots(ctx, s, componentID, bindingID, r.Headline, snaps)
 }

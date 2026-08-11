@@ -9,6 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 
+	"github.com/uyab/lotus/internal/collector"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -18,6 +19,8 @@ type TrivySnapshot struct {
 	BindingID   uuid.UUID `db:"binding_id"`
 	ComponentID uuid.UUID `db:"component_id"`
 	CapturedAt  time.Time `db:"captured_at"`
+	ContentHash *string   `db:"content_hash"`
+	CollectedAt time.Time `db:"collected_at"`
 
 	Source string  `db:"source"`
 	Digest *string `db:"digest"`
@@ -65,37 +68,40 @@ type NewTrivySnapshot struct {
 	RawJSON json.RawMessage
 }
 
-func InsertTrivySnapshot(ctx context.Context, s tenant.Scope, in NewTrivySnapshot) (uuid.UUID, error) {
+// InsertTrivySnapshot follows InsertGitlabSnapshot's own dedupe +
+// dashboard-projection-upsert contract; see that function's doc comment.
+func InsertTrivySnapshot(ctx context.Context, s tenant.Scope, in NewTrivySnapshot, contentHash string, headline collector.Headline) (id uuid.UUID, inserted bool, err error) {
 	if in.Tags == nil {
 		in.Tags = []string{}
 	}
-	var id uuid.UUID
-	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		return tx.GetContext(ctx, &id, `
-			INSERT INTO trivy_snapshots (
-				org_id, binding_id, component_id, source, digest, tags, severity,
-				total, fixable, critical, high, medium, low, unknown,
-				pulls, artifact_count, image_pushed_at, scan_finished_at, raw_json
-			) VALUES (
-				$1, $2, $3, $4, $5, $6, $7,
-				$8, $9, $10, $11, $12, $13, $14,
-				$15, $16, $17, $18, $19
-			) RETURNING id`,
-			s.OrgID(), in.BindingID, in.ComponentID, in.Source, in.Digest, pq.Array(in.Tags), in.Severity,
-			in.Total, in.Fixable, in.Critical, in.High, in.Medium, in.Low, in.Unknown,
-			in.Pulls, in.ArtifactCount, in.ImagePushedAt, in.ScanFinishedAt, nullIfEmptyJSONBytes(in.RawJSON))
-	})
-	return id, err
+	return snapshotWrite(ctx, s, "trivy_snapshots", in.ComponentID, in.BindingID, "trivy", contentHash, headline,
+		func(tx *sqlx.Tx) (uuid.UUID, error) {
+			var id uuid.UUID
+			err := tx.GetContext(ctx, &id, `
+				INSERT INTO trivy_snapshots (
+					org_id, binding_id, component_id, content_hash, source, digest, tags, severity,
+					total, fixable, critical, high, medium, low, unknown,
+					pulls, artifact_count, image_pushed_at, scan_finished_at, raw_json
+				) VALUES (
+					$1, $2, $3, $4, $5, $6, $7, $8,
+					$9, $10, $11, $12, $13, $14, $15,
+					$16, $17, $18, $19, $20
+				) RETURNING id`,
+				s.OrgID(), in.BindingID, in.ComponentID, contentHash, in.Source, in.Digest, pq.Array(in.Tags), in.Severity,
+				in.Total, in.Fixable, in.Critical, in.High, in.Medium, in.Low, in.Unknown,
+				in.Pulls, in.ArtifactCount, in.ImagePushedAt, in.ScanFinishedAt, nullIfEmptyJSONBytes(in.RawJSON))
+			return id, err
+		})
 }
 
 func LatestTrivySnapshot(ctx context.Context, s tenant.Scope, bindingID uuid.UUID) (*TrivySnapshot, error) {
 	var out TrivySnapshot
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.GetContext(ctx, &out, `
-			SELECT id, org_id, binding_id, component_id, captured_at, source, digest,
+			SELECT id, org_id, binding_id, component_id, captured_at, content_hash, collected_at, source, digest,
 			       tags, severity, total, fixable, critical, high, medium, low, unknown,
 			       pulls, artifact_count, image_pushed_at, scan_finished_at, raw_json
-			FROM trivy_snapshots WHERE binding_id = $1 ORDER BY captured_at DESC LIMIT 1`, bindingID)
+			FROM trivy_snapshots WHERE binding_id = $1 ORDER BY collected_at DESC LIMIT 1`, bindingID)
 	})
 	if err != nil {
 		if isNoRows(err) {
@@ -115,11 +121,11 @@ func ListTrivySnapshotsForComponent(ctx context.Context, s tenant.Scope, compone
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.SelectContext(ctx, &out, `
 			SELECT DISTINCT ON (binding_id)
-			       id, org_id, binding_id, component_id, captured_at, source, digest,
+			       id, org_id, binding_id, component_id, captured_at, content_hash, collected_at, source, digest,
 			       tags, severity, total, fixable, critical, high, medium, low, unknown,
 			       pulls, artifact_count, image_pushed_at, scan_finished_at, raw_json
 			FROM trivy_snapshots WHERE component_id = $1
-			ORDER BY binding_id, captured_at DESC`, componentID)
+			ORDER BY binding_id, collected_at DESC`, componentID)
 	})
 	return out, err
 }

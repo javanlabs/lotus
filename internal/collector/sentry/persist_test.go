@@ -94,6 +94,66 @@ func TestPersist_TwoEnvironmentsBothSaved(t *testing.T) {
 	}
 }
 
+// TestPersist_IdenticalSecondCollectTouchesInsteadOfReinserting is task
+// 3.6's own acceptance criterion, exercised against sentry's per-
+// environment dedupe path specifically: identical upstream issue data on
+// a second collect must not create a new snapshot row (or duplicate its
+// issues), and must not violate sentry_issues' FK to the now-unchanged
+// parent row.
+func TestPersist_IdenticalSecondCollectTouchesInsteadOfReinserting(t *testing.T) {
+	db := dbtest.Open(t)
+	orgID, componentID, bindingID := seedSentryFixture(t, db, "acme")
+	scope := tenant.FromRun(db, orgID)
+
+	srv := fakeSentryServer(t, nil)
+	defer srv.Close()
+	cfg, _ := json.Marshal(map[string]any{"mode": "dedicated"})
+
+	collectAndPersist := func() {
+		session := openSession(t, srv, "javan")
+		defer session.Close()
+		result, err := session.Collect(context.Background(), collector.CollectRequest{ExternalKey: "backend", Config: cfg})
+		if err != nil {
+			t.Fatalf("Collect: %v", err)
+		}
+		if err := sentrycollector.Persist(context.Background(), scope, componentID, bindingID, result); err != nil {
+			t.Fatalf("Persist: %v", err)
+		}
+	}
+
+	collectAndPersist()
+	first, err := repo.ListSentrySnapshotsForBinding(context.Background(), scope, bindingID)
+	if err != nil {
+		t.Fatalf("list 1: %v", err)
+	}
+	if len(first) != 1 {
+		t.Fatalf("got %d snapshots after first collect, want 1", len(first))
+	}
+
+	collectAndPersist()
+	second, err := repo.ListSentrySnapshotsForBinding(context.Background(), scope, bindingID)
+	if err != nil {
+		t.Fatalf("list 2: %v", err)
+	}
+	if len(second) != 1 {
+		t.Fatalf("got %d snapshots after second identical collect, want 1 (touched, not reinserted)", len(second))
+	}
+	if second[0].ID != first[0].ID {
+		t.Fatalf("a second identical collect must touch the existing row, not replace it (first=%s, second=%s)", first[0].ID, second[0].ID)
+	}
+	if !second[0].CollectedAt.After(first[0].CollectedAt) {
+		t.Fatalf("collected_at must advance on a touch (first=%v, second=%v)", first[0].CollectedAt, second[0].CollectedAt)
+	}
+
+	issues, err := repo.ListSentryIssuesForSnapshot(context.Background(), scope, second[0].ID)
+	if err != nil {
+		t.Fatalf("ListSentryIssuesForSnapshot: %v", err)
+	}
+	if len(issues) != 2 {
+		t.Fatalf("got %d issues after touch, want the original 2 (still intact, FK unbroken)", len(issues))
+	}
+}
+
 func TestPersist_ReplaceDropsEnvironmentMissingFromNewCollect(t *testing.T) {
 	db := dbtest.Open(t)
 	orgID, componentID, bindingID := seedSentryFixture(t, db, "acme")

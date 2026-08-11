@@ -160,7 +160,7 @@ func Persist(ctx context.Context, s tenant.Scope, componentID, bindingID uuid.UU
 		in.Commits30dCapped = &h.Commits30dCapped
 	}
 
-	_, err := repo.InsertGitlabSnapshot(ctx, s, in)
+	_, _, err := repo.InsertGitlabSnapshot(ctx, s, in, collector.ContentHash(r), r.Headline)
 	return err
 }
 
