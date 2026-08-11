@@ -1,0 +1,61 @@
+{{define "content"}}
+{{template "shell_open" .}}
+
+<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
+  <div style="flex:1;min-width:220px">
+    <p style="margin:0 0 4px;font-size:11px;color:#9CA3AF"><a href="/projects/{{.Data.Project.ID}}" style="color:#9CA3AF">{{.Data.Project.Name}}</a></p>
+    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{.Data.Component.Name}}</h1>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{.Data.Component.Kind}}{{if .Data.Component.Language}} · {{.Data.Component.Language}}{{end}}</p>
+  </div>
+  {{if .Data.Metric}}
+  <div class="lotus-card lotus-shape" style="padding:10px 16px;display:flex;align-items:center;gap:10px">
+    {{template "status_dot" .Data.Tone}}
+    <div style="display:flex;flex-direction:column">
+      <span style="font:600 20px 'IBM Plex Mono',monospace;color:#111827">{{if .Data.ScoreText}}{{.Data.ScoreText}}{{else}}–{{end}}</span>
+      <span style="font-size:9.5px;color:#9CA3AF">/100</span>
+    </div>
+  </div>
+  {{end}}
+  <a href="/components/{{.Data.Component.ID}}/bind" class="btn-lotus btn-lotus-primary">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#EDBCC3"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Bind metric
+  </a>
+</header>
+
+{{if not .Data.Bindings}}
+<section class="lotus-card lotus-shape" style="padding:40px 32px;display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:520px">
+  <div style="font-size:15px;font-weight:600;color:#111827">No metrics bound yet</div>
+  <p style="margin:0;font-size:12.5px;color:#6B7280;line-height:1.5">Bind this component to a GitLab repository, SonarQube project, Harbor repository, or Sentry project to start collecting its metrics.</p>
+  <a href="/components/{{.Data.Component.ID}}/bind" class="btn-lotus btn-lotus-primary">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#EDBCC3"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Bind metric
+  </a>
+</section>
+{{else}}
+<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="font-size:13px;font-weight:600;color:#43284E">Metric bindings</div>
+  </div>
+  {{range .Data.Bindings}}
+  <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-bottom:1px solid #F3F4F6">
+    <span class="lotus-badge {{if .Enabled}}lotus-badge-pass{{else}}lotus-badge-none{{end}}" style="min-width:76px;justify-content:center">{{.KindLabel}}</span>
+    <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1;overflow:hidden">
+      <span style="font-size:12.5px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.ExternalKey}}</span>
+      <span style="font:400 10px 'IBM Plex Mono',monospace;color:#9CA3AF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">via {{.ConnectionName}}{{if not .Enabled}} · disabled{{end}}{{if .LastStatus}} · last: {{.LastStatus}}{{end}}</span>
+    </div>
+    <span id="test-result-{{.ID}}" style="flex:none;max-width:220px;text-align:right;line-height:1.4"></span>
+    <div style="display:flex;gap:6px;flex:none">
+      <button type="button" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px"
+              hx-post="/bindings/{{.ID}}/test-ui" hx-target="#test-result-{{.ID}}" hx-swap="innerHTML">Test</button>
+      <form method="post" action="/bindings/{{.ID}}/{{if .Enabled}}disable-ui{{else}}enable-ui{{end}}">
+        <button type="submit" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px">{{if .Enabled}}Disable{{else}}Enable{{end}}</button>
+      </form>
+      <form method="post" action="/bindings/{{.ID}}/delete-ui" onsubmit="return confirm('Remove this binding?')">
+        <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:#FCEDF0;color:#9E2B47">Delete</button>
+      </form>
+    </div>
+  </div>
+  {{end}}
+</section>
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}

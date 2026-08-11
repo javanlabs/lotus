@@ -55,7 +55,8 @@ func submitNewProject(d Deps) fiber.Handler {
 			return renderNewProjectFormWithCount(c, d, s, org, user, form, fiber.StatusUnprocessableEntity)
 		}
 
-		if _, err := repo.CreateProject(c.Context(), s, repo.NewProject{Slug: form.Slug, Name: form.Name, Description: form.Description}); err != nil {
+		p, err := repo.CreateProject(c.Context(), s, repo.NewProject{Slug: form.Slug, Name: form.Name, Description: form.Description})
+		if err != nil {
 			switch {
 			case errors.Is(err, repo.ErrSlugTaken):
 				form.Error = "a project with that slug already exists"
@@ -67,7 +68,7 @@ func submitNewProject(d Deps) fiber.Handler {
 			return renderNewProjectFormWithCount(c, d, s, org, user, form, fiber.StatusUnprocessableEntity)
 		}
 
-		return c.Redirect("/dashboard", fiber.StatusFound)
+		return c.Redirect("/projects/"+p.ID.String(), fiber.StatusFound)
 	}
 }
 

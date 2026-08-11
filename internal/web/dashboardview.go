@@ -18,13 +18,16 @@ type dashboardRow struct {
 	N           int
 	Name        string
 	ProjectName string
-	Score       string // "84" or "–"
-	ScorePct    string // "84%" for the inline mini-bar width, "0%" if no score
-	Tone        string // pass|warn|fail|none
-	GitLab      badgeCell
-	SonarQube   badgeCell
-	Trivy       badgeCell
-	Sentry      badgeCell
+	// Href links the row to its component page (task 4.3) — "" only if
+	// the caller didn't supply a component id (no current caller does).
+	Href      string
+	Score     string // "84" or "–"
+	ScorePct  string // "84%" for the inline mini-bar width, "0%" if no score
+	Tone      string // pass|warn|fail|none
+	GitLab    badgeCell
+	SonarQube badgeCell
+	Trivy     badgeCell
+	Sentry    badgeCell
 }
 
 type badgeCell struct {
@@ -178,7 +181,7 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 			scorePct = fmt.Sprintf("%d%%", clamp(*score, 0, 100))
 		}
 		rows = append(rows, dashboardRow{
-			Name: comp.Name, ProjectName: comp.ProjectName,
+			Name: comp.Name, ProjectName: comp.ProjectName, Href: "/components/" + comp.ID.String(),
 			Score: scoreStr, ScorePct: scorePct, Tone: toneOf(status),
 			GitLab: badgeFor(kindMap, "gitlab"), SonarQube: badgeFor(kindMap, "sonarqube"),
 			Trivy: badgeFor(kindMap, "trivy"), Sentry: badgeFor(kindMap, "sentry"),

@@ -1,7 +1,9 @@
 package web
 
 import (
+	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/uyab/lotus/internal/authn"
 	"github.com/uyab/lotus/internal/config"
+	"github.com/uyab/lotus/internal/crypto"
 	"github.com/uyab/lotus/internal/dbtest"
 	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/tenant"
@@ -22,17 +25,45 @@ import (
 
 const dashboardTestDomain = "lotus.test"
 
+// dashboardTestKEK, like internal/web/connections_test.go's own, is a
+// fixed 32-byte test-only key — task 4.3's bind wizard creates real
+// connections (envelope-encrypted, task 2.2), so it needs one too.
+func dashboardTestKEK(t *testing.T) *crypto.KEK {
+	t.Helper()
+	kek, err := crypto.LoadKEK("bG90dXMtdGVzdC1rZWstMzItYnl0ZXMtZXhhY3RseVg=", 1)
+	if err != nil {
+		t.Fatalf("load test KEK: %v", err)
+	}
+	return kek
+}
+
+// dashboardFakeDNS mirrors connections_test.go's fakePublicDNS — the
+// bind wizard's new-connection flow runs netguard.ValidateBaseURL, which
+// resolves DNS for real unless overridden; tests must not depend on
+// outbound network access.
+func dashboardFakeDNS(_ context.Context, host string) ([]net.IP, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		return []net.IP{ip}, nil
+	}
+	if host == "localhost" {
+		return []net.IP{net.ParseIP("127.0.0.1")}, nil
+	}
+	return []net.IP{net.ParseIP("203.0.113.10")}, nil
+}
+
 func newDashboardTestApp(t *testing.T) (*fiber.App, *sqlx.DB) {
 	t.Helper()
 	renderer := httpx.NewRenderer(os.DirFS("../../web/templates"), true)
 	db := dbtest.Open(t)
 	resolver := tenant.NewResolver(config.Config{BaseDomain: dashboardTestDomain, Dev: true}, db)
 	app := New(Deps{
-		Renderer:       renderer,
-		StaticFS:       os.DirFS("../../web/static"),
-		Resolver:       resolver,
-		DB:             db,
-		OAuthProviders: authn.Registry{},
+		Renderer:         renderer,
+		StaticFS:         os.DirFS("../../web/static"),
+		Resolver:         resolver,
+		DB:               db,
+		OAuthProviders:   authn.Registry{},
+		KEK:              dashboardTestKEK(t),
+		NetguardResolver: dashboardFakeDNS,
 	})
 	return app, db
 }
@@ -132,8 +163,10 @@ func TestNewProject_SubmitCreatesAndRedirects(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d, want 302 redirect:\n%s", resp.StatusCode, body)
 	}
-	if loc := resp.Header.Get("Location"); loc != "/dashboard" {
-		t.Fatalf("Location = %q, want /dashboard", loc)
+	// Redirects to the new project's own page (task 4.3), not the
+	// org-wide dashboard — there's now somewhere more specific to land.
+	if loc := resp.Header.Get("Location"); !strings.HasPrefix(loc, "/projects/") {
+		t.Fatalf("Location = %q, want a /projects/<id> redirect", loc)
 	}
 
 	var count int

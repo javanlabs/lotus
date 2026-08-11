@@ -1,0 +1,5 @@
+{{if .ReqErr}}<span style="font-size:11px;color:#9E2B47">{{.ReqErr}}</span
+>{{else if .OK}}<span style="font-size:11px;color:#23808F">✓ {{.Summary}}</span
+>{{else if .AuthFail}}<span style="font-size:11px;color:#9E2B47">✗ authentication failed</span
+>{{else}}<span style="font-size:11px;color:#A94D68">{{.Summary}}</span
+>{{end}}

@@ -36,7 +36,7 @@ test('dashboard shows the app shell and an empty state for a fresh org', async (
   await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
 });
 
-test('creating a project through the real form, then seeing it reflected on the dashboard', async ({ page, context }) => {
+test('creating a project through the real form lands on the new project\'s own page', async ({ page, context }) => {
   const { sessionToken, orgId, subdomain } = await seedOwnerSession('newproj-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
 
@@ -47,10 +47,16 @@ test('creating a project through the real form, then seeing it reflected on the 
   await page.getByLabel('SLUG').fill('e2e-payments');
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  await expect(page).toHaveURL(`${origin}/dashboard`);
-  // A project with zero components is a distinct empty state from "no
-  // projects at all" (task 4.2's empty-state copy must track which case
-  // it actually is — a real bug caught during manual QA of this feature).
+  // Redirects to the new project's own page (task 4.3), not the org-wide
+  // dashboard — there's now somewhere more specific to land.
+  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole('heading', { name: 'E2E Payments' })).toBeVisible();
+  await expect(page.getByText('No components yet')).toBeVisible();
+
+  // The dashboard, in turn, shows the distinct "has a project but no
+  // repositories" empty state, not the "no projects at all" one — a real
+  // bug caught during manual QA of this feature.
+  await page.goto(`${origin}/dashboard`);
   await expect(page.getByText('No repositories yet')).toBeVisible();
   await expect(page.getByText('No projects yet')).not.toBeVisible();
 

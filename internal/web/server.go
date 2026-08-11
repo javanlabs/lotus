@@ -147,6 +147,14 @@ func New(d Deps) *fiber.App {
 	registerDashboardRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerProjectPageRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
+	// Tenant host only (task 4.3): a project's own page, adding a
+	// component to it, a component's own page (its metric bindings), and
+	// the bind-metric wizard that creates a connection (if needed) and a
+	// binding together.
+	registerProjectPageDetailRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+	registerComponentPageRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+	registerBindWizardRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+
 	// Tenant host only (task 2.1): Project & Component CRUD. JSON handlers
 	// — the screens that call them are task 4.3.
 	registerProjectRoutes(app, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
