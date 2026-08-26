@@ -23,33 +23,41 @@ import (
 // project and, per its own description, plausibly the most valuable: this
 // is what catches the next unauthenticated write endpoint before it ships.
 func TestRouteCoverage(t *testing.T) {
-	app := buildFullAppForCoverage(t)
+	// Both modes: single mode registers a different route set, and a route
+	// correctly guarded in one mode could be bare in the other. Running the
+	// scan twice is what turns that risk into a CI failure rather than a
+	// review burden.
+	for _, mode := range []string{config.ModeSaaS, config.ModeSingle} {
+		t.Run(mode, func(t *testing.T) {
+			app := buildFullAppForCoverage(t, mode)
 
-	violations, publicRoutes := scanRouteCoverage(app)
+			violations, publicRoutes := scanRouteCoverage(app)
 
-	// The /static mount is registered via app.Use, so app.GetRoutes(true)
-	// (used inside scanRouteCoverage) excludes it — check it separately.
-	staticOK := false
-	for _, route := range app.GetRoutes(false) {
-		if route.Path != "/static" {
-			continue
-		}
-		if kind, ok := decisionFor(route.Handlers); ok {
-			staticOK = true
-			if kind == "public" {
-				publicRoutes = append(publicRoutes, "USE /static/*")
+			// The /static mount is registered via app.Use, so app.GetRoutes(true)
+			// (used inside scanRouteCoverage) excludes it — check it separately.
+			staticOK := false
+			for _, route := range app.GetRoutes(false) {
+				if route.Path != "/static" {
+					continue
+				}
+				if kind, ok := decisionFor(route.Handlers); ok {
+					staticOK = true
+					if kind == "public" {
+						publicRoutes = append(publicRoutes, "USE /static/*")
+					}
+					break
+				}
 			}
-			break
-		}
-	}
-	if !staticOK {
-		violations = append(violations, "USE /static")
-	}
+			if !staticOK {
+				violations = append(violations, "USE /static")
+			}
 
-	t.Logf("public routes (%d):\n%s", len(publicRoutes), strings.Join(dedupe(publicRoutes), "\n"))
+			t.Logf("public routes (%d):\n%s", len(publicRoutes), strings.Join(dedupe(publicRoutes), "\n"))
 
-	if len(violations) > 0 {
-		t.Fatalf("routes with no authz.Require/authz.Public decision:\n%s", strings.Join(violations, "\n"))
+			if len(violations) > 0 {
+				t.Fatalf("routes with no authz.Require/authz.Public decision:\n%s", strings.Join(violations, "\n"))
+			}
+		})
 	}
 }
 
@@ -107,11 +115,11 @@ func dedupe(in []string) []string {
 	return out
 }
 
-func buildFullAppForCoverage(t *testing.T) *fiber.App {
+func buildFullAppForCoverage(t *testing.T, mode string) *fiber.App {
 	t.Helper()
 	db := dbtest.Open(t)
 	renderer := httpx.NewRenderer(os.DirFS("../../web/templates"), true)
-	cfg := config.Config{BaseDomain: "lotus.test", Dev: true}
+	cfg := config.Config{Mode: mode, BaseDomain: "lotus.test", URL: "http://localhost:8008", Dev: true}
 	resolver := tenant.NewResolver(cfg, db)
 	return New(Deps{
 		Renderer:       renderer,

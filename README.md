@@ -62,7 +62,9 @@ EnvironmentFile is the only source of config — see `deploy/`, added in task
 | `MIGRATE_DATABASE_URL` | same as `DATABASE_URL` | DSN used only by `lotus migrate` — connects as the DDL-capable `lotus_migrate` role in production. Falls back to `DATABASE_URL` for local dev, where one role is fine. |
 | `LOTUS_DEV` | unset (off) | `1` enables dev mode: templates/static assets are read from disk (hot reload) instead of the embedded build, and the `X-Lotus-Org` header fallback (below) is honored. |
 | `SESSION_SECRET` | random per-boot | Signs session cookies. Set to a stable value in production, or sessions reset on every restart. |
-| `LOTUS_BASE_DOMAIN` | `lotus.localhost` | Wildcard root Lotus is served under — apex is this value, auth host is `auth.`+this, tenants are `<slug>.`+this. **No production value has been chosen yet** — see the open decision logged in ActiveCollab. |
+| `LOTUS_MODE` | `saas` | `saas` = multi-tenant with subdomains (apex / auth host / `<slug>.<domain>`). `single` = one organization on one origin, for self-hosted and local installs: no subdomains, so no wildcard DNS and no wildcard certificate. |
+| `LOTUS_URL` | unset | Absolute base URL of a `single`-mode install, e.g. `http://localhost:8008`. **Required when `LOTUS_MODE=single`** (startup fails without it) and unused in `saas` mode. It replaces `LOTUS_BASE_DOMAIN` as what absolute links — OAuth redirect URIs, invitation links — are built against. |
+| `LOTUS_BASE_DOMAIN` | `lotus.localhost` | Wildcard root Lotus is served under. Required in `saas` mode, **ignored when `LOTUS_MODE=single`** — apex is this value, auth host is `auth.`+this, tenants are `<slug>.`+this. **No production value has been chosen yet** — see the open decision logged in ActiveCollab. |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | unset | GitHub OAuth app credentials (task 1.1). Login via GitHub is simply not offered when the secret is empty. Redirect URI to register: `<scheme>://auth.<LOTUS_BASE_DOMAIN>/login/github/callback`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset | Google OAuth app credentials (task 1.1). Same on/off behavior as GitHub's. Redirect URI: `<scheme>://auth.<LOTUS_BASE_DOMAIN>/login/google/callback`. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | unset (`SMTP_PORT` defaults `587`) | Sends invitation emails (task 1.7). With `SMTP_HOST` empty, no mail is sent — invitations still work via the copyable link. |
@@ -169,3 +171,43 @@ deploy                      local dev docker-compose (production deploy: task 5.
 Tracked as tasks in [ActiveCollab project 697](https://collab.javan.co.id/projects/697):
 production base domain not yet decided, deploy CI stage deferred to task
 5.2, and anything else flagged along the way.
+
+## Single-tenant / self-hosted
+
+Lotus installs two ways off the same binary. `LOTUS_MODE=saas` (the default)
+is the multi-tenant product: wildcard DNS, an auth host, one organization per
+subdomain. `LOTUS_MODE=single` is one organization on one origin — no
+subdomains, so an ordinary single-name certificate is enough and local dev
+needs no DNS setup at all.
+
+```bash
+export LOTUS_MODE=single
+export LOTUS_URL=http://localhost:8008
+export ADDR=:8008
+
+lotus migrate up
+lotus init --org-name="Acme" --owner-email=admin@acme.com
+lotus serve
+```
+
+Sign in as the `--owner-email` address to claim ownership: `lotus init`
+creates the organization but cannot create its Owner (nobody has logged in
+yet), so ownership stays pending until the first login with that address,
+**verified by the identity provider**. Until then no other account can sign
+in, so a fresh instance is never a land-grab.
+
+What single mode changes:
+
+- The subdomain resolver skips host classification entirely — any `Host`
+  resolves to the one organization, so a hostname, a bare IP, or a
+  proxy-rewritten `Host` all work.
+- The handoff (`/handoff/*`), self-serve signup (`/signup`), and onboarding
+  (`/onboarding/*`) routes are **not registered**: they exist only because
+  saas mode splits one product across three hosts and lets anyone create an
+  organization. Members join by invitation instead.
+- `/` serves the app rather than the apex placeholder.
+- `X-Lotus-Org` is ignored — it selects between tenants, and there is one.
+
+A single-mode install holds **exactly one** organization; `lotus init`
+refuses to run twice, and the app refuses to start resolving if a second
+organization ever appears.

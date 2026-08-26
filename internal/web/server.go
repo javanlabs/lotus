@@ -84,7 +84,15 @@ func New(d Deps) *fiber.App {
 		filesystem.New(filesystem.Config{Root: http.FS(d.StaticFS)}))
 
 	app.Get("/healthz", authz.Public("uptime check; must work without DNS/host setup"), healthz)
-	app.Get("/", authz.Public("Fase-0 sample page; becomes the apex marketing page in task 4.1"), home(d.Renderer))
+	if d.Cfg.IsSingle() {
+		// One origin means there is no separate marketing surface to land
+		// on: / is the app. Redirecting rather than rendering the dashboard
+		// here keeps a single canonical URL for it.
+		app.Get("/", authz.Public("redirect only; the dashboard behind it enforces its own session"),
+			func(c *fiber.Ctx) error { return c.Redirect("/projects", fiber.StatusFound) })
+	} else {
+		app.Get("/", authz.Public("apex placeholder; a real marketing page is not yet scoped"), home(d.Renderer))
+	}
 
 	authDeps := authn.Deps{
 		DB:             d.DB,
@@ -95,62 +103,22 @@ func New(d Deps) *fiber.App {
 		Mailer:         d.Mailer,
 	}
 
-	// Auth host only (tasks 1.1/1.2). RequireAuth 404s these on any tenant
-	// subdomain or the apex, closing the cross-host bug class task 0.5
-	// exists to prevent. Public: these endpoints exist specifically to
-	// establish a session — requiring one first would be a deadlock.
-	app.Get("/login/:provider", tenant.RequireAuth(),
-		authz.Public("starts OAuth; there is no session yet by definition"), authn.Login(authDeps))
-	app.Get("/login/:provider/callback", tenant.RequireAuth(),
-		authz.Public("OAuth provider redirect target; establishes the session"), authn.Callback(authDeps))
-	app.Get("/handoff/authorize", tenant.RequireAuth(),
-		authz.Public("handoff step 2/3; runs before the tenant session exists"), authn.HandoffAuthorize(authDeps))
-
-	// Tenant host only (task 1.2). Same reasoning: these establish the
-	// tenant session, so they can't require one first.
-	app.Get("/handoff/start", tenant.RequireTenant(),
-		authz.Public("handoff step 1; starts the flow that creates the tenant session"), authn.HandoffStart(authDeps))
-	app.Get("/handoff/finish", tenant.RequireTenant(),
-		authz.Public("handoff step 4; creates the tenant session"), authn.HandoffFinish(authDeps))
-
 	// Works on either host (task 1.3): revokes whichever session cookie —
 	// global or tenant — is present. A no-op on the apex, which never has
 	// either cookie.
 	app.Post("/logout", authz.Public("must be reachable without a valid session to be useful at all"), authn.Logout(authDeps))
 
-	// Auth host only (task 1.6): signup and onboarding, gated by a global
-	// session rather than an org permission — there's no organization yet
-	// for most of this flow, so authz.Require doesn't apply; Public here
-	// documents that RequireGlobalSession (not a permission check) is the
-	// actual gate. /onboarding/invite's own org-membership check happens
-	// inside the handler (see requireOwnedOrg) since it depends on the
-	// ?org= query param, not something a static route guard can express.
-	app.Get("/signup", tenant.RequireAuth(),
-		authz.Public("pre-session by definition; the entry point into OAuth"), authn.Signup(authDeps))
-	app.Get("/welcome", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
-		authz.Public("gated by RequireGlobalSession, not an org permission"), authn.Welcome(authDeps))
-	app.Post("/welcome", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
-		authz.Public("gated by RequireGlobalSession, not an org permission"), authn.SubmitWelcome(authDeps))
-	app.Get("/onboarding/org", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
-		authz.Public("gated by RequireGlobalSession, not an org permission"), authn.OnboardingOrg(authDeps))
-	app.Get("/onboarding/slug-check", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
-		authz.Public("gated by RequireGlobalSession, not an org permission"), authn.SlugCheck(authDeps))
-	app.Post("/onboarding/org", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
-		authz.Public("gated by RequireGlobalSession, not an org permission"), authn.SubmitOnboardingOrg(authDeps))
-	app.Get("/onboarding/invite", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
-		authz.Public("membership+permission checked inside the handler against ?org="), authn.OnboardingInvite(authDeps))
-	app.Post("/onboarding/invite", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
-		authz.Public("membership+permission checked inside the handler against ?org="), authn.SubmitOnboardingInvite(authDeps))
-
-	// Auth host only (task 1.7): the invitation accept/decline flow.
-	// Public: an invitee has no session yet by definition, and decline
-	// deliberately never requires one.
-	app.Get("/invite/:token", tenant.RequireAuth(),
-		authz.Public("pre-session by definition; shows the accept/login prompt"), authn.InviteLanding(authDeps))
-	app.Post("/invite/:token/confirm", tenant.RequireAuth(),
-		authz.Public("explicit user-confirmed accept for a mismatched-email invite"), authn.InviteConfirm(authDeps))
-	app.Post("/invite/:token/decline", tenant.RequireAuth(),
-		authz.Public("declining must not require a login the person never wanted"), authn.InviteDecline(authDeps))
+	// The auth host, the handoff, and self-serve onboarding all exist only
+	// because saas mode splits one product across three hosts and lets
+	// anyone create an organization. A single-mode install has one origin
+	// and one organization created by `lotus init`, so those routes are not
+	// registered at all — the route table itself documents what exists
+	// where, instead of a runtime 404 that looks like a bug.
+	if d.Cfg.IsSingle() {
+		registerSingleModeAuthRoutes(app, authDeps, d.Cfg.Dev)
+	} else {
+		registerSaaSAuthRoutes(app, authDeps)
+	}
 
 	// Tenant host only (task 4.1/4.2): the app shell's dashboard, plus a
 	// minimal real project-creation page (name+slug only — the fuller
@@ -218,4 +186,79 @@ func home(renderer *httpx.Renderer) fiber.Handler {
 		c.Type("html")
 		return renderer.Render(c, "pages/home.html", httpx.ViewData{Title: "Home"})
 	}
+}
+
+// registerSaaSAuthRoutes registers everything that only makes sense when
+// the auth host and the tenant hosts are different origins.
+func registerSaaSAuthRoutes(app *fiber.App, authDeps authn.Deps) {
+	// Auth host only (tasks 1.1/1.2). RequireAuth 404s these on any tenant
+	// subdomain or the apex, closing the cross-host bug class task 0.5
+	// exists to prevent. Public: these endpoints exist specifically to
+	// establish a session — requiring one first would be a deadlock.
+	app.Get("/login/:provider", tenant.RequireAuth(),
+		authz.Public("starts OAuth; there is no session yet by definition"), authn.Login(authDeps))
+	app.Get("/login/:provider/callback", tenant.RequireAuth(),
+		authz.Public("OAuth provider redirect target; establishes the session"), authn.Callback(authDeps))
+	app.Get("/handoff/authorize", tenant.RequireAuth(),
+		authz.Public("handoff step 2/3; runs before the tenant session exists"), authn.HandoffAuthorize(authDeps))
+
+	// Tenant host only (task 1.2). Same reasoning: these establish the
+	// tenant session, so they can't require one first.
+	app.Get("/handoff/start", tenant.RequireTenant(),
+		authz.Public("handoff step 1; starts the flow that creates the tenant session"), authn.HandoffStart(authDeps))
+	app.Get("/handoff/finish", tenant.RequireTenant(),
+		authz.Public("handoff step 4; creates the tenant session"), authn.HandoffFinish(authDeps))
+
+	// Auth host only (task 1.6): signup and onboarding, gated by a global
+	// session rather than an org permission — there's no organization yet
+	// for most of this flow, so authz.Require doesn't apply; Public here
+	// documents that RequireGlobalSession (not a permission check) is the
+	// actual gate. /onboarding/invite's own org-membership check happens
+	// inside the handler (see requireOwnedOrg) since it depends on the
+	// ?org= query param, not something a static route guard can express.
+	app.Get("/signup", tenant.RequireAuth(),
+		authz.Public("pre-session by definition; the entry point into OAuth"), authn.Signup(authDeps))
+	app.Get("/welcome", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
+		authz.Public("gated by RequireGlobalSession, not an org permission"), authn.Welcome(authDeps))
+	app.Post("/welcome", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
+		authz.Public("gated by RequireGlobalSession, not an org permission"), authn.SubmitWelcome(authDeps))
+	app.Get("/onboarding/org", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
+		authz.Public("gated by RequireGlobalSession, not an org permission"), authn.OnboardingOrg(authDeps))
+	app.Get("/onboarding/slug-check", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
+		authz.Public("gated by RequireGlobalSession, not an org permission"), authn.SlugCheck(authDeps))
+	app.Post("/onboarding/org", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
+		authz.Public("gated by RequireGlobalSession, not an org permission"), authn.SubmitOnboardingOrg(authDeps))
+	app.Get("/onboarding/invite", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
+		authz.Public("membership+permission checked inside the handler against ?org="), authn.OnboardingInvite(authDeps))
+	app.Post("/onboarding/invite", tenant.RequireAuth(), authn.RequireGlobalSession(authDeps),
+		authz.Public("membership+permission checked inside the handler against ?org="), authn.SubmitOnboardingInvite(authDeps))
+
+	// Auth host only (task 1.7): the invitation accept/decline flow.
+	// Public: an invitee has no session yet by definition, and decline
+	// deliberately never requires one.
+	app.Get("/invite/:token", tenant.RequireAuth(),
+		authz.Public("pre-session by definition; shows the accept/login prompt"), authn.InviteLanding(authDeps))
+	app.Post("/invite/:token/confirm", tenant.RequireAuth(),
+		authz.Public("explicit user-confirmed accept for a mismatched-email invite"), authn.InviteConfirm(authDeps))
+	app.Post("/invite/:token/decline", tenant.RequireAuth(),
+		authz.Public("declining must not require a login the person never wanted"), authn.InviteDecline(authDeps))
+}
+
+// registerSingleModeAuthRoutes registers the subset that still applies on
+// one origin: OAuth/OIDC login itself, and the invitation flow that is how
+// members join an install whose organization already exists. There is no
+// handoff (nothing to bridge) and no signup (the org comes from
+// `lotus init`).
+func registerSingleModeAuthRoutes(app *fiber.App, authDeps authn.Deps, devMode bool) {
+	app.Get("/login/:provider", tenant.RequireAuth(),
+		authz.Public("starts OAuth; there is no session yet by definition"), authn.Login(authDeps))
+	app.Get("/login/:provider/callback", tenant.RequireAuth(),
+		authz.Public("OAuth provider redirect target; establishes the session"), authn.Callback(authDeps))
+
+	app.Get("/invite/:token", tenant.RequireAuth(),
+		authz.Public("pre-session by definition; shows the accept/login prompt"), authn.InviteLanding(authDeps))
+	app.Post("/invite/:token/confirm", tenant.RequireAuth(),
+		authz.Public("explicit user-confirmed accept for a mismatched-email invite"), authn.InviteConfirm(authDeps))
+	app.Post("/invite/:token/decline", tenant.RequireAuth(),
+		authz.Public("declining must not require a login the person never wanted"), authn.InviteDecline(authDeps))
 }

@@ -5,6 +5,9 @@ import (
 	"bufio"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
+	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -15,6 +18,19 @@ import (
 // exactly why it must never be relied on outside dev — production sets
 // LOTUS_KEK explicitly (README), so this value is never in scope there.
 const devOnlyKEK = "bG90dXMtZGV2LW9ubHkta2VrLW5vdC1mb3ItcHJvZAA="
+
+// Mode is the deployment shape this process runs in. ModeSaaS is the
+// multi-tenant product: three host kinds (apex / auth / tenant), wildcard
+// DNS, one organization per subdomain. ModeSingle is a self-hosted or
+// local install: one origin, exactly one organization, no subdomains and
+// therefore no wildcard DNS or wildcard certificate to arrange.
+//
+// The default is deliberately ModeSaaS so that an existing deployment that
+// sets no LOTUS_MODE keeps behaving exactly as before.
+const (
+	ModeSaaS   = "saas"
+	ModeSingle = "single"
+)
 
 type Config struct {
 	Addr        string
@@ -34,6 +50,15 @@ type Config struct {
 	// (tracked as a decision in ActiveCollab project 697) — the default
 	// below is dev-only.
 	BaseDomain string
+
+	// Mode is ModeSaaS or ModeSingle; see the constants above.
+	Mode string
+
+	// URL is the absolute base URL of a single-mode install, e.g.
+	// "http://localhost:8008". It replaces BaseDomain there: with no
+	// subdomains there is no domain to carve up, only one origin to build
+	// absolute links against. Unused in saas mode, required in single mode.
+	URL string
 
 	// KEK is the base64-encoded key-encryption-key for envelope-encrypting
 	// per-organization integration credentials (task 2.2). A fixed,
@@ -62,8 +87,66 @@ type Config struct {
 	SMTPFrom string
 }
 
-func (c Config) AuthHost() string              { return "auth." + c.BaseDomain }
-func (c Config) TenantHost(slug string) string { return slug + "." + c.BaseDomain }
+// IsSingle reports whether this process runs as a single-organization
+// install. It is the one predicate the resolver, the route table, and the
+// provider registry all branch on.
+func (c Config) IsSingle() bool { return c.Mode == ModeSingle }
+
+// AuthHost and TenantHost describe the saas-mode subdomain layout. In
+// single mode that layout does not exist, so calling either is a
+// programming error rather than a recoverable condition — panicking turns
+// it into a test failure instead of a malformed link shipped to a user.
+func (c Config) AuthHost() string {
+	if c.IsSingle() {
+		panic("config: AuthHost is meaningless in single mode; use BaseURL")
+	}
+	return "auth." + c.BaseDomain
+}
+
+func (c Config) TenantHost(slug string) string {
+	if c.IsSingle() {
+		panic("config: TenantHost is meaningless in single mode; use BaseURL")
+	}
+	return slug + "." + c.BaseDomain
+}
+
+// BaseURL is the absolute origin pre-session links are built against —
+// OAuth redirect URIs and the links in invitation emails. In saas mode
+// that is always the auth host, since every pre-session flow lives there;
+// in single mode it is the install's one origin.
+func (c Config) BaseURL() string {
+	if c.IsSingle() {
+		// Trimmed here rather than only in Load: a Config built directly
+		// (tests, embedders) must behave identically to one loaded from the
+		// environment, or "<url>/" silently yields "//login/...".
+		return strings.TrimSuffix(c.URL, "/")
+	}
+	return c.Scheme() + "://" + c.AuthHost()
+}
+
+// Validate checks the combinations Load cannot: Load reads whatever is in
+// the environment, Validate decides whether that combination can actually
+// serve. Called once at startup so a misconfiguration fails the deploy
+// rather than the first user's login.
+func (c Config) Validate() error {
+	switch c.Mode {
+	case ModeSaaS:
+		if c.BaseDomain == "" {
+			return errors.New("config: LOTUS_BASE_DOMAIN is required in saas mode")
+		}
+	case ModeSingle:
+		if c.URL == "" {
+			return errors.New("config: LOTUS_URL is required when LOTUS_MODE=single")
+		}
+		u, err := url.Parse(c.URL)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("config: LOTUS_URL must be an absolute URL like http://localhost:8008, got %q", c.URL)
+		}
+	default:
+		return fmt.Errorf("config: LOTUS_MODE must be %q or %q, got %q", ModeSaaS, ModeSingle, c.Mode)
+	}
+	return nil
+}
 
 // Scheme is "https" outside dev mode, "http" in it — used to build
 // absolute URLs (OAuth redirect URIs) that need a real scheme, not just a
@@ -93,6 +176,8 @@ func Load() Config {
 		Dev:                os.Getenv("LOTUS_DEV") == "1",
 		SessionSecret:      os.Getenv("SESSION_SECRET"),
 		BaseDomain:         envOr("LOTUS_BASE_DOMAIN", "lotus.localhost"),
+		Mode:               envOr("LOTUS_MODE", ModeSaaS),
+		URL:                strings.TrimSuffix(os.Getenv("LOTUS_URL"), "/"),
 		KEK:                envOr("LOTUS_KEK", devOnlyKEK),
 		WorkerCount:        envInt("LOTUS_WORKER_COUNT", 4),
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),

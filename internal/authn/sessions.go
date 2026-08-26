@@ -62,11 +62,11 @@ func RequireTenantSession(deps Deps) fiber.Handler {
 
 		cookieVal := c.Cookies(cookieName(tenantSessionCookieBase, deps.CookieSecure))
 		if cookieVal == "" {
-			return unauthenticated(c)
+			return unauthenticated(c, deps.Cfg.IsSingle())
 		}
 		session, err := global.SessionByID(c.Context(), deps.DB, sha256Hex(cookieVal), time.Now().Add(-tenantSessionIdleTTL))
 		if err != nil || session.OrgID == nil || *session.OrgID != resolvedOrg.ID {
-			return unauthenticated(c)
+			return unauthenticated(c, deps.Cfg.IsSingle())
 		}
 
 		// The resolver's org cache (task 0.5) can be up to 30s stale, which
@@ -74,14 +74,14 @@ func RequireTenantSession(deps Deps) fiber.Handler {
 		// request sees the change" — fetch perm_epoch fresh, not cached.
 		org, err := global.OrgByID(c.Context(), deps.DB, resolvedOrg.ID)
 		if err != nil {
-			return unauthenticated(c)
+			return unauthenticated(c, deps.Cfg.IsSingle())
 		}
 
 		if session.PermEpoch != org.PermEpoch {
 			if _, err := global.ActiveMembership(c.Context(), deps.DB, session.UserID, org.ID); err != nil {
 				_ = global.RevokeSession(c.Context(), deps.DB, session.ID)
 				c.ClearCookie(cookieName(tenantSessionCookieBase, deps.CookieSecure))
-				return unauthenticated(c)
+				return unauthenticated(c, deps.Cfg.IsSingle())
 			}
 
 			raw := randToken(32)
@@ -136,9 +136,22 @@ func RequireGlobalSession(deps Deps) fiber.Handler {
 	}
 }
 
-func unauthenticated(c *fiber.Ctx) error {
+// unauthenticated sends a browser navigation to wherever this deployment
+// begins a login, and anything else (htmx fragment, POST, API client) a
+// plain 401.
+//
+// The entry point differs by mode and must: /handoff/start only exists in
+// saas mode, where it bridges the tenant host to the auth host. In single
+// mode there is one origin and no handoff, so redirecting there would send
+// the user to a route that is deliberately not registered — a 404 that
+// looks like a broken app.
+func unauthenticated(c *fiber.Ctx, single bool) error {
 	if c.Method() == fiber.MethodGet && c.Get("HX-Request") == "" {
-		return c.Redirect("/handoff/start?return="+c.OriginalURL(), fiber.StatusFound)
+		start := "/handoff/start"
+		if single {
+			start = "/login"
+		}
+		return c.Redirect(start+"?return="+c.OriginalURL(), fiber.StatusFound)
 	}
 	return fiber.NewError(fiber.StatusUnauthorized, "session expired")
 }

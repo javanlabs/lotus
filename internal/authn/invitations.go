@@ -78,7 +78,7 @@ func SendInvitation(ctx context.Context, deps Deps, p SendInvitationParams) (str
 		return "", err
 	}
 
-	link := deps.Cfg.Scheme() + "://" + deps.Cfg.AuthHost() + "/invite/" + raw
+	link := deps.Cfg.BaseURL() + "/invite/" + raw
 	if deps.Mailer.Enabled() {
 		_ = deps.Mailer.Send(mailer.Message{
 			To:      mailer.Address{Email: p.Email},

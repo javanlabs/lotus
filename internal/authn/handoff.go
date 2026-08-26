@@ -68,7 +68,7 @@ func HandoffStart(deps Deps) fiber.Handler {
 			Path:     "/",
 		})
 
-		authURL := deps.Cfg.Scheme() + "://" + deps.Cfg.AuthHost() + "/handoff/authorize?hs=" + hsID.String()
+		authURL := deps.Cfg.BaseURL() + "/handoff/authorize?hs=" + hsID.String()
 		return c.Redirect(authURL, fiber.StatusFound)
 	}
 }
@@ -163,28 +163,9 @@ func HandoffFinish(deps Deps) fiber.Handler {
 			return friendlyMessage(c, deps.Renderer, "Wrong organization", "This link isn't valid for this organization.")
 		}
 
-		raw := randToken(32)
-		err = global.CreateSession(c.Context(), deps.DB, global.NewSession{
-			ID:        sha256Hex(raw),
-			UserID:    ticket.UserID,
-			OrgID:     &org.ID,
-			Host:      c.Hostname(),
-			PermEpoch: org.PermEpoch,
-			ExpiresAt: time.Now().Add(tenantSessionAbsoluteTTL),
-		})
-		if err != nil {
+		if err := issueTenantSession(c, deps, ticket.UserID, org); err != nil {
 			return err
 		}
-		c.Cookie(&fiber.Cookie{
-			Name:     cookieName(tenantSessionCookieBase, deps.CookieSecure),
-			Value:    raw,
-			MaxAge:   int(tenantSessionAbsoluteTTL.Seconds()),
-			HTTPOnly: true,
-			Secure:   deps.CookieSecure,
-			SameSite: fiber.CookieSameSiteLaxMode,
-			Path:     "/",
-		})
-
 		return c.Redirect(ticket.ReturnPath, fiber.StatusFound)
 	}
 }
@@ -227,4 +208,35 @@ func renderLoginPicker(c *fiber.Ctx, renderer *httpx.Renderer, providers Registr
 			ReturnPath string
 		}{names, url.QueryEscape(returnPath)},
 	})
+}
+
+// issueTenantSession mints the tenant session cookie for user in org, and
+// is the single place that happens. Saas mode reaches it at the end of the
+// handoff; single mode has no handoff to reach it from — one origin, so
+// login mints the tenant session directly — and both must produce exactly
+// the same session shape, or "logged in" would mean two different things
+// depending on deployment.
+func issueTenantSession(c *fiber.Ctx, deps Deps, userID uuid.UUID, org *global.Org) error {
+	raw := randToken(32)
+	err := global.CreateSession(c.Context(), deps.DB, global.NewSession{
+		ID:        sha256Hex(raw),
+		UserID:    userID,
+		OrgID:     &org.ID,
+		Host:      c.Hostname(),
+		PermEpoch: org.PermEpoch,
+		ExpiresAt: time.Now().Add(tenantSessionAbsoluteTTL),
+	})
+	if err != nil {
+		return err
+	}
+	c.Cookie(&fiber.Cookie{
+		Name:     cookieName(tenantSessionCookieBase, deps.CookieSecure),
+		Value:    raw,
+		MaxAge:   int(tenantSessionAbsoluteTTL.Seconds()),
+		HTTPOnly: true,
+		Secure:   deps.CookieSecure,
+		SameSite: fiber.CookieSameSiteLaxMode,
+		Path:     "/",
+	})
+	return nil
 }

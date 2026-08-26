@@ -47,12 +47,17 @@ func main() {
 	}
 
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		log.Fatal(err)
+	}
 
 	switch os.Args[1] {
 	case "serve":
 		runServe(cfg)
 	case "migrate":
 		runMigrate(cfg, os.Args[2:])
+	case "init":
+		runInit(cfg, os.Args[2:])
 	case "rewrap-keys":
 		runRewrapKeys(cfg, os.Args[2:])
 	case "import-legacy":
@@ -64,7 +69,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: lotus <serve|migrate up|migrate down|rewrap-keys --old-kek=<base64>|import-legacy>")
+	fmt.Fprintln(os.Stderr, "usage: lotus <serve|migrate up|migrate down|init --org-name=<name> --owner-email=<email> [--slug=<slug>]|rewrap-keys --old-kek=<base64>|import-legacy>")
 }
 
 // runRewrapKeys is task 2.2's KEK rotation command: unwraps every
@@ -198,7 +203,7 @@ func sweepExpiredSessions(sqlDB *sqlx.DB) {
 // configured, so local dev works with zero, one, or both providers set up.
 func oauthProviders(cfg config.Config) authn.Registry {
 	registry := authn.Registry{}
-	authHostBase := cfg.Scheme() + "://" + cfg.AuthHost()
+	authHostBase := cfg.BaseURL()
 	if cfg.GitHubClientSecret != "" {
 		registry["github"] = authn.NewGitHubProvider(cfg.GitHubClientID, cfg.GitHubClientSecret, authHostBase+"/login/github/callback")
 	}

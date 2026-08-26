@@ -37,10 +37,22 @@ const (
 // Only honored when config.Dev is true; see task 0.5's acceptance criteria.
 const DevOrgHeader = "X-Lotus-Org"
 
+// singleOrgCacheKey is the orgCache key single mode caches its one
+// organization under. It is not a valid subdomain label (labels are ASCII
+// alphanumeric-and-hyphen, enforced by ValidSubdomainLabel), so it can
+// never collide with a saas-mode entry.
+const singleOrgCacheKey = "\x00single"
+
 // Resolved is the result of classifying a request's Host.
 type Resolved struct {
 	Kind HostKind
 	Org  *global.Org // non-nil only when Kind == HostTenant
+
+	// Single is true when this resolution came from a single-mode install,
+	// where one origin serves what saas mode splits across the auth host
+	// and a tenant host. The guards below read it so a route registered for
+	// either host works on that one origin.
+	Single bool
 }
 
 // Resolver turns a Host header into a Resolved classification — Layer 0 of
@@ -98,9 +110,25 @@ func (r *Resolver) Middleware() fiber.Handler {
 // so a route registered for auth.lotus.com is unreachable from any tenant
 // subdomain (and vice versa via RequireTenant) — closing a bug class that's
 // easy to miss in review.
+// In single mode that separation does not exist: one origin serves both,
+// so a resolution flagged Single passes here as well as through
+// RequireTenant. Which guard applies is therefore mode-dependent, which is
+// exactly why TestRouteCoverage runs against both modes.
 func RequireAuth() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		if resolved, ok := c.Locals(localsResolvedKey).(Resolved); !ok || resolved.Kind != HostAuth {
+		resolved, ok := c.Locals(localsResolvedKey).(Resolved)
+		if !ok {
+			return fiber.ErrNotFound
+		}
+		if resolved.Single {
+			// Before `lotus init` there is no organization to serve, so
+			// Kind is HostUnknown and this still 404s.
+			if resolved.Kind != HostTenant {
+				return fiber.ErrNotFound
+			}
+			return c.Next()
+		}
+		if resolved.Kind != HostAuth {
 			return fiber.ErrNotFound
 		}
 		return c.Next()
@@ -119,6 +147,15 @@ func RequireTenant() fiber.Handler {
 }
 
 func (r *Resolver) classify(ctx context.Context, host, devOrgHeader string) (Resolved, error) {
+	if r.cfg.IsSingle() {
+		// No host classification at all: there is no base domain to match
+		// against, and a self-hoster may reach the app by hostname, by bare
+		// IP, or through a proxy that rewrites Host. The dev org header is
+		// ignored for the same reason it exists — it selects between
+		// tenants, and there is only one.
+		return r.classifySingle(ctx)
+	}
+
 	if devOrgHeader != "" {
 		return r.classifyTenantLabel(ctx, strings.ToLower(devOrgHeader))
 	}
@@ -185,6 +222,28 @@ func (r *Resolver) classifyTenantLabel(ctx context.Context, label string) (Resol
 
 	r.cache.set(label, org)
 	return orgResolved(org), nil
+}
+
+func (r *Resolver) classifySingle(ctx context.Context) (Resolved, error) {
+	if org, ok := r.cache.get(singleOrgCacheKey); ok {
+		return singleResolved(org), nil
+	}
+	org, err := global.TheOnlyOrg(ctx, r.db)
+	if err != nil {
+		if errors.Is(err, global.ErrNoOrg) {
+			// Between `lotus migrate` and `lotus init`. 404 like any other
+			// unresolvable host rather than 500 — nothing is broken, the
+			// install simply is not initialized yet.
+			return Resolved{Kind: HostUnknown, Single: true}, nil
+		}
+		return Resolved{}, err
+	}
+	r.cache.set(singleOrgCacheKey, org)
+	return singleResolved(org), nil
+}
+
+func singleResolved(org *global.Org) Resolved {
+	return Resolved{Kind: HostTenant, Org: org, Single: true}
 }
 
 func orgResolved(org *global.Org) Resolved {

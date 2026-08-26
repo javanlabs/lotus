@@ -1,6 +1,7 @@
 package authn
 
 import (
+	"errors"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -99,6 +100,20 @@ func Callback(deps Deps) fiber.Handler {
 		}
 		if err := global.TouchLastLogin(c.Context(), db, user.ID); err != nil {
 			return err
+		}
+
+		// Single mode only: the first verified login matching the address
+		// `lotus init` nominated claims Owner. Until that happens nobody
+		// else may sign in, so a fresh instance reachable from the network
+		// is never a land-grab. A no-op once ownership is claimed.
+		if deps.Cfg.IsSingle() {
+			if _, err := ClaimOwnershipIfPending(c.Context(), db, user.ID, identity); err != nil {
+				if errors.Is(err, ErrNotTheOwner) {
+					return fiber.NewError(fiber.StatusForbidden,
+						"This instance is waiting for its first Owner to sign in.")
+				}
+				return err
+			}
 		}
 
 		if _, err := createGlobalSession(c, db, user.ID, cookieSecure); err != nil {
