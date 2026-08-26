@@ -1,0 +1,268 @@
+{{define "content"}}
+{{template "shell_open" .}}
+<div style="max-width:760px">
+  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">How scoring works</h1>
+  <p style="margin:6px 0 22px;font-size:13px;color:#6B7280;line-height:1.6">
+    Every project gets one number out of 100 — its <strong>Lotus score</strong>. This page explains
+    where that number comes from and what actually moves it.
+  </p>
+
+  <section class="lotus-card lotus-shape" style="padding:18px 20px;margin-bottom:14px">
+    <h2 style="margin:0 0 8px;font-size:15px;font-weight:600;color:#43284E">The short version</h2>
+    <p style="margin:0;font-size:13px;color:#374151;line-height:1.65">
+      Lotus reads four tools you already use — GitLab, SonarQube, Trivy and Sentry — and turns each
+      one into its own score out of 100. Those four combine into a score for each repository, and the
+      repositories combine into the project's Lotus score.
+    </p>
+    <p style="margin:10px 0 0;font-size:13px;color:#374151;line-height:1.65">
+      Nothing here is a judgement Lotus invents. Every number traces back to something one of those
+      four tools already reported about your code.
+    </p>
+  </section>
+
+  <section class="lotus-card lotus-shape" style="padding:18px 20px;margin-bottom:14px">
+    <h2 style="margin:0 0 4px;font-size:15px;font-weight:600;color:#43284E">The four inputs</h2>
+    <p style="margin:0 0 14px;font-size:12.5px;color:#6B7280;line-height:1.6">
+      Each is scored 0–100 on its own, then coloured green, amber or red by a separate rule — so a
+      repository can hold a decent score and still be red, if the thing that turns it red is a
+      pass-or-fail matter.
+    </p>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="padding:12px 14px;background:rgba(67,40,78,.028);border-radius:10px 3px 10px 3px">
+        <div style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#23808F">GITLAB · PIPELINES</div>
+        <p style="margin:6px 0 0;font-size:12.5px;color:#374151;line-height:1.6">
+          <strong>The score averages two things:</strong> your pipeline success rate, and branch
+          hygiene — the share of branches that have seen a commit recently. If 9 of your last 10
+          pipelines passed (90) but only half your branches are alive (50), that's (90 + 50) ÷ 2 = 70.
+        </p>
+        <p style="margin:6px 0 0;font-size:12.5px;color:#6B7280;line-height:1.6">
+          <strong>Colour:</strong> green when the most recent pipeline passed, red when it failed,
+          amber while one is still running.<br>
+          <strong>To raise it:</strong> fix what makes pipelines fail — a flaky test that fails one run
+          in five costs 20 points on that half — and delete or merge branches nobody has touched in
+          weeks. A green pipeline no longer hides a branch graveyard.
+        </p>
+      </div>
+
+      <div style="padding:12px 14px;background:rgba(67,40,78,.028);border-radius:10px 3px 10px 3px">
+        <div style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#23808F">SONARQUBE · CODE QUALITY</div>
+        <p style="margin:6px 0 0;font-size:12.5px;color:#374151;line-height:1.6">
+          <strong>The quality gate dominates.</strong> First a base is built by averaging your test
+          coverage with the worst of SonarQube&rsquo;s three ratings — reliability, security,
+          maintainability, where A is 100 down to E at 20 (those ratings are how SonarQube itself
+          summarises bugs, vulnerabilities and code smells). Then the gate scales the whole thing:
+          <strong>passed keeps it, a warning takes it to 75%, a failed gate cuts it in half.</strong>
+        </p>
+        <p style="margin:6px 0 0;font-size:12.5px;color:#6B7280;line-height:1.6">
+          Example: gate passed, 95% coverage, all ratings A → (95 + 100) ÷ 2 = 98. But 89% coverage
+          with a <em>failing</em> gate → 89 × 0.5 = 44. No amount of coverage can push a failing
+          project above 50 — the gate is the pass/fail verdict your own team configured, and good
+          numbers elsewhere must not be able to rescue it.<br>
+          <strong>Colour:</strong> follows the quality gate — green when it passes, red when it fails.<br>
+          <strong>To raise it:</strong> get the gate passing first; nothing else moves the score as
+          much. Then fix whatever drags your worst rating — one D among the three sets the grade —
+          then write tests for code that has none.
+        </p>
+      </div>
+
+      <div style="padding:12px 14px;background:rgba(67,40,78,.028);border-radius:10px 3px 10px 3px">
+        <div style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#23808F">TRIVY · VULNERABILITIES</div>
+        <p style="margin:6px 0 0;font-size:12.5px;color:#374151;line-height:1.6">
+          <strong>Starts at 100. Each critical finding costs 20 points, each high costs 5.</strong>
+          Medium and low findings are counted and shown, but cost nothing.
+        </p>
+        <p style="margin:6px 0 0;font-size:12.5px;color:#6B7280;line-height:1.6">
+          So one critical = 80. Two criticals = 60. One critical plus four highs = 60 as well.<br>
+          <strong>Colour:</strong> red if there is any critical, amber if there is any high, green
+          otherwise.<br>
+          <strong>To raise it:</strong> criticals first — each is worth four highs. Most are fixed by
+          bumping a dependency, not by changing your own code.
+        </p>
+      </div>
+
+      <div style="padding:12px 14px;background:rgba(67,40,78,.028);border-radius:10px 3px 10px 3px">
+        <div style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#23808F">SENTRY · ERRORS IN PRODUCTION</div>
+        <p style="margin:6px 0 0;font-size:12.5px;color:#374151;line-height:1.6">
+          The only one that isn't a simple count. Lotus adds up how much <em>burden</em> your
+          unresolved issues represent, then converts that into a score — no burden is 100, and the
+          score falls away as burden grows.
+        </p>
+        <p style="margin:6px 0 0;font-size:12.5px;color:#6B7280;line-height:1.6">
+          Three things decide an issue's weight:
+        </p>
+        <ul style="margin:6px 0 0;padding-left:18px;font-size:12.5px;color:#6B7280;line-height:1.7">
+          <li><strong>How Sentry classifies it</strong> — escalating counts 5×, regressed 4×, new 2×,
+            ongoing 1×. An issue getting worse right now hurts five times as much as one you already
+            know about.</li>
+          <li><strong>How often it fires</strong> — but on a log scale, so 1,000 events is roughly
+            three times one event, not a thousand times.</li>
+          <li><strong>How recently</strong> — an issue's weight halves every 7 days it goes unseen. An
+            error that stopped happening fades on its own.</li>
+        </ul>
+        <p style="margin:8px 0 0;font-size:12.5px;color:#6B7280;line-height:1.6">
+          <strong>Colour:</strong> the score becomes a grade — A is 90+, B is 80+, C is 70+, D is 60+,
+          E below that. A and B are green, C is amber, D and E are red.<br>
+          <strong>To raise it:</strong> resolve escalating and regressed issues first. One escalating
+          issue outweighs five ongoing ones.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="lotus-card lotus-shape" style="padding:18px 20px;margin-bottom:14px">
+    <h2 style="margin:0 0 4px;font-size:15px;font-weight:600;color:#43284E">From four scores to one</h2>
+
+    <p style="margin:10px 0 0;font-size:13px;color:#374151;line-height:1.65">
+      <strong>A repository's score</strong> is the average of whichever of the four are set up for it.
+      A repository with only GitLab and SonarQube is averaged over those two — not penalised for the
+      two it doesn't have.
+    </p>
+
+    <p style="margin:10px 0 0;font-size:13px;color:#374151;line-height:1.65">
+      <strong>A project's Lotus score</strong> takes one extra step. Lotus first averages each tool
+      across every repository — all your GitLab scores together, all your SonarQube scores together —
+      and only then averages those four results.
+    </p>
+
+    <div style="margin:12px 0 0;padding:12px 14px;background:rgba(35,128,143,.06);border-radius:10px 3px 10px 3px">
+      <div style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#23808F">WHY THE EXTRA STEP</div>
+      <p style="margin:6px 0 0;font-size:12.5px;color:#374151;line-height:1.65">
+        Say a project has ten repositories wired to GitLab but only one SonarQube key. Averaging
+        everything in one go would let GitLab outvote SonarQube ten to one — and adding an eleventh
+        repository would shift the project's health without anything about its quality changing.
+        Averaging per tool first gives each tool you use an equal say, however many repositories
+        report it.
+      </p>
+    </div>
+
+    <p style="margin:12px 0 0;font-size:13px;color:#374151;line-height:1.65">
+      <strong>Colours work the other way: worst wins.</strong> One red repository makes the project
+      red, however healthy the rest are. A project's colour tells you whether anything needs
+      attention; its score tells you how much.
+    </p>
+  </section>
+
+  <section class="lotus-card lotus-shape" style="padding:18px 20px;margin-bottom:14px">
+    <h2 style="margin:0 0 4px;font-size:15px;font-weight:600;color:#43284E">A worked example</h2>
+    <p style="margin:0 0 16px;font-size:12.5px;color:#6B7280;line-height:1.6">
+      An imaginary project, <strong>Storefront</strong>, with three repositories. The numbers are
+      chosen to make the arithmetic easy to follow — everything Lotus shows comes out of one grid,
+      read in two different directions.
+    </p>
+
+    <div style="overflow-x:auto">
+      <table style="border-collapse:collapse;width:100%;min-width:460px;font-size:12.5px">
+        <thead>
+          <tr style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#6B7280">
+            <th style="text-align:left;padding:0 10px 7px 0;font-weight:600">REPOSITORY</th>
+            <th style="text-align:center;padding:0 6px 7px;font-weight:600">GITLAB</th>
+            <th style="text-align:center;padding:0 6px 7px;font-weight:600">SONARQUBE</th>
+            <th style="text-align:center;padding:0 6px 7px;font-weight:600">TRIVY</th>
+            <th style="text-align:center;padding:0 0 7px 10px;font-weight:600;color:#43284E">ITS SCORE</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-top:1px solid #F3F4F6">
+            <td style="padding:7px 10px 7px 0;color:#111827;font-weight:500">payment-api</td>
+            <td style="text-align:center;padding:7px 6px;font:500 12px 'IBM Plex Mono',monospace;color:#374151">90</td>
+            <td style="text-align:center;padding:7px 6px;font:500 12px 'IBM Plex Mono',monospace;color:#374151">30</td>
+            <td style="text-align:center;padding:7px 6px;font:500 12px 'IBM Plex Mono',monospace;color:#374151">60</td>
+            <td style="text-align:center;padding:7px 0 7px 10px;font:600 12px 'IBM Plex Mono',monospace;color:#43284E;background:rgba(67,40,78,.04)">60</td>
+          </tr>
+          <tr style="border-top:1px solid #F3F4F6">
+            <td style="padding:7px 10px 7px 0;color:#111827;font-weight:500">web-app</td>
+            <td style="text-align:center;padding:7px 6px;font:500 12px 'IBM Plex Mono',monospace;color:#374151">90</td>
+            <td style="text-align:center;padding:7px 6px;font:500 12px 'IBM Plex Mono',monospace;color:#9CA3AF">–</td>
+            <td style="text-align:center;padding:7px 6px;font:500 12px 'IBM Plex Mono',monospace;color:#374151">90</td>
+            <td style="text-align:center;padding:7px 0 7px 10px;font:600 12px 'IBM Plex Mono',monospace;color:#43284E;background:rgba(67,40,78,.04)">90</td>
+          </tr>
+          <tr style="border-top:1px solid #F3F4F6">
+            <td style="padding:7px 10px 7px 0;color:#111827;font-weight:500">worker</td>
+            <td style="text-align:center;padding:7px 6px;font:500 12px 'IBM Plex Mono',monospace;color:#374151">90</td>
+            <td style="text-align:center;padding:7px 6px;font:500 12px 'IBM Plex Mono',monospace;color:#9CA3AF">–</td>
+            <td style="text-align:center;padding:7px 6px;font:500 12px 'IBM Plex Mono',monospace;color:#9CA3AF">–</td>
+            <td style="text-align:center;padding:7px 0 7px 10px;font:600 12px 'IBM Plex Mono',monospace;color:#43284E;background:rgba(67,40,78,.04)">90</td>
+          </tr>
+          <tr style="border-top:2px solid rgba(67,40,78,.12)">
+            <td style="padding:8px 10px 8px 0;font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#23808F">AVERAGE</td>
+            <td style="text-align:center;padding:8px 6px;font:600 12px 'IBM Plex Mono',monospace;color:#23808F;background:rgba(35,128,143,.07)">90</td>
+            <td style="text-align:center;padding:8px 6px;font:600 12px 'IBM Plex Mono',monospace;color:#23808F;background:rgba(35,128,143,.07)">30</td>
+            <td style="text-align:center;padding:8px 6px;font:600 12px 'IBM Plex Mono',monospace;color:#23808F;background:rgba(35,128,143,.07)">75</td>
+            <td style="padding:8px 0 8px 10px"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin:8px 0 0;font-size:11.5px;color:#9CA3AF;line-height:1.6">
+      A dash means that tool isn&rsquo;t set up for that repository — it is skipped, never counted
+      as zero.
+    </p>
+
+    <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
+      <div style="padding:12px 14px;background:rgba(67,40,78,.04);border-radius:10px 3px 10px 3px">
+        <div style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#43284E">READ ACROSS A ROW → A REPOSITORY&rsquo;S SCORE</div>
+        <p style="margin:6px 0 0;font-size:12.5px;color:#374151;line-height:1.65">
+          Average the tools a repository reports.<br>
+          <span style="font:500 12px 'IBM Plex Mono',monospace">payment-api: (90 + 30 + 60) ÷ 3 = <strong>60</strong></span><br>
+          <span style="font:500 12px 'IBM Plex Mono',monospace">web-app: (90 + 90) ÷ 2 = <strong>90</strong></span>
+          <span style="font-size:11.5px;color:#6B7280">&nbsp;&mdash; the missing SonarQube is skipped, so it divides by 2</span><br>
+          <span style="font:500 12px 'IBM Plex Mono',monospace">worker: 90 ÷ 1 = <strong>90</strong></span>
+        </p>
+      </div>
+
+      <div style="padding:12px 14px;background:rgba(35,128,143,.07);border-radius:10px 3px 10px 3px">
+        <div style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#23808F">READ DOWN THE COLUMNS ↓ THE PROJECT&rsquo;S LOTUS SCORE</div>
+        <p style="margin:6px 0 0;font-size:12.5px;color:#374151;line-height:1.65">
+          First average each tool across the repositories that report it:<br>
+          <span style="font:500 12px 'IBM Plex Mono',monospace">GitLab: (90 + 90 + 90) ÷ 3 = <strong>90</strong></span><br>
+          <span style="font:500 12px 'IBM Plex Mono',monospace">SonarQube: 30 ÷ 1 = <strong>30</strong></span><br>
+          <span style="font:500 12px 'IBM Plex Mono',monospace">Trivy: (60 + 90) ÷ 2 = <strong>75</strong></span><br>
+          Then average those three:<br>
+          <span style="font:500 12px 'IBM Plex Mono',monospace">(90 + 30 + 75) ÷ 3 = <strong style="color:#43284E">65</strong></span>
+          <span style="font-size:11.5px;color:#6B7280">&nbsp;&larr; Storefront&rsquo;s Lotus score</span>
+        </p>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;padding:12px 14px;background:#FCEDF0;border-radius:10px 3px 10px 3px">
+      <div style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#A94D68">THE PART THAT SURPRISES PEOPLE</div>
+      <p style="margin:6px 0 0;font-size:12.5px;color:#374151;line-height:1.65">
+        The Lotus score is <strong>not</strong> the average of the repository scores. That would be
+        <span style="font:500 12px 'IBM Plex Mono',monospace">(60 + 90 + 90) ÷ 3 = <strong>80</strong></span>
+        — a comfortable number that hides the real problem. The actual score is <strong>65</strong>,
+        because SonarQube&rsquo;s lone 30 counts as a full third of the project, not as one-sixth of
+        one repository. Coverage is bad wherever it is measured; the score says so instead of letting
+        two repositories that don&rsquo;t measure it drown that out. Fixing payment-api&rsquo;s
+        coverage — or adding coverage to the other two repos — is what moves this project.
+      </p>
+    </div>
+  </section>
+
+  <section class="lotus-card lotus-shape" style="padding:18px 20px;margin-bottom:14px">
+    <h2 style="margin:0 0 10px;font-size:15px;font-weight:600;color:#43284E">Where to start</h2>
+    <ol style="margin:0;padding-left:18px;font-size:13px;color:#374151;line-height:1.8">
+      <li><strong>Anything red.</strong> Red means a tool said this is failing right now — a broken
+        pipeline, a failed quality gate, a critical vulnerability. These are usually also the
+        cheapest to fix.</li>
+      <li><strong>Critical vulnerabilities.</strong> Worth 20 points each and usually one dependency
+        bump away.</li>
+      <li><strong>Escalating Sentry issues.</strong> Weighted 5× and getting worse while you read
+        this.</li>
+      <li><strong>Coverage on untested files.</strong> The slowest to move, but the one that stays
+        moved.</li>
+    </ol>
+    <p style="margin:12px 0 0;font-size:12.5px;color:#6B7280;line-height:1.65">
+      A repository with no integration set up for a tool simply isn't measured on it — it shows as
+      "no data" rather than as a zero. Connecting a tool can therefore move a score in either
+      direction: it starts measuring something that was previously invisible.
+    </p>
+  </section>
+
+  <p style="margin:0;font-size:12px;color:#9CA3AF;line-height:1.6">
+    Scores refresh after each sync. A change you make now shows up on the next collection run for
+    that repository, not immediately.
+  </p>
+</div>
+{{template "shell_close" .}}
+{{end}}

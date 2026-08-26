@@ -172,6 +172,8 @@ func New(d Deps) *fiber.App {
 
 	// Tenant host only (task 3.4): push-direction Trivy ingest, authenticated
 	// by a service token — see internal/web/ingest.go's own doc comment.
+	registerScoringDocsRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+
 	registerIngestRoutes(app, d, authDeps)
 
 	return app
