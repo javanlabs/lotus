@@ -180,3 +180,31 @@ func strPtr(s string) *string {
 	}
 	return &s
 }
+
+// ImportedSnapshot is what a legacy export carries per image: aggregate
+// severity counts and scan metadata, but no raw report — the old
+// deployment stored Harbor's scan summary, not Trivy's findings.
+type ImportedSnapshot struct {
+	Digest         string
+	Tags           []string
+	Severity       string
+	Counts         Counts
+	Pulls          *int
+	ArtifactCount  *int
+	ImagePushedAt  *time.Time
+	ScanFinishedAt *time.Time
+}
+
+// BuildImportedResult turns an imported snapshot into the same
+// collector.Result a live registry pull produces, so an import goes
+// through Persist and the facts writer exactly like collected data —
+// one write path, one set of invariants. Source is "registry" because
+// that is what these scans were; the schema's source CHECK knows no
+// third value and an import is not a new kind of origin, just an old one.
+func BuildImportedResult(in ImportedSnapshot, failOn string) (collector.Result, error) {
+	return buildResult(trivyDetail{
+		Source: "registry", Digest: in.Digest, Tags: in.Tags, Severity: in.Severity,
+		Counts: in.Counts, Pulls: in.Pulls, ArtifactCount: in.ArtifactCount,
+		ImagePushedAt: in.ImagePushedAt, ScanFinishedAt: in.ScanFinishedAt,
+	}, failOn)
+}
