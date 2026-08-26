@@ -1,0 +1,35 @@
+# air (github.com/air-verse/air) config for `make dev`'s hot-reload loop.
+#
+# The main package lives at ./cmd/lotus, not the repo root, so air's own
+# default build command (`go build .`) doesn't find it — this file is
+# what points air at the right package and subcommand ("serve").
+#
+# Only .go changes trigger a rebuild+restart here: LOTUS_DEV=1 (set by
+# the `dev` Makefile target before it launches air) already makes the
+# running process re-read templates/static straight from disk on every
+# request, so a template edit hot-reloads on its own without needing air
+# to kill and restart the whole server.
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/main ./cmd/lotus"
+  entrypoint = "tmp/main"
+  full_bin = "./tmp/main serve"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "bin", "e2e", "node_modules", "web/static", ".git"]
+  delay = 1000
+  stop_on_error = true
+  log = "build-errors.log"
+
+[log]
+  time = false
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  clean_on_exit = true

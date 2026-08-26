@@ -68,6 +68,18 @@ func New(d Deps) *fiber.App {
 	// invariant holds structurally, by nothing being registered above it.
 	app.Use(d.Resolver.Middleware())
 
+	// In dev the assets are read from disk on every request, but the
+	// browser still caches them — so an edited stylesheet keeps rendering
+	// the old rules until someone thinks to hard-reload, which reads as a
+	// broken change rather than a stale cache. Opt out of caching there;
+	// production keeps the default (immutable, fingerprinted-by-build
+	// assets that should cache).
+	if d.Cfg.Dev {
+		app.Use("/static", func(c *fiber.Ctx) error {
+			c.Set("Cache-Control", "no-store")
+			return c.Next()
+		})
+	}
 	app.Use("/static", authz.Public("static assets: no request-specific data, safe on every host"),
 		filesystem.New(filesystem.Config{Root: http.FS(d.StaticFS)}))
 
