@@ -1,6 +1,9 @@
 {{/* status_badge (task 4.2's "badge package") renders one metric-kind
-     pill. Takes (dict "Text" "3 stale branches" "Tone" "pass|warn|fail|none"). */}}
-{{define "status_badge"}}<span class="lotus-badge lotus-badge-{{.Tone}}">{{.Text}}</span>{{end}}
+     pill. Takes (dict "Text" "70" "Tone" "pass|warn|fail|none" "Title" "4
+     stale branches"). Text is the score; Title is the collector's own
+     phrasing, shown on hover so the reason behind the number is one
+     pointer away rather than crowding the cell. */}}
+{{define "status_badge"}}<span class="lotus-badge lotus-badge-{{.Tone}}"{{if .Title}} title="{{.Title}}"{{end}}>{{.Text}}</span>{{end}}
 
 {{/* status_dot is the small vertical bar used next to a repository name
      to show its rollup status at a glance, same Tone vocabulary. */}}

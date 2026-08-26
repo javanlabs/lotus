@@ -102,6 +102,14 @@ body {
 
 /* Status badge pill — used by the repositories table and the legend. */
 .lotus-badge {
+  /* Clamp rather than wrap: an integration's headline can be far longer
+     than the mockup's terse "ok"/"clean" ("0 bugs + vulnerabilities"), and
+     wrapping pushes the row past its fixed 38px height and misaligns the
+     whole table. The full text stays available via the title attribute. */
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -139,7 +147,10 @@ body {
 .lotus-repo-row {
   display: grid;
   min-width: 700px;
-  grid-template-columns: 26px minmax(190px, 1.5fr) 84px repeat(4, minmax(78px, .9fr));
+  /* Set by dashboard_block from the view model's GridTemplate, so the
+     header row and the data rows can never disagree about column count.
+     The fallback is the organization dashboard's four-column shape. */
+  grid-template-columns: var(--lotus-row-grid, 26px minmax(190px, 1.5fr) 84px repeat(4, minmax(78px, .9fr)));
   align-items: center;
   padding: 0 14px;
   height: 38px;

@@ -6,6 +6,9 @@
   <title>{{if .Title}}{{.Title}} · Lotus{{else}}Lotus{{end}}</title>
   <link rel="stylesheet" href="/static/css/app.built.css">
   <script src="/static/vendor/htmx.min.js" defer></script>
+  <!-- Before Alpine: it registers the component functions Alpine's
+       x-data expressions resolve at init. -->
+  <script src="/static/js/lotus.js"></script>
   <script src="/static/vendor/alpine.min.js" defer></script>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">

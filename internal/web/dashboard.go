@@ -42,7 +42,7 @@ func dashboardPage(d Deps) fiber.Handler {
 				return writeRepoErr(c, err)
 			}
 			for _, comp := range comps {
-				components = append(components, componentInfo{ID: comp.ID, Name: comp.Name, ProjectName: p.Name})
+				components = append(components, componentInfo{ID: comp.ID, Name: comp.Name, ProjectID: p.ID, ProjectName: p.Name})
 			}
 		}
 
@@ -55,12 +55,12 @@ func dashboardPage(d Deps) fiber.Handler {
 			metrics[m.ComponentID] = m
 		}
 
-		subtitle := fmt.Sprintf("%d repositor%s across %s · every metric, surfaced", len(components), plural(len(components), "y", "ies"), org.Name)
-		vm := buildDashboardViewModel(subtitle, len(projects), components, metrics)
+		subtitle := fmt.Sprintf("%d project%s · %d component%s across %s", len(projects), plural(len(projects), "", "s"), len(components), plural(len(components), "", "s"), org.Name)
+		vm := buildProjectDashboardViewModel(subtitle, len(projects), components, metrics)
 
 		c.Type("html")
-		return d.Renderer.Render(c, "pages/dashboard.html", httpx.ViewData{
-			Title: "Dashboard", Org: org, User: user, Nav: buildNav("dashboard", len(projects)),
+		return d.Renderer.Render(c, "pages/projects.html", httpx.ViewData{
+			Title: "Projects", Org: org, User: user, Nav: buildNav("projects", len(projects)),
 			Data: vm,
 		})
 	}
@@ -74,6 +74,17 @@ func plural(n int, singular, plural string) string {
 }
 
 func registerDashboardRoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
-	app.Get("/dashboard", tenant.RequireTenant(), requireSession, loadPrincipal,
+	// /projects, not /dashboard: the list of projects IS the landing page
+	// for now. Registered here — before registerProjectRoutes' JSON
+	// handler for the same path — so the browser gets HTML. See AGENTS.md
+	// on the shadowed JSON endpoints.
+	app.Get("/projects", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("dashboard.read"), dashboardPage(d))
+
+	// Kept so links and bookmarks made while this lived at /dashboard keep
+	// working. Public: it only forwards, and the page it forwards to
+	// enforces its own session.
+	app.Get("/dashboard", tenant.RequireTenant(),
+		authz.Public("permanent forward to /projects; the target enforces the session"),
+		func(c *fiber.Ctx) error { return c.Redirect("/projects", fiber.StatusMovedPermanently) })
 }

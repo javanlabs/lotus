@@ -69,7 +69,7 @@
   <main style="flex:1;min-width:0;padding:22px 26px 40px;background:radial-gradient(900px 420px at 12% -8%,rgba(237,188,195,.4),transparent 60%),radial-gradient(760px 380px at 88% 4%,rgba(67,40,78,.1),transparent 62%),#F9FAFB">
 
     <nav style="display:flex;align-items:center;gap:7px;margin-bottom:14px;font-size:11.5px;color:#6B7280">
-      <a href="/dashboard" aria-label="Lotus" style="display:inline-flex;align-items:center;padding:3px 5px;border-radius:5px">{{template "lotus_logo" (dict "ID" "bc" "Width" 20 "Height" 13)}}</a>
+      <a href="/projects" aria-label="Lotus" style="display:inline-flex;align-items:center;padding:3px 5px;border-radius:5px">{{template "lotus_logo" (dict "ID" "bc" "Width" 20 "Height" 13)}}</a>
       <span style="color:#D1D5DB">/</span>
       <span style="color:#6B7280">{{if .Org}}{{.Org.Name}}{{end}}</span>
       {{range .Nav.Trail}}<span style="color:#D1D5DB">/</span>

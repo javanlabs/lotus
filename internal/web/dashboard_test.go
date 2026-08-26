@@ -90,7 +90,7 @@ func TestDashboard_EmptyOrgShowsEmptyState(t *testing.T) {
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme-empty." + dashboardTestDomain
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/dashboard", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects", raw))
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -104,7 +104,12 @@ func TestDashboard_EmptyOrgShowsEmptyState(t *testing.T) {
 	}
 }
 
-func TestDashboard_ShowsRealComponentAndKPIData(t *testing.T) {
+// TestDashboard_ShowsProjectRowNotComponentRow pins the level the org
+// dashboard aggregates at. A project is the outermost unit of the product
+// and owns the Lotus score; components are what you find after drilling
+// into one. Listing components here would skip the project level entirely,
+// which is what this used to do.
+func TestDashboard_ShowsProjectRowNotComponentRow(t *testing.T) {
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-full", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -120,13 +125,13 @@ func TestDashboard_ShowsRealComponentAndKPIData(t *testing.T) {
 		}
 		if _, err := tx.Exec(`
 			INSERT INTO component_metrics_current (org_id, project_id, component_id, metrics, status, score, updated_at)
-			VALUES ($1,$2,$3,'{"gitlab":{"status":"pass"}}'::jsonb,'pass',77,now())`,
+			VALUES ($1,$2,$3,'{"gitlab":{"status":"pass","score":77}}'::jsonb,'pass',77,now())`,
 			orgID, projectID, componentID); err != nil {
 			t.Fatalf("insert component metric: %v", err)
 		}
 	})
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/dashboard", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects", raw))
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -135,10 +140,14 @@ func TestDashboard_ShowsRealComponentAndKPIData(t *testing.T) {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	for _, want := range []string{"billing-api", "Payments", "77", "Software health"} {
+	for _, want := range []string{"Payments", "77", "Software health"} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
 		}
+	}
+	// The component's own name belongs on the project page, not here.
+	if strings.Contains(string(body), "billing-api") {
+		t.Fatalf("dashboard names the component \"billing-api\"; it should list projects only:\n%s", body)
 	}
 }
 
@@ -177,5 +186,27 @@ func TestNewProject_SubmitCreatesAndRedirects(t *testing.T) {
 	})
 	if count != 1 {
 		t.Fatalf("projects with slug=billing = %d, want 1", count)
+	}
+}
+
+// TestDashboardPathStillForwards guards the compatibility redirect left
+// behind when the landing page moved from /dashboard to /projects: links
+// and bookmarks made before the move must keep working, and a silent 404
+// there would look like the app losing a page.
+func TestDashboardPathStillForwards(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-fwd", "owner")
+	raw := seedSession(t, db, orgID, userID)
+
+	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-fwd."+dashboardTestDomain, "/dashboard", raw))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMovedPermanently {
+		t.Fatalf("status = %d, want 301", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Location"); got != "/projects" {
+		t.Fatalf("Location = %q, want /projects", got)
 	}
 }

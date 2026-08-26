@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -50,7 +51,7 @@ func metricsJSON(t *testing.T, kinds map[string]repo.KindHeadline) []byte {
 	return b
 }
 
-func TestBuildDashboardViewModel_RowsCarryBadgesAndSortByScoreAscending(t *testing.T) {
+func TestBuildDashboardViewModel_RowsCarryBadgesAndSortAlphabetically(t *testing.T) {
 	compA, compB := uuid.New(), uuid.New()
 	scoreA, scoreB := 90, 40
 	components := []componentInfo{
@@ -79,22 +80,43 @@ func TestBuildDashboardViewModel_RowsCarryBadgesAndSortByScoreAscending(t *testi
 	if len(vm.Rows) != 2 {
 		t.Fatalf("len(Rows) = %d, want 2", len(vm.Rows))
 	}
-	// Sorted ascending by score: the fail-status, lower-score component
-	// (risky-svc, 40) must lead — "sorted by score ▲" surfaces the most
-	// urgent repository first.
-	if vm.Rows[0].Name != "risky-svc" || vm.Rows[0].Score != "40" || vm.Rows[0].Tone != "fail" {
-		t.Fatalf("Rows[0] = %+v, want risky-svc/40/fail first", vm.Rows[0])
+	// Default order is alphabetical, not by score: a row should stay where
+	// the reader last saw it when the numbers move underneath. Sorting by
+	// score is a header click away, client-side.
+	if vm.Rows[0].Name != "healthy-svc" || vm.Rows[1].Name != "risky-svc" {
+		t.Fatalf("order = %q, %q; want alphabetical (healthy-svc, risky-svc)",
+			vm.Rows[0].Name, vm.Rows[1].Name)
 	}
-	if vm.Rows[1].Name != "healthy-svc" || vm.Rows[1].Score != "90" || vm.Rows[1].Tone != "pass" {
-		t.Fatalf("Rows[1] = %+v, want healthy-svc/90/pass second", vm.Rows[1])
+	// ScoreValue backs client-side numeric sorting; without it the client
+	// would have to re-parse "–" as a number.
+	if vm.Rows[1].ScoreValue == nil || *vm.Rows[1].ScoreValue != 40 {
+		t.Fatalf("risky-svc ScoreValue = %v, want 40", vm.Rows[1].ScoreValue)
 	}
-	if vm.Rows[0].Trivy.Text != "3 critical findings" || vm.Rows[0].Trivy.Tone != "fail" {
-		t.Fatalf("Rows[0].Trivy = %+v, want '3 critical findings'/fail", vm.Rows[0].Trivy)
+	// Cells are positional against vm.Columns, so assert through the column
+	// list rather than fixed field names — that is what keeps this test
+	// honest when a column is added or reordered.
+	cell := func(row dashboardRow, key string) badgeCell {
+		for i, col := range vm.Columns {
+			if col.Key == key {
+				return row.Cells[i]
+			}
+		}
+		t.Fatalf("no column with key %q in %+v", key, vm.Columns)
+		return badgeCell{}
+	}
+	// risky-svc's trivy headline carries a count but no score, so the cell
+	// falls back to the collector's own phrasing rather than showing "–".
+	if got := cell(vm.Rows[1], "trivy"); got.Text != "3 critical findings" || got.Tone != "fail" {
+		t.Fatalf("risky-svc trivy cell = %+v, want '3 critical findings'/fail", got)
 	}
 	// gitlab/sonarqube/sentry were never bound on risky-svc — must render
 	// as the "no data" badge, not a zero value or a panic.
-	if vm.Rows[0].GitLab.Tone != "none" || vm.Rows[0].GitLab.Text != "–" {
-		t.Fatalf("Rows[0].GitLab = %+v, want no-data placeholder", vm.Rows[0].GitLab)
+	if got := cell(vm.Rows[1], "gitlab"); got.Tone != "none" || got.Text != "–" {
+		t.Fatalf("risky-svc gitlab cell = %+v, want no-data placeholder", got)
+	}
+	if len(vm.Rows[1].Cells) != len(vm.Columns) {
+		t.Fatalf("row has %d cells but %d columns — the table would misalign",
+			len(vm.Rows[1].Cells), len(vm.Columns))
 	}
 }
 
@@ -139,10 +161,12 @@ func TestBuildDashboardViewModel_ComponentNeverCollectedIsUnknownNotPass(t *test
 	}
 }
 
+// buildScoreCard now takes the already-rolled-up score rather than a slice
+// to average, because the two levels roll up differently and the tile must
+// show whichever number its page's rows show.
 func TestBuildScoreCard_BucketsByStatusExcludingUnknownFromBar(t *testing.T) {
-	scores := []*int{intPtr(80), intPtr(40)}
 	statuses := statusList("pass", "fail", "unknown")
-	sc := buildScoreCard(statuses, scores)
+	sc := buildScoreCard(statuses, intPtr(60))
 	if sc.HealthyN != 1 || sc.FailingN != 1 {
 		t.Fatalf("HealthyN=%d FailingN=%d, want 1/1", sc.HealthyN, sc.FailingN)
 	}
@@ -150,7 +174,7 @@ func TestBuildScoreCard_BucketsByStatusExcludingUnknownFromBar(t *testing.T) {
 		t.Fatalf("segments sum to %d, want 100 (unknown excluded from the denominator)", sc.HealthyPct+sc.AtRiskPct+sc.FailingPct)
 	}
 	if !sc.HasScore || sc.Score != 60 {
-		t.Fatalf("Score = %+v, want HasScore=true Score=60 (avg of 80,40)", sc)
+		t.Fatalf("Score = %+v, want HasScore=true Score=60 (the score it was handed)", sc)
 	}
 }
 
@@ -172,5 +196,101 @@ func TestBuildKPIs_NoDataYetWhenKindNeverBound(t *testing.T) {
 	trivy := byLabel["TRIVY CLEAN"]
 	if trivy.Value != "–" || trivy.Tone != "none" || trivy.Sub != "no data yet" {
 		t.Fatalf("TRIVY CLEAN = %+v, want the no-data placeholder", trivy)
+	}
+}
+
+// TestProjectScore_IsIdenticalOnBothPages pins the bug this test was written
+// after: the organization dashboard rolled a project up per-kind first,
+// while the project's own page flat-averaged its component scores. The same
+// project read 81 in the list and 80 on its own page — two numbers, both
+// called "the Lotus score".
+func TestProjectScore_IsIdenticalOnBothPages(t *testing.T) {
+	// Deliberately lopsided: two components report gitlab, one reports
+	// sonarqube. A flat average and a per-kind average disagree here, which
+	// is exactly what made the discrepancy visible.
+	metrics := map[uuid.UUID]repo.ComponentMetric{}
+	var comps []componentInfo
+	projectID := uuid.New()
+	for i, kinds := range []map[string]repo.KindHeadline{
+		{"gitlab": {Status: "pass", Score: intPtr(90)}},
+		{"gitlab": {Status: "pass", Score: intPtr(80)}},
+		{"sonarqube": {Status: "fail", Score: intPtr(30)}},
+	} {
+		id := uuid.New()
+		b, err := json.Marshal(kinds)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		score := 0
+		for _, kh := range kinds {
+			score = *kh.Score
+		}
+		metrics[id] = repo.ComponentMetric{
+			ProjectID: projectID, ComponentID: id, MetricsJSON: b, Score: &score, Status: "pass",
+		}
+		comps = append(comps, componentInfo{
+			ID: id, Name: fmt.Sprintf("c%d", i), ProjectID: projectID, ProjectName: "Payments",
+		})
+	}
+
+	onProjectPage := buildDashboardViewModel("", 1, comps, metrics)
+	onDashboard := buildProjectDashboardViewModel("", 1, comps, metrics)
+
+	if !onProjectPage.Score.HasScore || len(onDashboard.Rows) != 1 {
+		t.Fatalf("fixture did not produce a scored project: card=%+v rows=%d",
+			onProjectPage.Score, len(onDashboard.Rows))
+	}
+	want := onDashboard.Rows[0].Score
+	got := fmt.Sprintf("%d", onProjectPage.Score.Score)
+	if got != want {
+		t.Fatalf("project page tile shows %s but the dashboard row shows %s — one project must have one Lotus score", got, want)
+	}
+}
+
+// TestKindOrderIsConsistentEverywhere enforces AGENTS.md's rule: the four
+// integrations appear in one fixed order wherever they are listed. The
+// table columns derive from bindableKinds, but kpiDefs carries its own
+// per-card copy — so this is what stops the KPI strip drifting out of step
+// with the columns beneath it, which is exactly the inconsistency the
+// convention exists to prevent.
+func TestKindOrderIsConsistentEverywhere(t *testing.T) {
+	want := []string{"sonarqube", "trivy", "sentry", "gitlab"}
+
+	if len(bindableKinds) != len(want) {
+		t.Fatalf("bindableKinds = %v, want %v", bindableKinds, want)
+	}
+	for i, k := range want {
+		if bindableKinds[i] != k {
+			t.Fatalf("bindableKinds = %v, want %v (see AGENTS.md)", bindableKinds, want)
+		}
+	}
+
+	var kpiOrder []string
+	for _, d := range kpiDefs {
+		kpiOrder = append(kpiOrder, d.Kind)
+	}
+	for i, k := range want {
+		if kpiOrder[i] != k {
+			t.Fatalf("kpiDefs order = %v, want %v (see AGENTS.md)", kpiOrder, want)
+		}
+	}
+
+	for i, k := range want {
+		if projectColumns[i].Key != k {
+			t.Fatalf("projectColumns order = %+v, want %v (see AGENTS.md)", projectColumns, want)
+		}
+		if componentColumns[i].Key != k {
+			t.Fatalf("componentColumns order = %+v, want %v (see AGENTS.md)", componentColumns, want)
+		}
+	}
+
+	// Every kind needs a header heading, or a column renders blank.
+	for _, k := range bindableKinds {
+		if columnHeadings[k] == "" {
+			t.Fatalf("columnHeadings has no entry for %q", k)
+		}
+		if kindLabels[k] == "" {
+			t.Fatalf("kindLabels has no entry for %q", k)
+		}
 	}
 }

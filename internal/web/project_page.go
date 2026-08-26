@@ -57,7 +57,7 @@ func projectPage(d Deps) fiber.Handler {
 			metrics[m.ComponentID] = m
 		}
 
-		subtitle := fmt.Sprintf("%d repositor%s in this project", len(components), plural(len(components), "y", "ies"))
+		subtitle := fmt.Sprintf("%d component%s in this project", len(components), plural(len(components), "", "s"))
 		vm := buildDashboardViewModel(subtitle, len(projects), components, metrics)
 
 		c.Type("html")

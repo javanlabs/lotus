@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"github.com/uyab/lotus/internal/repo"
 	"html/template"
 
 	"github.com/gofiber/fiber/v2"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/uyab/lotus/internal/authz"
 	"github.com/uyab/lotus/internal/httpx"
-	"github.com/uyab/lotus/internal/repo"
 	"github.com/uyab/lotus/internal/repo/global"
 	"github.com/uyab/lotus/internal/tenant"
 )
@@ -19,6 +19,9 @@ import (
 // it exactly. Kept as constants rather than files: each is a small,
 // static <svg> fragment, never templated with data.
 const (
+	// iconDashboard is unused while the landing page is the projects list;
+	// kept for the dashboard that replaces it later rather than deleted
+	// and re-drawn.
 	iconDashboard   = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="color:currentColor;flex:none"><path fill="none" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round" stroke-width="1.5" d="M13.69 19.457c-.19-.46-.19-1.042-.19-2.207s0-1.747.19-2.207a2.5 2.5 0 0 1 1.353-1.353c.46-.19 1.042-.19 2.207-.19s1.747 0 2.207.19a2.5 2.5 0 0 1 1.353 1.353c.19.46.19 1.042.19 2.207s0 1.747-.19 2.207a2.5 2.5 0 0 1-1.353 1.353c-.46.19-1.042.19-2.207.19s-1.747 0-2.207-.19a2.5 2.5 0 0 1-1.353-1.353Zm0-10.5c-.19-.46-.19-1.042-.19-2.207s0-1.747.19-2.207a2.5 2.5 0 0 1 1.353-1.353C15.503 3 16.085 3 17.25 3s1.747 0 2.207.19a2.5 2.5 0 0 1 1.353 1.353c.19.46.19 1.042.19 2.207s0 1.747-.19 2.207a2.5 2.5 0 0 1-1.353 1.353c-.46.19-1.042.19-2.207.19s-1.747 0-2.207-.19a2.5 2.5 0 0 1-1.353-1.353Zm-10.5 10.5C3 18.997 3 18.415 3 17.25s0-1.747.19-2.207a2.5 2.5 0 0 1 1.353-1.353c.46-.19 1.042-.19 2.207-.19s1.747 0 2.207.19a2.5 2.5 0 0 1 1.353 1.353c.19.46.19 1.042.19 2.207s0 1.747-.19 2.207a2.5 2.5 0 0 1-1.353 1.353c-.46.19-1.042.19-2.207.19s-1.747 0-2.207-.19a2.5 2.5 0 0 1-1.353-1.353Zm0-10.5C3 8.497 3 7.915 3 6.75s0-1.747.19-2.207A2.5 2.5 0 0 1 4.543 3.19C5.003 3 5.585 3 6.75 3s1.747 0 2.207.19a2.5 2.5 0 0 1 1.353 1.353c.19.46.19 1.042.19 2.207s0 1.747-.19 2.207a2.5 2.5 0 0 1-1.353 1.353c-.46.19-1.042.19-2.207.19s-1.747 0-2.207-.19A2.5 2.5 0 0 1 3.19 8.957Z"></path></svg>`
 	iconProjects    = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="color:#9CA3AF;flex:none"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5" d="M8 7h8.75c2.107 0 3.16 0 3.917.506a3 3 0 0 1 .827.827C22 9.09 22 10.143 22 12.25c0 3.511 0 5.267-.843 6.528a5 5 0 0 1-1.38 1.38C18.518 21 16.762 21 13.25 21H12c-4.714 0-7.071 0-8.536-1.465C2 18.072 2 15.715 2 11V7.944c0-1.816 0-2.724.38-3.406A3 3 0 0 1 3.538 3.38C4.22 3 5.128 3 6.944 3C8.108 3 8.69 3 9.2 3.191c1.163.436 1.643 1.493 2.168 2.542L12 7"></path></svg>`
 	iconSecurity    = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="color:#9CA3AF;flex:none"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.709 3.495C16.817 2.554 14.5 2 12 2s-4.816.554-6.709 1.495c-.928.462-1.392.693-1.841 1.419S3 6.342 3 7.748v3.49c0 5.683 4.542 8.842 7.173 10.196c.734.377 1.1.566 1.827.566s1.093-.189 1.827-.566C16.457 20.08 21 16.92 21 11.237V7.748c0-1.406 0-2.108-.45-2.834s-.913-.957-1.841-1.419"></path></svg>`
@@ -41,13 +44,17 @@ func buildNav(active string, projectCount int) *httpx.Nav {
 	return &httpx.Nav{
 		Active: active,
 		Items: []httpx.NavItem{
-			{Key: "dashboard", Label: "Dashboard", Href: "/dashboard", Icon: template.HTML(iconDashboard)}, //nolint:gosec // constant, not user input
-			{Key: "projects", Label: "Projects", Count: fmt.Sprintf("%d", projectCount), Icon: template.HTML(iconProjects)},
+			// Projects is the landing page until there is a dashboard worth
+			// the name; the old "Dashboard" entry pointed at this same list
+			// under a different label, which only invited the question of
+			// what the difference was.
+			{Key: "projects", Label: "Projects", Href: "/projects", Count: fmt.Sprintf("%d", projectCount), Icon: template.HTML(iconProjects)}, //nolint:gosec // constant, not user input
 			{Key: "security", Label: "Security", Icon: template.HTML(iconSecurity)},
 			{Key: "code_quality", Label: "Code quality", Icon: template.HTML(iconCodeQuality)},
 			{Key: "errors", Label: "Errors", Icon: template.HTML(iconErrors)},
 			{Key: "performance", Label: "Performance", Icon: template.HTML(iconPerformance)},
 			{Key: "git_hygiene", Label: "Git hygiene", Icon: template.HTML(iconGitHygiene)},
+			{Key: "qa_tools", Label: "QA Tools", Icon: template.HTML(iconQATools)}, //nolint:gosec // constant, not user input
 			{Key: "integrations", Label: "Integrations", Href: "/settings/connections", Icon: template.HTML(iconIntegration)},
 			{Key: "activity", Label: "Activity", Href: "/activity", Icon: template.HTML(iconActivity)},
 		},
@@ -119,3 +126,6 @@ func componentTrail(project *repo.Project, component *repo.Component, deeper ...
 	trail = append(trail, httpx.NavCrumb{Label: component.Name, Href: "/components/" + component.ID.String()})
 	return append(trail, deeper...)
 }
+
+// iconQATools: a clipboard with a check — test plans and runs.
+const iconQATools = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="color:currentColor;flex:none"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M9 4H7.5A2.5 2.5 0 0 0 5 6.5v12A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5v-12A2.5 2.5 0 0 0 16.5 4H15"></path><rect x="9" y="2.5" width="6" height="3" rx="1"></rect><path d="m9.5 13.5l1.75 1.75L14.5 12"></path></g></svg>`

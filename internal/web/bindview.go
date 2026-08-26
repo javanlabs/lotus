@@ -16,7 +16,12 @@ import (
 // whatever happens to be blank-imported into the running binary); this is
 // the app's own opinion about what a user can bind from the UI, in the
 // order shown as tabs.
-var bindableKinds = []string{"gitlab", "sonarqube", "trivy", "sentry"}
+// bindableKinds is the canonical order the four integrations appear in
+// everywhere they are listed — table columns, KPI cards, this wizard. See
+// AGENTS.md: the order is a product decision, not alphabetical and not
+// build order, and every other list derives from this one so the columns
+// cannot drift apart screen by screen.
+var bindableKinds = []string{"sonarqube", "trivy", "sentry", "gitlab"}
 
 var kindLabels = map[string]string{
 	"gitlab": "GitLab", "sonarqube": "SonarQube", "trivy": "Trivy (Harbor)", "sentry": "Sentry",
