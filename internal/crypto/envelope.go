@@ -72,11 +72,22 @@ func Seal(key, aad, plaintext []byte) (ciphertext, nonce []byte, err error) {
 }
 
 // Open reverses Seal. Returns ErrDecryptFailed if key, aad, ciphertext, or
-// nonce don't all match what Seal produced together.
+// nonce don't all match what Seal produced together — including a nonce
+// of the wrong length (e.g. a row whose secret was never actually sealed
+// through Seal), which cipher.AEAD.Open would otherwise panic on rather
+// than return as an error. A single malformed row must fail the one
+// operation touching it, not crash whatever process called in — the
+// background scheduler (internal/scheduler) decrypts a connection's
+// secret from a plain goroutine with no recover, so an unhandled panic
+// here previously took down the entire server process, stopping sync for
+// every organization over one bad row.
 func Open(key, aad, ciphertext, nonce []byte) ([]byte, error) {
 	aead, err := gcmFor(key)
 	if err != nil {
 		return nil, err
+	}
+	if len(nonce) != aead.NonceSize() {
+		return nil, ErrDecryptFailed
 	}
 	pt, err := aead.Open(nil, nonce, ciphertext, aad)
 	if err != nil {

@@ -62,6 +62,41 @@ func TestSealOpen_WrongKeyFails(t *testing.T) {
 	}
 }
 
+// TestOpen_MalformedNonceReturnsErrorNotPanic guards against a real
+// incident: a row whose secret was written some way other than through
+// Seal (e.g. inserted directly with an empty/wrong-length nonce) used to
+// crash the caller with an unrecovered "incorrect nonce length given to
+// GCM" panic from crypto/cipher — fatal when the caller is a background
+// goroutine with no recover, which is exactly how the sync scheduler
+// calls this (internal/scheduler/run.go, via
+// repo.DecryptConnectionSecret): one malformed row took down sync for
+// every organization, not just the one it belonged to.
+func TestOpen_MalformedNonceReturnsErrorNotPanic(t *testing.T) {
+	dek, err := crypto.NewDEK()
+	if err != nil {
+		t.Fatalf("NewDEK: %v", err)
+	}
+	orgID := uuid.New()
+	ciphertext, _, err := crypto.Seal(dek, crypto.OrgAAD(orgID), []byte("secret"))
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+
+	cases := map[string][]byte{
+		"nil nonce":   nil,
+		"empty nonce": {},
+		"short nonce": {1, 2, 3},
+		"long nonce":  make([]byte, 64),
+	}
+	for name, nonce := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := crypto.Open(dek, crypto.OrgAAD(orgID), ciphertext, nonce); err != crypto.ErrDecryptFailed {
+				t.Fatalf("err = %v, want ErrDecryptFailed (and, above all, no panic)", err)
+			}
+		})
+	}
+}
+
 func TestFingerprint_StableAndDistinguishing(t *testing.T) {
 	a := crypto.Fingerprint([]byte("token-one"))
 	b := crypto.Fingerprint([]byte("token-one"))
