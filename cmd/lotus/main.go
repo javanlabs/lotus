@@ -58,6 +58,8 @@ func main() {
 		runMigrate(cfg, os.Args[2:])
 	case "init":
 		runInit(cfg, os.Args[2:])
+	case "seed-dev":
+		runSeedDev(cfg)
 	case "rewrap-keys":
 		runRewrapKeys(cfg, os.Args[2:])
 	case "import-legacy":
@@ -69,7 +71,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: lotus <serve|migrate up|migrate down|init --org-name=<name> --owner-email=<email> [--slug=<slug>]|rewrap-keys --old-kek=<base64>|import-legacy>")
+	fmt.Fprintln(os.Stderr, "usage: lotus <serve|migrate up|migrate down|init --org-name=<name> --owner-email=<email> [--slug=<slug>]|seed-dev|rewrap-keys --old-kek=<base64>|import-legacy>")
 }
 
 // runRewrapKeys is task 2.2's KEK rotation command: unwraps every

@@ -190,6 +190,31 @@ lotus init --org-name="Acme" --owner-email=admin@acme.com
 lotus serve
 ```
 
+### Logging in
+
+With no OAuth provider configured, login is by **magic link**: enter an address
+on `/login` and a single-use link is issued for it. The link expires in 15
+minutes, works once, and is only ever created for an address that already holds
+a membership — a stranger's address gets the same "check your email" response
+but no link, so the form cannot be used to discover who has an account.
+
+Under `LOTUS_DEV=1` the link is also printed on the page, since local dev
+usually has no SMTP to receive it. Outside dev it exists only in the email.
+
+For repeated testing, seed four accounts — one per role:
+
+```bash
+lotus seed-dev
+```
+
+That creates `owner@lotus.test`, `admin@lotus.test`, `member@lotus.test`, and
+`viewer@lotus.test`, and `/login` grows a one-click list to sign in as any of
+them. That shortcut is gated three independent ways: the route is not
+registered unless `LOTUS_DEV=1`, the handler re-checks the same flag, and it
+will only ever impersonate an address ending in `@lotus.test` — a TLD reserved
+by RFC 2606, so it can never name a real person. `lotus seed-dev` itself
+refuses to run without `LOTUS_DEV=1`.
+
 Sign in as the `--owner-email` address to claim ownership: `lotus init`
 creates the organization but cannot create its Owner (nobody has logged in
 yet), so ownership stays pending until the first login with that address,

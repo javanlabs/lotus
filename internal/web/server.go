@@ -250,6 +250,25 @@ func registerSaaSAuthRoutes(app *fiber.App, authDeps authn.Deps) {
 // handoff (nothing to bridge) and no signup (the org comes from
 // `lotus init`).
 func registerSingleModeAuthRoutes(app *fiber.App, authDeps authn.Deps, devMode bool) {
+	app.Get("/login", tenant.RequireAuth(),
+		authz.Public("the login page itself; a session is what it exists to create"), authn.LoginPage(authDeps))
+	// Magic link: the primary way in when no OAuth provider is configured.
+	// Both are Public for the same reason every login route is — a session
+	// is the thing they exist to create.
+	app.Post("/login/email", tenant.RequireTenant(),
+		authz.Public("requests a login link; answers identically for members and strangers"), authn.RequestMagicLink(authDeps))
+	app.Get("/login/email/verify", tenant.RequireTenant(),
+		authz.Public("redeems a single-use login link and establishes the session"), authn.VerifyMagicLink(authDeps))
+
+	// Dev-only one-click login as a seeded @lotus.test account. Gate one of
+	// three: the route does not exist at all outside LOTUS_DEV, so there is
+	// nothing to reach even with a correct URL. See authn.DevLoginAs for
+	// the other two.
+	if devMode {
+		app.Post("/login/dev/:user", tenant.RequireTenant(),
+			authz.Public("dev-only impersonation of a seeded test account; see authn.DevLoginAs"), authn.DevLoginAs(authDeps))
+	}
+
 	app.Get("/login/:provider", tenant.RequireAuth(),
 		authz.Public("starts OAuth; there is no session yet by definition"), authn.Login(authDeps))
 	app.Get("/login/:provider/callback", tenant.RequireAuth(),

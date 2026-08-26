@@ -210,6 +210,45 @@ func renderLoginPicker(c *fiber.Ctx, renderer *httpx.Renderer, providers Registr
 	})
 }
 
+// LoginPage is single mode's entry point into login: the magic-link form,
+// any configured OAuth providers, and — under LOTUS_DEV only — a one-click
+// list of seeded dummy accounts.
+//
+// Distinct from renderLoginPicker, which the auth host shows in the middle
+// of a handoff. There is no handoff here, and this page has an
+// organization in context, which is what magic links need.
+func LoginPage(deps Deps) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		org, ok := tenant.OrgFromContext(c)
+		if !ok {
+			return fiber.ErrNotFound
+		}
+		names := make([]string, 0, len(deps.OAuthProviders))
+		for name := range deps.OAuthProviders {
+			names = append(names, name)
+		}
+
+		var devUsers []global.DevUser
+		if deps.Cfg.Dev {
+			var err error
+			if devUsers, err = global.DevUsers(c.Context(), deps.DB, org.ID); err != nil {
+				return err
+			}
+		}
+
+		c.Type("html")
+		return deps.Renderer.Render(c, "pages/login.html", httpx.ViewData{
+			Title: "Log in",
+			Data: struct {
+				OrgName    string
+				Providers  []string
+				ReturnPath string
+				DevUsers   []global.DevUser
+			}{org.Name, names, sanitizeReturnPath(c.Query("return")), devUsers},
+		})
+	}
+}
+
 // issueTenantSession mints the tenant session cookie for user in org, and
 // is the single place that happens. Saas mode reaches it at the end of the
 // handoff; single mode has no handoff to reach it from — one origin, so
