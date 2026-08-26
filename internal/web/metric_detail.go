@@ -129,7 +129,8 @@ func metricDetailPage(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		nav := buildNav("projects", len(projects))
-		nav.Crumb = chrome.Component.Name
+		nav.Trail = componentTrail(&chrome.Project, &chrome.Component,
+			httpx.NavCrumb{Label: chrome.Binding.Kind})
 
 		switch chrome.Binding.Kind {
 		case "gitlab":
@@ -228,7 +229,9 @@ func runHistoryPage(d Deps) fiber.Handler {
 		}
 
 		nav := buildNav("projects", len(projects))
-		nav.Crumb = chrome.Component.Name + " · Run history"
+		nav.Trail = componentTrail(&chrome.Project, &chrome.Component,
+			httpx.NavCrumb{Label: chrome.Binding.Kind, Href: chrome.basePath()},
+			httpx.NavCrumb{Label: "Run history"})
 		c.Type("html")
 		return d.Renderer.Render(c, "pages/metric_runs.html", httpx.ViewData{
 			Title: chrome.Component.Name + " run history", Org: org, User: user, Nav: nav,

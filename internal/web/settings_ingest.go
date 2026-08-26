@@ -56,7 +56,7 @@ func settingsIngestPage(d Deps) fiber.Handler {
 		}
 
 		nav := buildNav("", len(projects))
-		nav.Crumb = "Settings"
+		nav.Trail = []httpx.NavCrumb{{Label: "Settings"}}
 		c.Type("html")
 		return d.Renderer.Render(c, "pages/settings_ingest.html", httpx.ViewData{
 			Title: "Ingest", Org: org, User: user, Nav: nav,

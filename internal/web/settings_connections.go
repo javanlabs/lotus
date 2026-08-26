@@ -112,7 +112,7 @@ func settingsConnectionsPage(d Deps) fiber.Handler {
 		connFields := connectionFieldViews(connectionFieldsFor(kind), nil)
 
 		nav := buildNav("", len(projects))
-		nav.Crumb = "Settings"
+		nav.Trail = []httpx.NavCrumb{{Label: "Settings"}}
 		c.Type("html")
 		return d.Renderer.Render(c, "pages/settings_connections.html", httpx.ViewData{
 			Title: "Connections", Org: org, User: user, Nav: nav,

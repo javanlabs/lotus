@@ -9,6 +9,7 @@ import (
 
 	"github.com/uyab/lotus/internal/authz"
 	"github.com/uyab/lotus/internal/httpx"
+	"github.com/uyab/lotus/internal/repo"
 	"github.com/uyab/lotus/internal/repo/global"
 	"github.com/uyab/lotus/internal/tenant"
 )
@@ -50,6 +51,9 @@ func buildNav(active string, projectCount int) *httpx.Nav {
 			{Key: "integrations", Label: "Integrations", Href: "/settings/connections", Icon: template.HTML(iconIntegration)},
 			{Key: "activity", Label: "Activity", Href: "/activity", Icon: template.HTML(iconActivity)},
 		},
+		FooterItems: []httpx.NavItem{
+			{Key: "scoring", Label: "How scoring works", Href: "/scoring", Icon: template.HTML(iconScoring)}, //nolint:gosec // constant, not user input
+		},
 	}
 }
 
@@ -80,4 +84,38 @@ func derefOr(s *string, fallback string) string {
 		return fallback
 	}
 	return *s
+}
+
+// iconScoring: a question mark in a circle — this is the "explain the
+// number" entry, sitting last in the nav where help conventionally lives.
+const iconScoring = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="flex:none"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><circle cx="12" cy="12" r="9"></circle><path d="M10.125 9.5a1.875 1.875 0 1 1 2.62 1.72c-.58.26-.745.79-.745 1.28v.5"></path><path d="M12 16.5v.01"></path></g></svg>`
+
+// navWithTrail is buildNav plus a breadcrumb path, for the pages that sit
+// below the organization root.
+func navWithTrail(active string, projectCount int, trail []httpx.NavCrumb) *httpx.Nav {
+	nav := buildNav(active, projectCount)
+	nav.Trail = trail
+	return nav
+}
+
+// projectTrail is the breadcrumb path for a project page: the project
+// itself, as the current page.
+func projectTrail(project *repo.Project) []httpx.NavCrumb {
+	return []httpx.NavCrumb{{Label: project.Name}}
+}
+
+// componentTrail is the path for anything at or below a component —
+// project → component → whatever the caller adds. Callers pass the deeper
+// segments rather than each rebuilding the first two, so a change to how
+// projects are linked lands in one place.
+func componentTrail(project *repo.Project, component *repo.Component, deeper ...httpx.NavCrumb) []httpx.NavCrumb {
+	trail := []httpx.NavCrumb{
+		{Label: project.Name, Href: "/projects/" + project.ID.String()},
+	}
+	if len(deeper) == 0 {
+		trail = append(trail, httpx.NavCrumb{Label: component.Name})
+		return trail
+	}
+	trail = append(trail, httpx.NavCrumb{Label: component.Name, Href: "/components/" + component.ID.String()})
+	return append(trail, deeper...)
 }

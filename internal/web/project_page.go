@@ -62,7 +62,7 @@ func projectPage(d Deps) fiber.Handler {
 
 		c.Type("html")
 		return d.Renderer.Render(c, "pages/project.html", httpx.ViewData{
-			Title: project.Name, Org: org, User: user, Nav: buildNav("projects", len(projects)),
+			Title: project.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), projectTrail(project)),
 			Data: struct {
 				Project   repo.Project
 				Dashboard dashboardViewModel

@@ -62,7 +62,7 @@ func settingsMembersPage(d Deps) fiber.Handler {
 		}
 
 		nav := buildNav("", len(projects))
-		nav.Crumb = "Settings"
+		nav.Trail = []httpx.NavCrumb{{Label: "Settings"}}
 		c.Type("html")
 		return d.Renderer.Render(c, "pages/settings_members.html", httpx.ViewData{
 			Title: "Members", Org: org, User: user, Nav: nav,

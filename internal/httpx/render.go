@@ -48,13 +48,27 @@ type User struct {
 }
 
 // Nav is the app shell's sidebar + breadcrumb state for the current page.
+// NavCrumb is one breadcrumb segment. Href empty means "current page".
+type NavCrumb struct {
+	Label string
+	Href  string
+}
+
 type Nav struct {
 	// Active is the Key of the NavItem to highlight.
 	Active string
 	Items  []NavItem
-	// Crumb is the current page's label, shown as the last, unclickable
-	// breadcrumb segment (e.g. "Software health").
-	Crumb string
+	// FooterItems pin to the bottom of the sidebar, above the wordmark,
+	// separated from Items by the flexible gap. Help-style entries belong
+	// here: they are always reachable but are not part of the product's
+	// own navigation, and putting them last in Items only pushes them
+	// under whatever section happens to be longest.
+	FooterItems []NavItem
+	// Trail is the breadcrumb path below the organization, outermost
+	// first. Every segment but the last links; the last is the current
+	// page and stays plain. A single-element Trail is the common case
+	// (Settings), a project page adds one level, a component two.
+	Trail []NavCrumb
 }
 
 // NavItem is one sidebar link. Href empty means "not built yet" — the

@@ -51,7 +51,15 @@
       {{end}}
     </div>
 
-    <div style="position:relative;z-index:1;margin-top:auto;display:flex;align-items:center;gap:9px;padding:12px 18px 0;box-shadow:inset 0 1px 0 rgba(67,40,78,.08)">
+    {{if .Nav.FooterItems}}
+    <div style="position:relative;z-index:1;margin-top:auto;padding:0 12px 10px;display:flex;flex-direction:column;gap:1px">
+      {{range .Nav.FooterItems}}
+      <a href="{{.Href}}" class="lotus-nav-item{{if eq .Key $.Nav.Active}} is-active{{end}}">{{.Icon}}{{.Label}}</a>
+      {{end}}
+    </div>
+    {{end}}
+
+    <div style="position:relative;z-index:1;{{if not .Nav.FooterItems}}margin-top:auto;{{end}}display:flex;align-items:center;gap:9px;padding:12px 18px 0;box-shadow:inset 0 1px 0 rgba(67,40,78,.08)">
       {{template "lotus_logo" (dict "ID" "sb" "Width" 30 "Height" 19)}}
       <div style="font-size:15px;font-weight:600;letter-spacing:.02em;color:#111827">Lotus</div>
       <div style="margin-left:auto;font:500 9px 'IBM Plex Mono',monospace;color:#9CA3AF">v1</div>
@@ -64,8 +72,10 @@
       <a href="/dashboard" aria-label="Lotus" style="display:inline-flex;align-items:center;padding:3px 5px;border-radius:5px">{{template "lotus_logo" (dict "ID" "bc" "Width" 20 "Height" 13)}}</a>
       <span style="color:#D1D5DB">/</span>
       <span style="color:#6B7280">{{if .Org}}{{.Org.Name}}{{end}}</span>
-      {{if .Nav.Crumb}}<span style="color:#D1D5DB">/</span>
-      <span style="color:#43284E;font-weight:600">{{.Nav.Crumb}}</span>{{end}}
+      {{range .Nav.Trail}}<span style="color:#D1D5DB">/</span>
+      {{if .Href}}<a href="{{.Href}}" style="color:#6B7280">{{.Label}}</a>
+      {{else}}<span style="color:#43284E;font-weight:600">{{.Label}}</span>{{end}}
+      {{end}}
     </nav>
 {{end}}
 
