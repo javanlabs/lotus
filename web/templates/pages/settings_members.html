@@ -18,7 +18,7 @@
     {{if and $.Data.CanChangeRole (ne .UserID $.Data.Self)}}
     <form method="post" action="/settings/members/{{.UserID}}/role">
       <select name="role" onchange="this.form.submit()"
-              style="padding:6px 10px;font-size:12px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:7px 2px 7px 2px;outline:none;cursor:pointer">
+              style="padding:6px 10px;font-size:12px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:7px;outline:none;cursor:pointer">
         <option value="owner" {{if eq .RoleKey "owner"}}selected{{end}} {{if ne $.Data.ActorRole "owner"}}disabled{{end}}>Owner</option>
         <option value="admin" {{if eq .RoleKey "admin"}}selected{{end}}>Admin</option>
         <option value="member" {{if eq .RoleKey "member"}}selected{{end}}>Member</option>
@@ -70,11 +70,11 @@
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">EMAIL</span>
       <input type="email" name="email" required
-             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12.5px system-ui;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12.5px system-ui;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
     </label>
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">ROLE</span>
-      <select name="role" style="padding:9px 11px;font-size:12.5px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+      <select name="role" style="padding:9px 11px;font-size:12.5px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
         <option value="member" selected>Member</option>
         <option value="admin">Admin</option>
         <option value="viewer">Viewer</option>

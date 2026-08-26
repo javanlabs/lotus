@@ -15,22 +15,22 @@
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">NAME</span>
       <input type="text" name="name" value="{{.Data.Profile.Name}}" required {{if not .Data.CanUpdate}}disabled{{end}}
-             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12.5px system-ui;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12.5px system-ui;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
     </label>
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">TIMEZONE (IANA)</span>
       <input type="text" name="timezone" value="{{.Data.Profile.Timezone}}" placeholder="Asia/Jakarta" required {{if not .Data.CanUpdate}}disabled{{end}}
-             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
     </label>
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">DEFAULT SYNC INTERVAL (MINUTES, BLANK = 15)</span>
       <input type="number" name="default_sync_interval_minutes" value="{{.Data.DefaultIntervalMinutes}}" min="1" {{if not .Data.CanUpdate}}disabled{{end}}
-             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
     </label>
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">SNAPSHOT RETENTION (DAYS)</span>
       <input type="number" name="retention_days" value="{{.Data.Profile.RetentionDays}}" min="1" required {{if not .Data.CanUpdate}}disabled{{end}}
-             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
     </label>
     {{if .Data.CanUpdate}}
     <div style="display:flex;justify-content:flex-end">
@@ -46,7 +46,7 @@
   <p style="margin:0;font-size:11.5px;color:#6B7280;line-height:1.5">Currently <strong>{{.Data.Profile.Subdomain}}</strong>. Changing this breaks any bookmarked links, saved CI ingest URLs, and SSO redirect URIs pointing at the old one — the old subdomain is retired, never reassigned.</p>
   <form method="post" action="/settings/organization/subdomain" style="display:flex;gap:8px">
     <input type="text" name="subdomain" placeholder="new-subdomain" required
-           style="flex:1;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+           style="flex:1;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
     <button type="submit" class="btn-lotus btn-lotus-secondary" onclick="return confirm('Change the organization subdomain? Old links will stop working.')">Change</button>
   </form>
 </section>
@@ -62,7 +62,7 @@
     <p style="margin:0;font-size:11.5px;color:#6B7280;line-height:1.5">You'll be demoted to Admin; the member you choose becomes the new Owner.</p>
     {{if .Data.TransferTargets}}
     <form method="post" action="/settings/organization/transfer-ownership" style="display:flex;gap:8px" onsubmit="return confirm('Transfer ownership? You will be demoted to Admin.')">
-      <select name="user_id" required style="flex:1;padding:9px 11px;font-size:12.5px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+      <select name="user_id" required style="flex:1;padding:9px 11px;font-size:12.5px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
         {{range .Data.TransferTargets}}<option value="{{.UserID}}">{{.Name}} ({{.Email}})</option>{{end}}
       </select>
       <button type="submit" class="btn-lotus" style="background:#FCEDF0;color:#9E2B47;border:none">Transfer</button>
@@ -79,7 +79,7 @@
     <p style="margin:0;font-size:11.5px;color:#6B7280;line-height:1.5">Every project, component, connection, and history in this organization stops being reachable. Type <strong>{{.Data.Profile.Subdomain}}</strong> to confirm.</p>
     <form method="post" action="/settings/organization/delete" style="display:flex;gap:8px" onsubmit="return confirm('This cannot be undone from the UI. Really delete this organization?')">
       <input type="text" name="confirm_subdomain" placeholder="{{.Data.Profile.Subdomain}}" required
-             style="flex:1;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">
+             style="flex:1;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
       <button type="submit" class="btn-lotus" style="background:#9E2B47;color:#FFFFFF;border:none">Delete organization</button>
     </form>
   </div>

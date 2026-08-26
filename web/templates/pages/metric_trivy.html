@@ -47,7 +47,7 @@
       <input type="hidden" name="package" value="{{$row.Package}}">
       <span style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#5B4A63">FALSE-POSITIVE NOTE</span>
       <textarea name="comment" rows="3" placeholder="Why doesn't this finding apply?"
-                style="width:100%;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px 3px 8px 3px;outline:none">{{$row.NoteComment}}</textarea>
+                style="width:100%;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">{{$row.NoteComment}}</textarea>
       <div style="display:flex;gap:8px">
         <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none;padding:6px 12px;font-size:11px">Save</button>
         {{if $row.HasNote}}

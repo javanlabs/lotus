@@ -12,7 +12,7 @@
   {{if gt (len .Data.Environments) 1}}
   <form method="get">
     <select name="env" onchange="this.form.submit()"
-            style="padding:6px 10px;font-size:12px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:7px 2px 7px 2px;outline:none;cursor:pointer">
+            style="padding:6px 10px;font-size:12px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:7px;outline:none;cursor:pointer">
       {{$sel := .Data.SelectedEnv}}
       {{range .Data.Environments}}<option value="{{.}}" {{if eq . $sel}}selected{{end}}>{{.}}</option>{{end}}
     </select>

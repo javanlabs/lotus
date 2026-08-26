@@ -38,19 +38,51 @@ body {
 .lotus-shape-sm { border-radius: 14px 4px 14px 4px; }
 .lotus-shape-xs { border-radius: 5px 2px 5px 2px; }
 
+/* Concentric nesting: a child inset by N px inside a .lotus-shape card
+   needs its own radius reduced by exactly N, or its corner reads as a
+   straight cut across the parent's curve. Most visible on this shape's
+   6px corners (top-right, bottom-left), where a square child corner
+   crosses the arc almost entirely.
+   .lotus-shape minus a 4px inset: 16-4 = 12, 6-4 = 2. */
+.lotus-inset-4-top {
+  border-top-left-radius: 12px;
+  border-top-right-radius: 2px;
+}
+.lotus-inset-4-bottom {
+  border-bottom-right-radius: 12px;
+  border-bottom-left-radius: 2px;
+}
+
 /* Glassmorphic card: translucent white, blurred backdrop, layered inset
    highlight + a thin pink accent stripe along the bottom edge. */
 .lotus-card {
+  position: relative;
   background: rgba(255, 255, 255, .72);
   border: 1px solid rgba(67, 40, 78, .1);
   backdrop-filter: blur(12px) saturate(1.1);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, .95),
-    inset 0 0 0 4px rgba(255, 255, 255, .55),
-    inset 0 0 0 5px rgba(67, 40, 78, .09),
     inset 0 -2px 0 rgba(224, 141, 160, .5),
     0 1px 1px rgba(17, 24, 39, .04),
     0 4px 10px -8px rgba(67, 40, 78, .22);
+}
+
+/* The inner double line used to be two inset ring shadows (4px and 5px
+   spread). CSS reduces an inset shadow's corner radius by its spread, so on
+   this shape's 6px corners those rings landed at 2px and 1px — practically
+   square inside a rounded corner, while the same rings stayed visibly round
+   at the 16px corners. Three lines, three different corner characters.
+   A pseudo-element carries its own radius, so the offset and the curvature
+   can be chosen independently and both corners can read as parallel. */
+.lotus-card::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px solid rgba(67, 40, 78, .09);
+  border-radius: 12px 4px 12px 4px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .lotus-card-dark {
@@ -79,9 +111,13 @@ body {
 .btn-lotus-secondary {
   color: var(--color-brand);
   background: linear-gradient(180deg, #FFFFFF 0%, #FAF9FB 55%, #F1EFF4 100%);
+  /* A real border, not an inset ring. An inset bevel paints inside the
+     border box, so it can never cover the border the way it covered the
+     ring — which is what left the top edge invisible: white bevel over a
+     white gradient on a near-white surface. */
+  border: 1px solid rgba(67, 40, 78, .22);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .95),
-    inset 0 0 0 1px rgba(67, 40, 78, .12),
+    inset 0 1px 0 rgba(255, 255, 255, .9),
     0 1px 2px rgba(67, 40, 78, .08);
 }
 .btn-lotus-secondary:hover {
