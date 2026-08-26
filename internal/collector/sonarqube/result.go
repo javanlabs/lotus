@@ -73,13 +73,48 @@ func buildResult(m *sonar.Measures) (collector.Result, error) {
 		status = collector.StatusFail
 	}
 
-	var score *int
+	worst := m.WorstRating()
+
+	// Score is a base blended from coverage and the worst rating, then
+	// multiplied by a quality-gate factor:
+	//
+	//   base = average of { coverage %, worst rating (A=100 .. E=20) },
+	//          skipping whichever is unmeasured — never counting it as 0;
+	//   score = base x 1.0 (gate passed) / x 0.75 (warn) / x 0.5 (failed).
+	//
+	// The gate is a MULTIPLIER rather than one more term in the average on
+	// purpose: it is the pass/fail verdict the team itself configured, so
+	// it must dominate. Averaged in, a failing gate was still rescued by
+	// good coverage (0+90+100 over 3 read 63 — "decent"); as a factor, 89%
+	// coverage with a failing gate reads 44, and no amount of coverage can
+	// push a failing project above 50. A project reporting neither
+	// coverage nor ratings gets no score at all — the gate alone still
+	// drives the colour, but a bare multiplier has nothing to multiply.
+	var parts []int
 	if m.Coverage != nil {
-		v := int(*m.Coverage)
+		parts = append(parts, int(*m.Coverage))
+	}
+	if v, ok := map[string]int{"A": 100, "B": 80, "C": 60, "D": 40, "E": 20}[worst]; ok {
+		parts = append(parts, v)
+	}
+	var score *int
+	if len(parts) > 0 {
+		sum := 0
+		for _, p := range parts {
+			sum += p
+		}
+		base := float64(sum) / float64(len(parts))
+		gateFactor := 1.0
+		switch m.QualityGate {
+		case "WARN":
+			gateFactor = 0.75
+		case "ERROR":
+			gateFactor = 0.5
+		}
+		v := int(base * gateFactor)
 		score = &v
 	}
 
-	worst := m.WorstRating()
 	var countValue *int64
 	if m.Bugs != nil && m.Vulnerabilities != nil {
 		v := int64(*m.Bugs + *m.Vulnerabilities)

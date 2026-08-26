@@ -68,9 +68,28 @@ func buildResult(h *glclient.Health) (collector.Result, error) {
 		status = collector.StatusWarn
 	}
 
-	var score *int
+	// Score averages two sub-scores, each 0-100, using whichever are
+	// measurable — the pipeline success rate, and branch hygiene (the
+	// share of branches with a commit inside the staleness window).
+	// Pipeline health alone let a repository carrying thirty dead
+	// branches read as a perfect 100 so long as its latest runs were
+	// green; hygiene is half the point of watching a repository at all.
+	// A sub-score that cannot be measured is skipped, never counted as
+	// zero — the same rule every rollup above this follows.
+	var parts []int
 	if h.PipelineSuccessRate != nil {
-		v := int(*h.PipelineSuccessRate * 100)
+		parts = append(parts, int(*h.PipelineSuccessRate*100))
+	}
+	if !failed["branches"] && h.BranchesTotal > 0 {
+		parts = append(parts, h.BranchesActive*100/h.BranchesTotal)
+	}
+	var score *int
+	if len(parts) > 0 {
+		sum := 0
+		for _, p := range parts {
+			sum += p
+		}
+		v := sum / len(parts)
 		score = &v
 	}
 
