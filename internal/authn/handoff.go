@@ -123,7 +123,7 @@ func HandoffAuthorize(deps Deps) fiber.Handler {
 			return err
 		}
 
-		finishURL := deps.Cfg.Scheme() + "://" + org.Subdomain + "." + deps.Cfg.BaseDomain + "/handoff/finish?code=" + raw
+		finishURL := deps.Cfg.TenantURL(org.Subdomain) + "/handoff/finish?code=" + raw
 		return c.Redirect(finishURL, fiber.StatusFound)
 	}
 }

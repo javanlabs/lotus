@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -100,14 +101,34 @@ func (c Config) AuthHost() string {
 	if c.IsSingle() {
 		panic("config: AuthHost is meaningless in single mode; use BaseURL")
 	}
-	return "auth." + c.BaseDomain
+	return c.withDevPort("auth." + c.BaseDomain)
 }
 
 func (c Config) TenantHost(slug string) string {
 	if c.IsSingle() {
 		panic("config: TenantHost is meaningless in single mode; use BaseURL")
 	}
-	return slug + "." + c.BaseDomain
+	return c.withDevPort(slug + "." + c.BaseDomain)
+}
+
+// withDevPort appends the port the process actually listens on, but only
+// in dev mode.
+//
+// LOTUS_BASE_DOMAIN carries no port, and production is right to leave it
+// out: 443 is implicit and must not appear in a link. Locally the server
+// is on :8080, so a cross-host redirect built from the bare hostname sent
+// the browser to port 80 — where, on a machine running Herd, nginx or
+// Valet, some other tool answers with its own 404. That made the handoff
+// unusable in dev and pointed invitation links at the wrong port.
+func (c Config) withDevPort(host string) string {
+	if !c.Dev {
+		return host
+	}
+	_, port, err := net.SplitHostPort(c.Addr)
+	if err != nil || port == "" || port == "80" {
+		return host
+	}
+	return net.JoinHostPort(host, port)
 }
 
 // BaseURL is the absolute origin pre-session links are built against —
@@ -122,6 +143,16 @@ func (c Config) BaseURL() string {
 		return strings.TrimSuffix(c.URL, "/")
 	}
 	return c.Scheme() + "://" + c.AuthHost()
+}
+
+// TenantURL is the absolute origin of one organization's own host —
+// where the handoff sends the browser for its last hop. In single mode
+// there is only one origin, so it is BaseURL.
+func (c Config) TenantURL(slug string) string {
+	if c.IsSingle() {
+		return c.BaseURL()
+	}
+	return c.Scheme() + "://" + c.TenantHost(slug)
 }
 
 // Validate checks the combinations Load cannot: Load reads whatever is in

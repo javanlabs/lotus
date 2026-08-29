@@ -92,3 +92,48 @@ func TestIsSingle(t *testing.T) {
 		t.Error("IsSingle() = true for ModeSaaS")
 	}
 }
+
+// TestDevHostsCarryTheListeningPort covers the bug that made cross-host
+// login impossible locally: LOTUS_BASE_DOMAIN has no port, so a redirect
+// built from the bare hostname sent the browser to port 80 — a machine
+// running Herd or nginx answers there with something that is not Lotus.
+func TestDevHostsCarryTheListeningPort(t *testing.T) {
+	dev := config.Config{Mode: config.ModeSaaS, BaseDomain: "lotus.localhost", Addr: ":8080", Dev: true}
+	if got, want := dev.AuthHost(), "auth.lotus.localhost:8080"; got != want {
+		t.Fatalf("dev AuthHost() = %q, want %q", got, want)
+	}
+	if got, want := dev.TenantHost("acme"), "acme.lotus.localhost:8080"; got != want {
+		t.Fatalf("dev TenantHost() = %q, want %q", got, want)
+	}
+	if got, want := dev.TenantURL("acme"), "http://acme.lotus.localhost:8080"; got != want {
+		t.Fatalf("dev TenantURL() = %q, want %q", got, want)
+	}
+
+	// Production must not gain a port: 443 is implicit and a link that
+	// spells it out is wrong.
+	// CookieSecure is what makes Scheme() https — the production shape.
+	prod := config.Config{Mode: config.ModeSaaS, BaseDomain: "lotus.com", Addr: ":8080", CookieSecure: true}
+	if got, want := prod.AuthHost(), "auth.lotus.com"; got != want {
+		t.Fatalf("prod AuthHost() = %q, want %q", got, want)
+	}
+	if got, want := prod.TenantURL("acme"), "https://acme.lotus.com"; got != want {
+		t.Fatalf("prod TenantURL() = %q, want %q", got, want)
+	}
+
+	// Port 80 in dev is the same implicit case, and an unparseable Addr
+	// must degrade to the bare host rather than produce a broken link.
+	for _, addr := range []string{":80", "", "nonsense"} {
+		c := config.Config{Mode: config.ModeSaaS, BaseDomain: "lotus.localhost", Addr: addr, Dev: true}
+		if got, want := c.AuthHost(), "auth.lotus.localhost"; got != want {
+			t.Fatalf("AuthHost() with Addr %q = %q, want %q", addr, got, want)
+		}
+	}
+}
+
+// Single mode has one origin; the handoff's tenant hop collapses onto it.
+func TestTenantURLInSingleMode(t *testing.T) {
+	single := config.Config{Mode: config.ModeSingle, URL: "http://localhost:8008"}
+	if got, want := single.TenantURL("ignored"), "http://localhost:8008"; got != want {
+		t.Fatalf("TenantURL() = %q, want %q", got, want)
+	}
+}
