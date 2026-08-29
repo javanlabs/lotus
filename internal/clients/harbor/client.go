@@ -22,6 +22,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -206,17 +207,34 @@ func (c *Client) LatestArtifactWithScan(ctx context.Context, project, repoName s
 // behavior); a non-empty one looks for an artifact carrying that exact
 // tag name instead. Not in the legacy client — the legacy tool had no
 // per-binding config to express this with at all.
+// FindArtifact returns the newest artifact whose tag matches tagPattern,
+// or the newest scanned artifact when the pattern is empty.
+//
+// The pattern is a glob (path.Match syntax: *, ?, [...]), which is what
+// the binding field has always been called and what a tag like
+// "release-*" or "v1.*" asks for. A pattern with no metacharacters still
+// matches exactly, so every binding written against the old exact-match
+// behaviour keeps resolving to the same image.
 func (c *Client) FindArtifact(ctx context.Context, project, repoName, tagPattern string) (*Artifact, error) {
 	if tagPattern == "" {
 		return c.LatestArtifactWithScan(ctx, project, repoName)
+	}
+	if _, err := path.Match(tagPattern, ""); err != nil {
+		// Reported rather than swallowed: a malformed pattern would
+		// otherwise match nothing and read as "this image has no tags",
+		// which sends the reader looking in Harbor instead of at the
+		// binding they mistyped.
+		return nil, fmt.Errorf("harbor: invalid tag pattern %q: %w", tagPattern, err)
 	}
 	arts, err := c.listArtifacts(ctx, project, repoName)
 	if err != nil {
 		return nil, err
 	}
+	// Artifacts arrive newest-first (sort=-push_time), so the first match
+	// is the most recent image whose tag matches.
 	for i := range arts {
 		for _, tag := range arts[i].Tags {
-			if tag.Name == tagPattern {
+			if ok, _ := path.Match(tagPattern, tag.Name); ok {
 				return &arts[i], nil
 			}
 		}
