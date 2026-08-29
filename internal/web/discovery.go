@@ -62,7 +62,7 @@ func (h discoveryHandlers) run(c *fiber.Ctx) error {
 	}
 
 	client := netguard.NewClient(netguard.Config{AllowHTTP: h.d.Cfg.Dev, Resolver: h.d.NetguardResolver, IsBlocked: h.d.NetguardIsBlocked})
-	items, discErr := integrations.Discover(c.Context(), client, conn.Provider, conn.BaseURL, secret)
+	items, discErr := integrations.Discover(c.Context(), client, conn.Provider, conn.BaseURL, secret, conn.Config)
 	secret = "" //nolint:ineffassign // best-effort scrub once no longer needed
 
 	if errors.Is(discErr, integrations.DiscoverDegradedNoAdminScope) {

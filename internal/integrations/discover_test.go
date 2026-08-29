@@ -2,6 +2,7 @@ package integrations_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -32,7 +33,7 @@ func TestDiscover_GitLab_Paginates(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	items, err := integrations.Discover(context.Background(), srv.Client(), "gitlab", srv.URL, "token")
+	items, err := integrations.Discover(context.Background(), srv.Client(), "gitlab", srv.URL, "token", nil)
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
@@ -50,7 +51,7 @@ func TestDiscover_SonarQube_NoAdminScopeIsDegradedNotError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := integrations.Discover(context.Background(), srv.Client(), "sonarqube", srv.URL, "limited-token")
+	_, err := integrations.Discover(context.Background(), srv.Client(), "sonarqube", srv.URL, "limited-token", nil)
 	if err != integrations.DiscoverDegradedNoAdminScope {
 		t.Fatalf("err = %v, want DiscoverDegradedNoAdminScope", err)
 	}
@@ -62,7 +63,7 @@ func TestDiscover_SonarQube_ListsProjects(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	items, err := integrations.Discover(context.Background(), srv.Client(), "sonarqube", srv.URL, "token")
+	items, err := integrations.Discover(context.Background(), srv.Client(), "sonarqube", srv.URL, "token", nil)
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
@@ -88,7 +89,7 @@ func TestDiscover_Harbor_ListsProjectsThenRepositories(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	items, err := integrations.Discover(context.Background(), srv.Client(), "harbor_trivy", srv.URL, "user:pass")
+	items, err := integrations.Discover(context.Background(), srv.Client(), "harbor_trivy", srv.URL, "user:pass", nil)
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
@@ -103,12 +104,41 @@ func TestDiscover_Sentry_ListsProjects(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	items, err := integrations.Discover(context.Background(), srv.Client(), "sentry", srv.URL, "token")
+	items, err := integrations.Discover(context.Background(), srv.Client(), "sentry", srv.URL, "token", nil)
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
 	if len(items) != 1 || items[0].ExternalKey != "bpm-service" {
 		t.Fatalf("items = %+v, want one item bpm-service", items)
+	}
+}
+
+// A Sentry token can see more than one Sentry organization. Unscoped
+// discovery offered all of them, so binding a project could quietly point
+// a component at another organization's data.
+func TestDiscover_Sentry_ScopesToTheConnectionsOrganization(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		fmt.Fprint(w, `[{"slug":"bpm-service","name":"BPM Service"}]`)
+	}))
+	defer srv.Close()
+
+	if _, err := integrations.Discover(context.Background(), srv.Client(), "sentry", srv.URL, "token",
+		json.RawMessage(`{"org":"javan"}`)); err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if want := "/api/0/organizations/javan/projects/"; gotPath != want {
+		t.Fatalf("path = %q, want %q", gotPath, want)
+	}
+
+	// A connection created before the field existed keeps working, on the
+	// endpoint it always used.
+	if _, err := integrations.Discover(context.Background(), srv.Client(), "sentry", srv.URL, "token", nil); err != nil {
+		t.Fatalf("Discover without org: %v", err)
+	}
+	if want := "/api/0/projects/"; gotPath != want {
+		t.Fatalf("path without org = %q, want %q", gotPath, want)
 	}
 }
 

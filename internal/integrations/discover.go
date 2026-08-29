@@ -33,7 +33,10 @@ var DiscoverDegradedNoAdminScope = fmt.Errorf("integrations: credential lacks ad
 // dalam hitungan detik", and an organization with tens of thousands of
 // upstream projects is better served by search-as-you-type over the
 // discovered set than by one request trying to fetch all of them.
-func Discover(ctx context.Context, client *http.Client, provider, baseURL, secret string) ([]DiscoveredItem, error) {
+// config is the connection's own non-secret settings blob
+// (integration_connections.config) — today only Sentry reads it, for the
+// organization slug its API scopes everything by.
+func Discover(ctx context.Context, client *http.Client, provider, baseURL, secret string, config json.RawMessage) ([]DiscoveredItem, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 	switch provider {
 	case "gitlab":
@@ -43,10 +46,24 @@ func Discover(ctx context.Context, client *http.Client, provider, baseURL, secre
 	case "harbor_trivy":
 		return discoverHarbor(ctx, client, baseURL, secret)
 	case "sentry":
-		return discoverSentry(ctx, client, baseURL, secret)
+		return discoverSentry(ctx, client, baseURL, secret, sentryOrgFromConfig(config))
 	default:
 		return nil, fmt.Errorf("integrations: unknown provider %q", provider)
 	}
+}
+
+// sentryOrgFromConfig reads {"org": "..."} out of a connection's config.
+// Empty is a valid answer: connections created before the field existed
+// have none, and discovery still works — just unscoped, as it always was.
+func sentryOrgFromConfig(config json.RawMessage) string {
+	if len(config) == 0 {
+		return ""
+	}
+	var c struct {
+		Org string `json:"org"`
+	}
+	_ = json.Unmarshal(config, &c)
+	return strings.TrimSpace(c.Org)
 }
 
 const discoverMaxPages = 10 // 100/page => up to 1000 resources per connection
@@ -216,8 +233,18 @@ func discoverHarbor(ctx context.Context, client *http.Client, baseURL, secret st
 // issue tag-values, real collector work rather than a discovery-time
 // listing call, so it's left for Fase 3 and logged as a TENSION rather
 // than half-built here.
-func discoverSentry(ctx context.Context, client *http.Client, baseURL, secret string) ([]DiscoveredItem, error) {
-	resp, err := get(ctx, client, baseURL+"/api/0/projects/", func(r *http.Request) {
+func discoverSentry(ctx context.Context, client *http.Client, baseURL, secret, org string) ([]DiscoveredItem, error) {
+	// Scoped to the connection's own Sentry organization when it declares
+	// one. The unscoped /api/0/projects/ lists everything the token can
+	// see across every Sentry org — so a token with access to two orgs
+	// offered projects that do not belong to the one being connected, and
+	// binding one of those produces a component quietly reporting on
+	// another organization's data.
+	path := "/api/0/projects/"
+	if org != "" {
+		path = "/api/0/organizations/" + url.PathEscape(org) + "/projects/"
+	}
+	resp, err := get(ctx, client, baseURL+path, func(r *http.Request) {
 		r.Header.Set("Authorization", "Bearer "+secret)
 	})
 	if err != nil {
