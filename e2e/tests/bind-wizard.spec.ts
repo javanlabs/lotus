@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { seedOwnerSession, withDB } from './helpers/db';
+import { dropdownTrigger } from './helpers/dropdown';
 
 const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
 const BASE_DOMAIN = process.env.LOTUS_BASE_DOMAIN ?? 'lotus.localhost';
@@ -31,14 +32,20 @@ test('bind wizard renders a different, descriptor-driven form per kind tab', asy
   const componentId = await seedProjectAndComponent(orgId);
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+  // No ?kind, so the wizard opens on the first of bindableKinds — which is
+  // SonarQube, not GitLab: the kind order is fixed product-wide (AGENTS.md)
+  // and this test follows it rather than pinning a second copy of it.
   await page.goto(`${origin}/components/${componentId}/bind`);
+  await expect(page.getByText('SonarQube project key')).toBeVisible();
 
+  await page.getByRole('link', { name: 'GitLab' }).click();
   await expect(page.getByText('GitLab project path')).toBeVisible();
   await expect(page.locator('input[name="base_url"]')).toBeVisible();
 
   await page.getByRole('link', { name: 'Sentry' }).click();
   await expect(page.getByText('Sentry project slug')).toBeVisible();
-  await expect(page.locator('select[name="mode"]')).toBeVisible();
+  // The mode field is a dropdown now, not a native select.
+  await expect(dropdownTrigger(page, 'mode')).toBeVisible();
   // Switching kinds must not leave GitLab's fields lying around under a
   // stale name — that would silently corrupt the submitted config.
   await expect(page.locator('input[name="default_branch"]')).toHaveCount(0);

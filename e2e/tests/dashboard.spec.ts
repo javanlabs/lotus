@@ -19,13 +19,16 @@ test('dashboard shows the app shell and an empty state for a fresh org', async (
   const origin = tenantOrigin(subdomain);
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+  // /dashboard is kept as a permanent forward to /projects, the landing
+  // page — following it here is also what proves the forward still works.
   await page.goto(`${origin}/dashboard`);
+  await expect(page).toHaveURL(`${origin}/projects`);
 
-  // The app shell (task 4.1): sidebar with the signed-in user, Dashboard
-  // highlighted, the Lotus wordmark — proves the design-system layout
+  // The app shell (task 4.1): sidebar with the signed-in user, the
+  // Projects entry, the Lotus wordmark — proves the design-system layout
   // rendered, not just raw content.
   await expect(page.getByText('E2E Owner')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Projects/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Software health' })).toBeVisible();
   await expect(page.getByText('No projects yet')).toBeVisible();
 
@@ -66,7 +69,7 @@ test('creating a project through the real form lands on the new project\'s own p
   });
 });
 
-test('dashboard renders real component metrics as KPI cards and a filterable repositories table', async ({ page, context }) => {
+test('the projects list renders one row per project, with its rolled-up metrics', async ({ page, context }) => {
   const { sessionToken, orgId, subdomain } = await seedOwnerSession('full-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
 
@@ -92,11 +95,22 @@ test('dashboard renders real component metrics as KPI cards and a filterable rep
   });
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  await page.goto(`${origin}/dashboard`);
+  await page.goto(`${origin}/projects`);
 
-  await expect(page.getByText('billing-api')).toBeVisible();
+  // Rows are projects, not components: the project is the outermost unit
+  // and the thing that owns a Lotus score. Its one component is behind
+  // the row, on the project's own page.
   await expect(page.getByText('Payments', { exact: true })).toBeVisible();
+  await expect(page.getByText('billing-api')).not.toBeVisible();
+  await expect(page.getByText('1 component', { exact: true })).toBeVisible();
+
+  await page.getByText('Payments', { exact: true }).click();
+  await expect(page.getByText('billing-api')).toBeVisible();
+  // A kind with a status but no score keeps the collector's own phrasing
+  // in the cell — the score-only column would otherwise render an empty
+  // box for a component that was measured and did badly.
   await expect(page.getByText('5 stale branches')).toBeVisible();
+  await page.goBack();
 
   // Client-side filtering (Alpine x-show) — a real regression this
   // feature hit in manual QA: combining an inline `display:grid` with
@@ -107,8 +121,8 @@ test('dashboard renders real component metrics as KPI cards and a filterable rep
   // risk" summary text, further down the page — the segmented-control
   // button is the first match in DOM order.
   await page.getByText('At risk', { exact: false }).first().click();
-  await expect(page.getByText('billing-api')).not.toBeVisible();
+  await expect(page.getByText('Payments', { exact: true })).not.toBeVisible();
   await page.getByText('All', { exact: false }).first().click();
-  await expect(page.getByText('billing-api')).toBeVisible();
-  await expect(page.locator('.lotus-repo-row', { hasText: 'billing-api' })).toHaveCSS('display', 'grid');
+  await expect(page.getByText('Payments', { exact: true })).toBeVisible();
+  await expect(page.locator('.lotus-repo-row', { hasText: 'Payments' })).toHaveCSS('display', 'grid');
 });
