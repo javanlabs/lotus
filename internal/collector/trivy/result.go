@@ -135,13 +135,20 @@ func buildResult(d trivyDetail, failOn string) (collector.Result, error) {
 	}, nil
 }
 
-// maxVulnReportJSON mirrors trivyclient.MaxRawJSON's role for the pull
-// path: Harbor's own vulnerability-report JSON has no per-integration
-// truncation helper the way trivyclient.CompactForStorage does for the
-// push path's raw `trivy` CLI output, so an oversize report here is
-// simply not stored rather than stored corrupt or ballooning the row —
-// the severity counts (already captured in Facts and the headline) don't
-// depend on this blob at all.
+// maxVulnReportJSON is the pull path's counterpart to
+// trivyclient.MaxRawJSON, and marshalVulnReport compacts the same way
+// trivyclient.CompactForStorage does for the push path.
+//
+// Dropping the report outright used to be the behaviour, on the argument
+// that the severity counts live in Facts and the headline anyway. That
+// was true of the counts and wrong about the page: the Trivy detail
+// screen lists CVEs straight out of this blob, so a large report meant a
+// component with the most findings showed none of them.
+//
+// So: shrink before giving up. Descriptions are the bulk of a Harbor
+// report and the one part the detail view does not show, so they go
+// first. If it is still over the cap, store it anyway — valid and large
+// beats absent, and nothing downstream parses it eagerly.
 const maxVulnReportJSON = trivyclient.MaxRawJSON
 
 func marshalVulnReport(vr *harbor.VulnerabilityReport) ([]byte, error) {
@@ -149,10 +156,17 @@ func marshalVulnReport(vr *harbor.VulnerabilityReport) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(b) > maxVulnReportJSON {
-		return nil, nil
+	if len(b) <= maxVulnReportJSON {
+		return b, nil
 	}
-	return b, nil
+
+	compact := *vr
+	compact.Vulnerabilities = make([]harbor.Vulnerability, len(vr.Vulnerabilities))
+	copy(compact.Vulnerabilities, vr.Vulnerabilities)
+	for i := range compact.Vulnerabilities {
+		compact.Vulnerabilities[i].Description = ""
+	}
+	return json.Marshal(compact)
 }
 
 // Persist writes a Collect's (or Ingestor.Parse's) Detail into
