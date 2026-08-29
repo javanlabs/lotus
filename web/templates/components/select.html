@@ -1,0 +1,62 @@
+{{/* lotus_select replaces the native <select>, which is the one control a
+     browser refuses to let a design system style: Safari, Firefox and
+     Chrome each draw their own popup, so the same page looked like three
+     different products.
+
+     Takes (dict
+       "Name"       form field name          — required
+       "Value"      currently selected value — "" means "first option"
+       "Options"    (selectOptions ...)      — required, see httpx/funcs.go
+       "Size"       "sm" | "md"              — default "md"
+       "AutoSubmit" true                     — submits the form on change,
+                                               replacing onchange="this.form.submit()"
+       "Label"      accessible name for screen readers, when the visible
+                    label is a sibling <span> rather than a wrapping <label>)
+
+     The options are rendered as real DOM rather than passed to Alpine as
+     JSON: the markup then still says what the choices are with scripting
+     off or broken, and server-side tests can assert on them. Alpine reads
+     them back out of the DOM on init.
+
+     The submitted value lives in a hidden input, so a form sees exactly
+     what a native select would have submitted. */}}
+{{define "lotus_select"}}
+{{$size := ternary (eq (printf "%v" .Size) "sm") "lotus-select-sm" "lotus-select-md"}}
+<div class="lotus-select {{$size}}" x-data="lotusSelect({ autoSubmit: {{if .AutoSubmit}}true{{else}}false{{end}} })" x-id="['lotus-select']">
+  <input type="hidden" name="{{.Name}}" value="{{.Value}}" x-ref="input">
+
+  <button type="button" class="lotus-select-trigger" x-ref="trigger"
+          role="combobox" aria-haspopup="listbox" :aria-expanded="open ? 'true' : 'false'"
+          :aria-controls="$id('lotus-select')"{{if .Label}} aria-label="{{.Label}}"{{end}}
+          @click.stop="toggle()" @keydown="onTriggerKey($event)">
+    <span class="lotus-select-value" x-text="label"></span>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="lotus-select-chevron"
+         :style="{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }" aria-hidden="true">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9s-4.419 6-6 6s-6-6-6-6"></path>
+    </svg>
+  </button>
+
+  {{/* position:fixed, not absolute: a dropdown inside a table row or a
+       horizontally scrolling strip would otherwise be clipped by the
+       ancestor's overflow. Fixed is measured against the viewport, so it
+       escapes the clip; lotusSelect keeps it aligned on scroll.
+
+       x-teleport to <body> is what makes that true. A fixed element is
+       positioned against the viewport only while no ancestor creates a
+       containing block — and .lotus-card's backdrop-filter does exactly
+       that, which put the first version of this panel a card's width off
+       to the right. Teleporting lifts it out of every card. */}}
+  <template x-teleport="body">
+    <div class="lotus-select-panel" :id="$id('lotus-select')" role="listbox" x-ref="panel"
+         x-show="open" x-cloak @click.outside="close()"
+         :style="{ top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: pos.maxHeight }">
+      {{range .Options}}
+      <div class="lotus-select-option" role="option" data-value="{{.Value}}"
+           {{if .Disabled}}data-disabled="true" aria-disabled="true"{{end}}
+           :aria-selected="isSelected($el) ? 'true' : 'false'"
+           @click="choose($el)" @mousemove="markActive($el)">{{.Label}}</div>
+      {{end}}
+    </div>
+  </template>
+</div>
+{{end}}

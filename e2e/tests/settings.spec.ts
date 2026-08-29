@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { seedOwnerSession, withDB } from './helpers/db';
+import { chooseFromDropdown, dropdownValue } from './helpers/dropdown';
 
 const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
 const BASE_DOMAIN = process.env.LOTUS_BASE_DOMAIN ?? 'lotus.localhost';
@@ -48,7 +49,8 @@ test('inviting a member shows it as pending, and revoke removes it, real browser
 
   await page.goto(`${origin}/settings/members`);
   await page.locator('input[name="email"]').fill('newteammate@example.com');
-  await page.locator('select[name="role"]').selectOption('member');
+  await chooseFromDropdown(page, 'role', 'Member');
+  expect(await dropdownValue(page, 'role')).toBe('member');
   await page.getByRole('button', { name: 'Send invite' }).click();
 
   await expect(page).toHaveURL(`${origin}/settings/members`);

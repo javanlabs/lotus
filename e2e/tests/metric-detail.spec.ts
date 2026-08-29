@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { seedOwnerSession, withDB } from './helpers/db';
+import { chooseFromDropdown } from './helpers/dropdown';
 
 const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
 const BASE_DOMAIN = process.env.LOTUS_BASE_DOMAIN ?? 'lotus.localhost';
@@ -87,7 +88,7 @@ test('Sonar date picker switches between historical snapshots', async ({ page, c
 
   await expect(page.getByText('12.3%')).toBeVisible();
   const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  await page.locator('select[name="date"]').selectOption(tenDaysAgo);
+  await chooseFromDropdown(page, 'date', tenDaysAgo);
   await expect(page.getByText('77.7%')).toBeVisible();
   await expect(page.getByText('12.3%')).not.toBeVisible();
 });

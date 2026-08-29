@@ -10,11 +10,11 @@
     </label>
     <label class="flex flex-col gap-1 text-sm text-slate-700">
       Role
-      <select name="role" class="rounded-md border border-slate-300 px-3 py-2">
-        <option value="member" selected>Member</option>
-        <option value="admin">Admin</option>
-        <option value="viewer">Viewer</option>
-      </select>
+      {{template "lotus_select" (dict "Name" "role" "Value" "member" "Label" "Role"
+        "Options" (selectOptions
+          (dict "Value" "member" "Label" "Member")
+          (dict "Value" "admin" "Label" "Admin")
+          (dict "Value" "viewer" "Label" "Viewer")))}}
     </label>
     <div class="flex w-full gap-3">
       <button type="submit" name="action" value="send"

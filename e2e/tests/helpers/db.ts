@@ -73,3 +73,14 @@ export async function withDB<T>(fn: (client: Client) => Promise<T>): Promise<T> 
     await client.end();
   }
 }
+
+// retireOrg soft-deletes a seeded organization the way the app itself
+// does. Local runs share the dev database (see DATABASE_URL above), and a
+// single-mode dev instance refuses to serve when it finds more than one
+// live organization — so a spec that leaves its fixture behind breaks
+// `make dev` for whoever runs it next.
+export async function retireOrg(orgId: string): Promise<void> {
+  await withDB((client) =>
+    client.query(`UPDATE organizations SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [orgId]),
+  );
+}

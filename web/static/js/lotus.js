@@ -169,3 +169,227 @@ function lotusInfo() {
     },
   };
 }
+
+// lotusSelect drives web/templates/components/select.html — the styled
+// replacement for a native <select>.
+//
+// The options are already in the DOM (server-rendered inside the panel);
+// this reads them back rather than being handed a JSON copy, so there is
+// one source of truth for what the choices are.
+function lotusSelect(config) {
+  return {
+    open: false,
+    label: "",
+    // Positions are strings because they go straight into :style. The
+    // panel is position:fixed, so these are viewport coordinates.
+    pos: { top: "0px", left: "0px", width: "0px", maxHeight: "280px" },
+    typed: "",
+    typedAt: 0,
+
+    init() {
+      // $nextTick, not straight away: the panel is teleported into <body>
+      // and does not exist yet while this component initializes. Reading
+      // $refs.panel here threw, and the only visible symptom was a
+      // trigger with no label — the options were fine all along.
+      this.$nextTick(() => {
+        this.options().forEach((opt, i) => {
+          // Ids exist for aria-activedescendant, which is how a combobox
+          // announces the highlighted option while focus stays on the
+          // button.
+          if (!opt.id) opt.id = `${this.$id("lotus-select")}-opt-${i}`;
+        });
+        // A native select with no selected option shows its first one and
+        // submits that value. Match it, so a form that never touches the
+        // control submits what the user was shown.
+        if (!this.value() || !this.optionFor(this.value())) {
+          const first = this.options().find((o) => !this.isDisabled(o));
+          if (first) this.$refs.input.value = first.dataset.value;
+        }
+        this.syncLabel();
+      });
+
+      // The panel is fixed, so it does not travel with a scrolling
+      // ancestor on its own. Capture phase catches scrolls of any
+      // container, not just the window.
+      this._reflow = () => {
+        if (this.open) this.place();
+      };
+      window.addEventListener("scroll", this._reflow, true);
+      window.addEventListener("resize", this._reflow);
+    },
+
+    destroy() {
+      window.removeEventListener("scroll", this._reflow, true);
+      window.removeEventListener("resize", this._reflow);
+    },
+
+    options() {
+      const panel = this.$refs.panel;
+      return panel ? Array.from(panel.querySelectorAll(".lotus-select-option")) : [];
+    },
+
+    isDisabled(opt) {
+      return opt.dataset.disabled === "true";
+    },
+
+    value() {
+      return this.$refs.input.value;
+    },
+
+    optionFor(value) {
+      return this.options().find((o) => o.dataset.value === value);
+    },
+
+    isSelected(opt) {
+      return opt.dataset.value === this.value();
+    },
+
+    syncLabel() {
+      const opt = this.optionFor(this.value());
+      this.label = opt ? opt.textContent.trim() : "";
+    },
+
+    toggle() {
+      this.open ? this.close() : this.show();
+    },
+
+    show() {
+      this.open = true;
+      this.markActive(this.optionFor(this.value()) || this.options()[0]);
+      // Measured after the panel is displayed: a hidden element has no
+      // height to flip against.
+      this.$nextTick(() => {
+        this.place();
+        const active = this.activeOption();
+        if (active) active.scrollIntoView({ block: "nearest" });
+      });
+    },
+
+    close() {
+      if (!this.open) return;
+      this.open = false;
+      this.$refs.trigger.focus();
+    },
+
+    place() {
+      const b = this.$refs.trigger.getBoundingClientRect();
+      const panel = this.$refs.panel;
+      const margin = 8;
+
+      // Room below the trigger decides which way the list opens, and how
+      // tall it may be — a list capped at a fixed height that then runs
+      // off the screen is worse than a shorter scrolling one.
+      const below = window.innerHeight - b.bottom - margin - 6;
+      const above = b.top - margin - 6;
+      const flip = below < Math.min(panel.scrollHeight, 200) && above > below;
+      const maxHeight = Math.max(120, Math.min(280, flip ? above : below));
+
+      this.pos = {
+        top: `${Math.round(flip ? Math.max(margin, b.top - Math.min(panel.scrollHeight, maxHeight) - 6) : b.bottom + 6)}px`,
+        left: `${Math.round(Math.max(margin, Math.min(b.left, window.innerWidth - b.width - margin)))}px`,
+        width: `${Math.round(b.width)}px`,
+        maxHeight: `${Math.round(maxHeight)}px`,
+      };
+    },
+
+    activeOption() {
+      return this.options().find((o) => o.dataset.active === "true");
+    },
+
+    markActive(opt) {
+      if (!opt) return;
+      this.options().forEach((o) => delete o.dataset.active);
+      opt.dataset.active = "true";
+      this.$refs.trigger.setAttribute("aria-activedescendant", opt.id);
+    },
+
+    move(step) {
+      const opts = this.options().filter((o) => !this.isDisabled(o));
+      if (!opts.length) return;
+      const current = opts.indexOf(this.activeOption());
+      const next = current < 0 ? 0 : (current + step + opts.length) % opts.length;
+      this.markActive(opts[next]);
+      opts[next].scrollIntoView({ block: "nearest" });
+    },
+
+    choose(opt) {
+      if (this.isDisabled(opt)) return;
+      const changed = opt.dataset.value !== this.value();
+      this.$refs.input.value = opt.dataset.value;
+      this.syncLabel();
+      this.close();
+      if (!changed) return;
+      // A hidden input changed by script fires nothing on its own; anything
+      // listening for a change on this field (htmx, another Alpine
+      // component) would never hear about it otherwise.
+      this.$refs.input.dispatchEvent(new Event("change", { bubbles: true }));
+      if (config.autoSubmit) this.submit();
+    },
+
+    submit() {
+      const form = this.$refs.input.form;
+      if (!form) return;
+      // requestSubmit runs validation and fires submit handlers, which
+      // form.submit() skips — this form may have an onsubmit confirm.
+      if (form.requestSubmit) form.requestSubmit();
+      else form.submit();
+    },
+
+    onTriggerKey(event) {
+      const key = event.key;
+      if (!this.open) {
+        if (key === "Enter" || key === " " || key === "ArrowDown" || key === "ArrowUp") {
+          event.preventDefault();
+          this.show();
+        }
+        return;
+      }
+      switch (key) {
+        case "Escape":
+          event.preventDefault();
+          this.close();
+          return;
+        case "Enter":
+        case " ":
+          event.preventDefault();
+          if (this.activeOption()) this.choose(this.activeOption());
+          return;
+        case "ArrowDown":
+          event.preventDefault();
+          this.move(1);
+          return;
+        case "ArrowUp":
+          event.preventDefault();
+          this.move(-1);
+          return;
+        case "Home":
+        case "End": {
+          event.preventDefault();
+          const opts = this.options().filter((o) => !this.isDisabled(o));
+          if (opts.length) this.markActive(key === "Home" ? opts[0] : opts[opts.length - 1]);
+          return;
+        }
+        case "Tab":
+          this.open = false;
+          return;
+      }
+      if (key.length === 1) this.typeahead(key);
+    },
+
+    // Type-ahead: consecutive letters within a second accumulate, so
+    // "vi" reaches Viewer without stopping at Vault. The native control
+    // does this and people who use it notice when it is missing.
+    typeahead(char) {
+      const now = Date.now();
+      this.typed = now - this.typedAt > 1000 ? char : this.typed + char;
+      this.typedAt = now;
+      const match = this.options().find(
+        (o) => !this.isDisabled(o) && o.textContent.trim().toLowerCase().startsWith(this.typed.toLowerCase()),
+      );
+      if (match) {
+        this.markActive(match);
+        match.scrollIntoView({ block: "nearest" });
+      }
+    },
+  };
+}

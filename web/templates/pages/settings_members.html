@@ -17,13 +17,17 @@
     </div>
     {{if and $.Data.CanChangeRole (ne .UserID $.Data.Self)}}
     <form method="post" action="/settings/members/{{.UserID}}/role">
-      <select name="role" onchange="this.form.submit()"
-              style="padding:6px 10px;font-size:12px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:7px;outline:none;cursor:pointer">
-        <option value="owner" {{if eq .RoleKey "owner"}}selected{{end}} {{if ne $.Data.ActorRole "owner"}}disabled{{end}}>Owner</option>
-        <option value="admin" {{if eq .RoleKey "admin"}}selected{{end}}>Admin</option>
-        <option value="member" {{if eq .RoleKey "member"}}selected{{end}}>Member</option>
-        <option value="viewer" {{if eq .RoleKey "viewer"}}selected{{end}}>Viewer</option>
-      </select>
+      {{/* Only an Owner may hand out Owner, so that option is present but
+           disabled for an Admin — hiding it would leave the list looking
+           like Owner is not a role at all. */}}
+      {{template "lotus_select" (dict
+        "Name" "role" "Value" .RoleKey "Size" "sm" "AutoSubmit" true
+        "Label" (printf "Role for %s" .Name)
+        "Options" (selectOptions
+          (dict "Value" "owner" "Label" "Owner" "Disabled" (ne $.Data.ActorRole "owner"))
+          (dict "Value" "admin" "Label" "Admin")
+          (dict "Value" "member" "Label" "Member")
+          (dict "Value" "viewer" "Label" "Viewer")))}}
     </form>
     {{else}}
     <span class="lotus-badge" style="text-transform:capitalize">{{.RoleKey}}</span>
@@ -74,11 +78,11 @@
     </label>
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">ROLE</span>
-      <select name="role" style="padding:9px 11px;font-size:12.5px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
-        <option value="member" selected>Member</option>
-        <option value="admin">Admin</option>
-        <option value="viewer">Viewer</option>
-      </select>
+      {{template "lotus_select" (dict "Name" "role" "Value" "member" "Label" "Role"
+        "Options" (selectOptions
+          (dict "Value" "member" "Label" "Member")
+          (dict "Value" "admin" "Label" "Admin")
+          (dict "Value" "viewer" "Label" "Viewer")))}}
     </label>
     <div style="display:flex;justify-content:flex-end">
       <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none">Send invite</button>

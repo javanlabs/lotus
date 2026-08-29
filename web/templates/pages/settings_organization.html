@@ -62,9 +62,9 @@
     <p style="margin:0;font-size:11.5px;color:#6B7280;line-height:1.5">You'll be demoted to Admin; the member you choose becomes the new Owner.</p>
     {{if .Data.TransferTargets}}
     <form method="post" action="/settings/organization/transfer-ownership" style="display:flex;gap:8px" onsubmit="return confirm('Transfer ownership? You will be demoted to Admin.')">
-      <select name="user_id" required style="flex:1;padding:9px 11px;font-size:12.5px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
-        {{range .Data.TransferTargets}}<option value="{{.UserID}}">{{.Name}} ({{.Email}})</option>{{end}}
-      </select>
+      <div style="flex:1">
+        {{template "lotus_select" (dict "Name" "user_id" "Options" (selectOptions .Data.TransferTargets) "Label" "New owner")}}
+      </div>
       <button type="submit" class="btn-lotus" style="background:#FCEDF0;color:#9E2B47;border:none">Transfer</button>
     </form>
     {{else}}

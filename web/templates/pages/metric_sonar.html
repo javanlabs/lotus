@@ -8,12 +8,9 @@
   {{end}}
   {{if .Data.Dates}}
   <form method="get" style="margin-left:auto">
-    <select name="date" onchange="this.form.submit()"
-            style="padding:6px 10px;font-size:12px;color:#43284E;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:7px;outline:none;cursor:pointer">
-      <option value="">📅 Latest</option>
-      {{$sel := .Data.SelectedDate}}
-      {{range .Data.Dates}}<option value="{{.}}" {{if eq . $sel}}selected{{end}}>{{.}}</option>{{end}}
-    </select>
+    {{template "lotus_select" (dict
+      "Name" "date" "Value" .Data.SelectedDate "Size" "sm" "AutoSubmit" true "Label" "Snapshot date"
+      "Options" (selectOptions (dict "Value" "" "Label" "📅 Latest") .Data.Dates))}}
   </form>
   {{end}}
 </div>

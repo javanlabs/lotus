@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -43,10 +44,16 @@ func settingsOrgPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		transferTargets := make([]global.MemberRow, 0, len(members))
+		// Built here rather than in the template: the dropdown takes a
+		// flat option list, and a template cannot accumulate a slice
+		// inside a range.
+		transferTargets := make([]httpx.SelectOption, 0, len(members))
 		for _, m := range members {
 			if m.UserID != chrome.Principal.UserID {
-				transferTargets = append(transferTargets, m)
+				transferTargets = append(transferTargets, httpx.SelectOption{
+					Value: m.UserID.String(),
+					Label: fmt.Sprintf("%s (%s)", m.Name, m.Email),
+				})
 			}
 		}
 
@@ -64,7 +71,7 @@ func settingsOrgPage(d Deps) fiber.Handler {
 				SettingsNav            []settingsNavItem
 				Profile                *global.OrgProfile
 				DefaultIntervalMinutes string
-				TransferTargets        []global.MemberRow
+				TransferTargets        []httpx.SelectOption
 				CanUpdate              bool
 				CanChangeSlug          bool
 				CanTransfer            bool

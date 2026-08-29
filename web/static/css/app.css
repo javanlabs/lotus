@@ -206,3 +206,83 @@ body {
 .lotus-nav-item.is-active { background: #F3EFF6; color: var(--color-brand); font-weight: 600; }
 .lotus-nav-item.is-disabled { color: #C4C1C8; cursor: default; }
 .lotus-nav-item.is-disabled:hover { background: transparent; color: #C4C1C8; }
+
+/* Styled dropdown (web/templates/components/select.html). The native
+   <select>'s popup is drawn by the browser and cannot be styled, so the
+   same page rendered as three different products across Chrome, Firefox
+   and Safari. The trigger deliberately keeps the plain rounded corners
+   every other form control uses — the asymmetric lotus shape is for
+   cards and buttons, not fields. */
+.lotus-select { position: relative; }
+
+.lotus-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  background: #FFFFFF;
+  border: 1px solid rgba(67, 40, 78, .16);
+  border-radius: 8px;
+  color: var(--color-brand);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+.lotus-select-trigger:hover { border-color: rgba(67, 40, 78, .3); }
+.lotus-select-trigger:focus-visible {
+  outline: 2px solid rgba(92, 58, 105, .45);
+  outline-offset: 1px;
+}
+
+.lotus-select-md .lotus-select-trigger { padding: 9px 11px; font-size: 12.5px; }
+.lotus-select-sm .lotus-select-trigger { padding: 6px 10px; font-size: 12px; border-radius: 7px; }
+/* An inline filter sits beside other controls and should be as wide as
+   its content; a form field fills its label. */
+.lotus-select-sm { display: inline-block; }
+.lotus-select-sm .lotus-select-trigger { width: auto; }
+
+.lotus-select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lotus-select-chevron {
+  flex: none;
+  color: #9CA3AF;
+  transition: transform .18s cubic-bezier(.4, 0, .2, 1);
+}
+
+.lotus-select-panel {
+  position: fixed;
+  z-index: 60;
+  overflow-y: auto;
+  padding: 4px;
+  /* Opaque, not the card's translucent white: a list of options read
+     through the table underneath it is not readable. */
+  background: #FFFFFF;
+  border: 1px solid rgba(67, 40, 78, .14);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px -12px rgba(67, 40, 78, .45), 0 2px 6px rgba(17, 24, 39, .06);
+}
+
+.lotus-select-option {
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: #111827;
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* Hover and keyboard highlight are the same state on purpose: two
+   different highlights visible at once is the classic dropdown confusion
+   about which one Enter will pick. */
+.lotus-select-option[data-active="true"] { background: #F3EFF6; }
+.lotus-select-option[aria-selected="true"] { color: var(--color-brand); font-weight: 600; }
+.lotus-select-option[data-disabled="true"] {
+  color: #C4C1C8;
+  cursor: default;
+  background: transparent;
+}
