@@ -24,6 +24,13 @@ test:
   services:
     - name: postgres:17-alpine
       alias: postgres
+      # One schema per test, and migration 00018 builds 60 partitions plus
+      # their policies in a single transaction. `go test ./...` runs
+      # packages in parallel, so the concurrent schema builds exhaust the
+      # default 64-entry lock table and Postgres answers "out of shared
+      # memory (SQLSTATE 53200)" — random-looking failures in whichever
+      # package lost the race, with nothing wrong in the code.
+      command: ["postgres", "-c", "max_locks_per_transaction=512"]
   variables:
     POSTGRES_USER: lotus
     POSTGRES_PASSWORD: lotus

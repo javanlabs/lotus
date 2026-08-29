@@ -2,6 +2,13 @@ services:
   postgres:
     image: postgres:17-alpine
     container_name: lotus-pg
+    # The Go suite creates one schema per test, and migration 00018 builds
+    # 60 partitions plus their policies inside a single transaction. Run
+    # in parallel (plain `go test ./...`), the concurrent schema builds
+    # exhaust the shared lock table and Postgres answers "out of shared
+    # memory (SQLSTATE 53200)" — which surfaces as tests failing at random
+    # in whichever package lost the race, not as an obvious config error.
+    command: postgres -c max_locks_per_transaction=512
     environment:
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
