@@ -181,7 +181,32 @@ type SubCallFailure struct {
 // Health snapshot. Sub-calls (languages, branches, pipelines, commits) are
 // best-effort: a failure in one does not abort the whole fetch — only the
 // project lookup is fatal (it confirms the repo exists & is reachable).
-func (c *Client) FetchHealth(ctx context.Context, gitlabPath, defaultBranch string, staleDays int) (*Health, error) {
+// HealthOptions are the per-binding knobs FetchHealth reads. A zero value
+// means "use the documented default", so a binding written before a knob
+// existed behaves exactly as it did.
+type HealthOptions struct {
+	DefaultBranch      string
+	StaleDays          int
+	PipelineSampleSize int // pipelines examined for the success rate
+	CommitWindowDays   int // how far back the commit-velocity count looks
+}
+
+func (o HealthOptions) withDefaults() HealthOptions {
+	if o.StaleDays <= 0 {
+		o.StaleDays = 30
+	}
+	if o.PipelineSampleSize <= 0 {
+		o.PipelineSampleSize = 20
+	}
+	if o.CommitWindowDays <= 0 {
+		o.CommitWindowDays = 30
+	}
+	return o
+}
+
+func (c *Client) FetchHealth(ctx context.Context, gitlabPath string, opts HealthOptions) (*Health, error) {
+	opts = opts.withDefaults()
+	defaultBranch, staleDays := opts.DefaultBranch, opts.StaleDays
 	id := pid(gitlabPath)
 	h := &Health{}
 
@@ -233,7 +258,8 @@ func (c *Client) FetchHealth(ctx context.Context, gitlabPath, defaultBranch stri
 
 	// 4+5. Pipelines on default branch → success rate + latest pipeline detail.
 	var pls []pipeline
-	if err := c.get(ctx, "/projects/"+id+"/pipelines?ref="+url.QueryEscape(h.DefaultBranch)+"&per_page=20", &pls); err != nil {
+	if err := c.get(ctx, fmt.Sprintf("/projects/%s/pipelines?ref=%s&per_page=%d",
+		id, url.QueryEscape(h.DefaultBranch), opts.PipelineSampleSize), &pls); err != nil {
 		h.Warnings = append(h.Warnings, SubCallFailure{Step: "pipelines", Err: err.Error()})
 	} else if len(pls) > 0 {
 		success := 0
@@ -263,8 +289,8 @@ func (c *Client) FetchHealth(ctx context.Context, gitlabPath, defaultBranch stri
 		}
 	}
 
-	// 6. Commits in the last 30 days on the default branch (velocity).
-	since := time.Now().Add(-30 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	// 6. Commits in the configured window on the default branch (velocity).
+	since := time.Now().AddDate(0, 0, -opts.CommitWindowDays).UTC().Format(time.RFC3339)
 	var commits []commit
 	if err := c.get(ctx, "/projects/"+id+"/repository/commits?ref_name="+url.QueryEscape(h.DefaultBranch)+"&since="+url.QueryEscape(since)+"&per_page=100", &commits); err != nil {
 		h.Warnings = append(h.Warnings, SubCallFailure{Step: "commits", Err: err.Error()})

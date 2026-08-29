@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -156,5 +158,63 @@ func TestOpen_RejectsMissingCredential(t *testing.T) {
 	}
 	if collector.ClassOf(err) != collector.ErrClassConfig {
 		t.Fatalf("ClassOf = %q, want config", collector.ClassOf(err))
+	}
+}
+
+// TestCollect_HonoursPipelineSampleAndCommitWindow covers two binding
+// fields the bind form has always offered and the client always ignored:
+// a binding that set them got the built-in 20 pipelines and 30 days
+// regardless. A control that does nothing is worse than no control.
+func TestCollect_HonoursPipelineSampleAndCommitWindow(t *testing.T) {
+	var pipelinesQuery, commitsQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pipelines"):
+			pipelinesQuery = r.URL.RawQuery
+			fmt.Fprint(w, `[]`)
+		case strings.HasSuffix(r.URL.Path, "/repository/commits"):
+			// FetchHealth asks for commits twice: once windowed (velocity)
+			// and once unwindowed. Only the windowed one carries `since`.
+			if strings.Contains(r.URL.RawQuery, "since=") {
+				commitsQuery = r.URL.RawQuery
+			}
+			fmt.Fprint(w, `[]`)
+		case strings.HasSuffix(r.URL.Path, "/repository/branches"):
+			fmt.Fprint(w, `[]`)
+		case strings.HasSuffix(r.URL.Path, "/languages"):
+			fmt.Fprint(w, `{"Go":100}`)
+		default:
+			fmt.Fprint(w, `{"id":1,"default_branch":"main"}`)
+		}
+	}))
+	defer srv.Close()
+
+	c := glcollector.Collector{}
+	session, err := c.Open(context.Background(), collector.ConnConfig{BaseURL: srv.URL, Secret: "token", Client: srv.Client()})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer session.Close()
+
+	if _, err := session.Collect(context.Background(), collector.CollectRequest{
+		ExternalKey: "group/repo",
+		Config:      []byte(`{"default_branch":"main","pipeline_sample_size":5,"commit_window_days":7}`),
+	}); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	if !strings.Contains(pipelinesQuery, "per_page=5") {
+		t.Fatalf("pipelines query = %q, want per_page=5 from the binding", pipelinesQuery)
+	}
+	q, err := url.ParseQuery(commitsQuery)
+	if err != nil {
+		t.Fatalf("parse commits query: %v", err)
+	}
+	at, err := time.Parse(time.RFC3339, q.Get("since"))
+	if err != nil {
+		t.Fatalf("parse since %q: %v", q.Get("since"), err)
+	}
+	if days := int(time.Since(at).Hours() / 24); days < 6 || days > 8 {
+		t.Fatalf("commit window = %d days, want the binding's 7", days)
 	}
 }

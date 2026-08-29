@@ -103,19 +103,27 @@ func (s *session) Validate(ctx context.Context, bc collector.BindingConfig) (col
 }
 
 type bindingConfig struct {
-	DefaultBranch   string `json:"default_branch"`
-	StaleBranchDays int    `json:"stale_branch_days"`
+	DefaultBranch      string `json:"default_branch"`
+	StaleBranchDays    int    `json:"stale_branch_days"`
+	PipelineSampleSize int    `json:"pipeline_sample_size"`
+	CommitWindowDays   int    `json:"commit_window_days"`
 }
 
 func (s *session) Collect(ctx context.Context, req collector.CollectRequest) (collector.Result, error) {
 	var cfg bindingConfig
 	_ = json.Unmarshal(req.Config, &cfg) // defaults already applied at binding-creation time (task 2.3)
-	staleDays := cfg.StaleBranchDays
-	if staleDays == 0 {
-		staleDays = 30
-	}
 
-	h, err := s.client.FetchHealth(ctx, req.ExternalKey, cfg.DefaultBranch, staleDays)
+	// All four binding fields reach the client now. Two of them —
+	// pipeline_sample_size and commit_window_days — were offered in the
+	// bind form from the start and quietly ignored, so a binding that set
+	// them got the built-in 20 and 30 anyway. A control that does nothing
+	// is worse than no control.
+	h, err := s.client.FetchHealth(ctx, req.ExternalKey, gitlab.HealthOptions{
+		DefaultBranch:      cfg.DefaultBranch,
+		StaleDays:          cfg.StaleBranchDays,
+		PipelineSampleSize: cfg.PipelineSampleSize,
+		CommitWindowDays:   cfg.CommitWindowDays,
+	})
 	if err != nil {
 		return collector.Result{}, classify(err)
 	}
