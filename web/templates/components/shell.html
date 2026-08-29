@@ -69,7 +69,14 @@
     </div>
   </aside>
 
-  <main style="flex:1;min-width:0;padding:22px 26px 40px;background:radial-gradient(900px 420px at 12% -8%,rgba(237,188,195,.4),transparent 60%),radial-gradient(760px 380px at 88% 4%,rgba(67,40,78,.1),transparent 62%),#F9FAFB">
+  {{/* Flat, deliberately: the two radial washes that used to sit here
+       showed through wherever a page left the top-left open (the projects
+       list) and were hidden wherever a page opened with a wide card
+       (settings, scoring) — so the same shell read as two different
+       backgrounds depending on the page. The brand gradient now lives in
+       one place, the sidebar, and the content area stays quiet behind the
+       translucent cards that need something plain to sit on. */}}
+  <main style="flex:1;min-width:0;padding:22px 26px 40px;background:#F9FAFB">
 
     <nav style="display:flex;align-items:center;gap:7px;margin-bottom:14px;font-size:11.5px;color:#6B7280">
       <a href="/projects" aria-label="Lotus" style="display:inline-flex;align-items:center;padding:3px 5px;border-radius:5px">{{template "lotus_logo" (dict "ID" "bc" "Width" 20 "Height" 13)}}</a>
