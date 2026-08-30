@@ -9,7 +9,10 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
+	"io/fs"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -96,4 +99,34 @@ func MigrateDown(dsn string) error {
 		return err
 	}
 	return goose.Down(sqlDB.DB, "migrations")
+}
+
+// MigrationsChecksum fingerprints the embedded migration set.
+//
+// It exists for the test harness (internal/dbtest), which builds one
+// migrated template database and clones it per test instead of running
+// every migration per test. That template has to be invalidated when the
+// migrations change, and a content hash does it automatically — the
+// alternative, a hand-bumped version constant, is the kind of thing that
+// gets forgotten exactly once and then costs an afternoon to a test suite
+// running against a stale schema.
+func MigrationsChecksum() string {
+	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	if err != nil {
+		// The FS is embedded at build time; a failure here is not a
+		// runtime condition a caller could do anything about.
+		panic("db: reading embedded migrations: " + err.Error())
+	}
+	// fs.ReadDir returns entries sorted by filename, so the hash is stable
+	// across machines and runs.
+	h := sha256.New()
+	for _, e := range entries {
+		b, err := fs.ReadFile(migrationsFS, "migrations/"+e.Name())
+		if err != nil {
+			panic("db: reading embedded migration " + e.Name() + ": " + err.Error())
+		}
+		h.Write([]byte(e.Name()))
+		h.Write(b)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:12]
 }

@@ -5,29 +5,29 @@ import (
 	"testing"
 )
 
-func TestSchemaNameFitsPostgresIdentifierLimit(t *testing.T) {
+func TestDatabaseNameFitsPostgresIdentifierLimit(t *testing.T) {
 	// Postgres truncates a longer identifier silently, which would merge
-	// two distinct long test names into one shared schema.
+	// two distinct long test names into one shared database.
 	long := "TestSomething_" + strings.Repeat("VeryLongDescriptiveSegment", 5)
-	got := schemaName(long)
+	got := databaseName(long)
 	if len(got) > maxIdentifier {
-		t.Errorf("schemaName(%d-char name) = %q (%d chars), want <= %d", len(long), got, len(got), maxIdentifier)
+		t.Errorf("databaseName(%d-char name) = %q (%d chars), want <= %d", len(long), got, len(got), maxIdentifier)
 	}
 }
 
-func TestSchemaNameIsUniquePerCallForTheSameTest(t *testing.T) {
-	// A test that opens two databases must get two schemas.
-	a, b := schemaName("TestX"), schemaName("TestX")
+func TestDatabaseNameIsUniquePerCallForTheSameTest(t *testing.T) {
+	// A test that opens two databases must get two of them.
+	a, b := databaseName("TestX"), databaseName("TestX")
 	if a == b {
 		t.Errorf("two calls both returned %q", a)
 	}
 }
 
-func TestSchemaNameCarriesThePIDThatDisambiguatesPackages(t *testing.T) {
+func TestDatabaseNameCarriesThePIDThatDisambiguatesPackages(t *testing.T) {
 	// The regression this guards: schemaSeq is per-process, so without the
 	// pid two packages containing a same-named test both produce
-	// "t_<name>_1" and race on one schema under `go test ./...`.
-	got := schemaName("TestEnsurePartitions_CreatesFutureMonths")
+	// "t_<name>_1" and race on one database under `go test ./...`.
+	got := databaseName("TestEnsurePartitions_CreatesFutureMonths")
 	if strings.HasSuffix(got, "_1") && !strings.Contains(got, "_") {
 		t.Fatalf("unexpected shape %q", got)
 	}
