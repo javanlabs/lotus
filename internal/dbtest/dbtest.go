@@ -22,6 +22,31 @@ import (
 
 var schemaSeq atomic.Int64
 
+// maxIdentifier is Postgres's NAMEDATALEN-1. Postgres truncates anything
+// longer without complaining, which would silently merge two long test
+// names into one schema.
+const maxIdentifier = 63
+
+// schemaName derives a schema unique to one test in one process.
+//
+// The pid is load-bearing. schemaSeq is per-process, so two packages that
+// happen to contain a test of the same name each produced
+// "t_<thatname>_1" — and `go test ./...` runs packages in parallel, so
+// both binaries raced on the same schema: each dropped it out from under
+// the other mid-migration, failing with "no schema has been selected to
+// create in". internal/retention and internal/timeseries both define
+// TestEnsurePartitions_CreatesFutureMonths, so this was not hypothetical;
+// it failed in CI while passing locally under `go test -p 1`, which
+// serializes packages and hides it.
+func schemaName(testName string) string {
+	suffix := fmt.Sprintf("_%d_%d", os.Getpid(), schemaSeq.Add(1))
+	base := "t_" + sanitize(strings.ToLower(testName))
+	if len(base)+len(suffix) > maxIdentifier {
+		base = base[:maxIdentifier-len(suffix)]
+	}
+	return base + suffix
+}
+
 // DSN creates a fresh schema, migrates it with goose, and returns a DSN
 // scoped to that schema (via search_path). Skips the test if
 // TEST_DATABASE_URL is unset (run via `make test`, which sets it). Exposed
@@ -34,7 +59,7 @@ func DSN(t *testing.T) string {
 		t.Skip("TEST_DATABASE_URL not set; run `make test`")
 	}
 
-	name := fmt.Sprintf("t_%s_%d", sanitize(strings.ToLower(t.Name())), schemaSeq.Add(1))
+	name := schemaName(t.Name())
 
 	admin, err := sql.Open("pgx", dsn)
 	if err != nil {
