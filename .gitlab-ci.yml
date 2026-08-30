@@ -126,25 +126,92 @@ build:
       - .go/pkg/mod/
 
 # ---------------------------------------------------------------------------
-# Deploy — intentionally not wired up yet (task 5.2 in the project plan).
-# Lotus needs wildcard DNS + an ACME DNS-01 wildcard certificate before any
-# real host can serve *.{{LOTUS_BASE_DOMAIN}}, and no production base domain
-# has been decided yet (tracked in ActiveCollab project 697). Once it is,
-# this stage should mirror talisa's deploy_prod job: SSH in, render
-# /etc/lotus/lotus.env from GitLab CI/CD variables, swap the binary, restart
-# the systemd unit — see talisa/.gitlab-ci.yml and talisa/deploy/ for the
-# reference shape (bootstrap.sh, update.sh, nginx vhost, systemd unit).
-# Required variables once this is filled in: SSH_PRIVATE_KEY,
-# PROD_SERVER_HOST, PROD_SERVER_USER, SESSION_SECRET, LOTUS_KEK,
-# DATABASE_URL, MIGRATE_DATABASE_URL, LOTUS_BASE_DOMAIN.
+# Deploy — ships the built binary and renders the runtime config from GitLab
+# CI/CD variables. The server holds no hand-edited env file and no git
+# checkout: /etc/lotuscheck/lotuscheck.env is rewritten from these variables
+# on every deploy, so GitLab is the single source of truth for production
+# config. update.sh (shipped alongside) runs the migrations, swaps the
+# binary atomically and health-checks /healthz, rolling back on failure.
+#
+# One-time provisioning is deploy/bootstrap.sh — see deploy/README.md.
+#
+# Required CI/CD variables (all already set on this project):
+#   SSH_PRIVATE_KEY  PROD_SERVER_HOST  PROD_SERVER_USER
+#   DATABASE_URL     MIGRATE_DATABASE_URL
+#   SESSION_SECRET   LOTUS_KEK        (masked)
+#   LOTUS_MODE       LOTUS_URL        APP_DOMAIN
+# Optional: APP_ADDR, LOTUS_BASE_DOMAIN, LOTUS_WORKER_COUNT, GITHUB_*,
+#   GOOGLE_*, SMTP_*.
+#
+# Manual (`when: manual`) rather than automatic on main. Lotus is a
+# single-tenant install today holding one organization's live metrics; a
+# green pipeline is not on its own a reason to restart it under whoever
+# happens to be looking at the dashboard.
 # ---------------------------------------------------------------------------
 deploy_prod:
   stage: deploy
-  image: alpine:latest
-  script:
-    - echo "deploy_prod is not implemented yet — see task 5.2 and the comment above this job."
-    - exit 1
-  when: manual
+  image: javanlabs/ssh-client:latest
+  needs:
+    - job: build
+      artifacts: true
   only:
     refs:
       - main
+    variables:
+      - $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
+  when: manual
+  before_script:
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - ssh-keyscan -H $PROD_SERVER_HOST >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - echo "📝 Rendering runtime env from GitLab CI/CD variables..."
+    # umask before the heredoc, not after: the file carries the KEK and the
+    # database password, and it exists on the runner's disk until the rm
+    # below.
+    - |
+      umask 077
+      cat > lotuscheck.env <<EOF
+      ADDR=${APP_ADDR:-127.0.0.1:8085}
+      LOTUS_DEV=0
+      COOKIE_SECURE=1
+      LOTUS_MODE=${LOTUS_MODE:-single}
+      LOTUS_URL=${LOTUS_URL:-https://${APP_DOMAIN}}
+      LOTUS_BASE_DOMAIN=${LOTUS_BASE_DOMAIN:-${APP_DOMAIN}}
+      DATABASE_URL=${DATABASE_URL}
+      MIGRATE_DATABASE_URL=${MIGRATE_DATABASE_URL}
+      SESSION_SECRET=${SESSION_SECRET}
+      LOTUS_KEK=${LOTUS_KEK}
+      LOTUS_WORKER_COUNT=${LOTUS_WORKER_COUNT:-4}
+      GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      SMTP_HOST=${SMTP_HOST}
+      SMTP_PORT=${SMTP_PORT:-587}
+      SMTP_USER=${SMTP_USER}
+      SMTP_PASSWORD=${SMTP_PASSWORD}
+      SMTP_FROM=${SMTP_FROM:-Lotus <no-reply@javan.co.id>}
+      EOF
+    - echo "🚚 Uploading binary, env, and update.sh..."
+    - scp bin/lotus $PROD_SERVER_USER@$PROD_SERVER_HOST:/tmp/lotus.new
+    - scp bin/lotus.sha256 $PROD_SERVER_USER@$PROD_SERVER_HOST:/tmp/lotus.new.sha256
+    - scp lotuscheck.env $PROD_SERVER_USER@$PROD_SERVER_HOST:/tmp/lotuscheck.env
+    - scp deploy/update.sh $PROD_SERVER_USER@$PROD_SERVER_HOST:/tmp/update.sh
+    - rm -f lotuscheck.env
+    - echo "🚀 Installing env + running update.sh on server..."
+    - |
+      ssh $PROD_SERVER_USER@$PROD_SERVER_HOST << 'ENDSSH'
+        set -e
+        sudo install -d -m 0750 -o root -g lotuscheck /etc/lotuscheck
+        sudo install -o root -g lotuscheck -m 0640 /tmp/lotuscheck.env /etc/lotuscheck/lotuscheck.env
+        rm -f /tmp/lotuscheck.env
+        sudo bash /tmp/update.sh /tmp/lotus.new
+        rm -f /tmp/update.sh
+      ENDSSH
+    - echo "🎉 Deployment OK."
+  environment:
+    name: production
+    url: https://lotus.javan.id
