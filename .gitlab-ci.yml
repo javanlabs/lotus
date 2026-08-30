@@ -181,6 +181,12 @@ deploy_prod:
     - chmod 644 ~/.ssh/known_hosts
   script:
     - echo "📝 Rendering runtime env from GitLab CI/CD variables..."
+    # The OIDC_* names are what the app reads; the KEYCLOAK_* fallbacks are
+    # a CI-side alias for the variables this project already had, so the
+    # generic provider does not end up with a vendor baked into it.
+    # KEYCLOAK_CLIENT_SECRET is a protected variable, which is fine because
+    # main is a protected branch — on an unprotected ref it would render
+    # empty and startup would fail on the missing issuer instead.
     # umask before the heredoc, not after: the file carries the KEK and the
     # database password, and it exists on the runner's disk until the rm
     # below.
@@ -202,6 +208,9 @@ deploy_prod:
       GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
       GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      OIDC_ISSUER=${OIDC_ISSUER:-${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}}
+      OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-${KEYCLOAK_CLIENT}}
+      OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-${KEYCLOAK_CLIENT_SECRET}}
       SMTP_HOST=${SMTP_HOST}
       SMTP_PORT=${SMTP_PORT:-587}
       SMTP_USER=${SMTP_USER}
