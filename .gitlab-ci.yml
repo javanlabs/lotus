@@ -99,7 +99,15 @@ e2e:
       export MIGRATE_DATABASE_URL="$DATABASE_URL"
       export LOTUS_BASE_DOMAIN="lotus.localhost"
     - for i in $(seq 1 30); do (echo > /dev/tcp/postgres/5432) >/dev/null 2>&1 && break; sleep 1; done
-    - apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates nodejs npm
+    # Debian bookworm packages Node 18; Playwright 1.48 refuses to run on
+    # anything below Node 20 ("Please update your version of Node.js") and
+    # exits before installing a browser. NodeSource gives a supported LTS
+    # on the same golang image, which is cheaper than adding a second
+    # image and installing Go into it.
+    - apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates gnupg
+    - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    - apt-get install -y --no-install-recommends nodejs
+    - node --version
     - go run ./cmd/lotus migrate up
   script:
     - cd e2e
