@@ -15,17 +15,34 @@
 -- -safe against concurrent migration runs across parallel test schemas)
 -- rather than in a deploy script, so the same guarantee holds in every test
 -- database, not only production.
+--
+-- Each role is created only when it is actually absent. The obvious
+-- shape -- CREATE ROLE inside a BEGIN/EXCEPTION that swallows
+-- duplicate_object -- works in dev and CI, where the migrating role is the
+-- `postgres` superuser, and fails in production, where it is deliberately
+-- not: a role without CREATEROLE gets insufficient_privilege (42501) from
+-- the CREATE itself, before Postgres ever gets as far as noticing the role
+-- already exists, and 42501 is not one of the handled conditions. So a
+-- production deploy whose bootstrap had already provisioned both roles
+-- still died here. Testing for the row first means the privileged path is
+-- taken only when there is genuinely something to create; the exception
+-- handler stays for the case this comment's predecessor was written for,
+-- two parallel test schemas racing between the check and the CREATE.
 -- +goose StatementBegin
 DO $$
 BEGIN
-    BEGIN
-        CREATE ROLE lotus_migrate NOLOGIN;
-    EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL;
-    END;
-    BEGIN
-        CREATE ROLE lotus_app NOLOGIN;
-    EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL;
-    END;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lotus_migrate') THEN
+        BEGIN
+            CREATE ROLE lotus_migrate NOLOGIN;
+        EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL;
+        END;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lotus_app') THEN
+        BEGIN
+            CREATE ROLE lotus_app NOLOGIN;
+        EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL;
+        END;
+    END IF;
 END
 $$;
 -- +goose StatementEnd
