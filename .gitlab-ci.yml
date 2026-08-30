@@ -4,6 +4,11 @@ stages:
   - build
   - deploy
 
+# Every job is tagged `product`. Not decoration: every runner registered
+# on this GitLab has run_untagged=false, so an untagged job matches
+# nothing and sits in `pending` until someone cancels it — which is
+# exactly what happened to this project's first four pipelines. `product`
+# is the runner on the deploy host itself, and is what talisa's jobs use.
 variables:
   GIT_DEPTH: "20"
   GOPATH: "$CI_PROJECT_DIR/.go"
@@ -20,6 +25,8 @@ variables:
 # ---------------------------------------------------------------------------
 test:
   stage: test
+  tags:
+    - product
   image: golang:1.26-bookworm
   services:
     - name: postgres:17-alpine
@@ -57,6 +64,8 @@ test:
 # ---------------------------------------------------------------------------
 e2e:
   stage: e2e
+  tags:
+    - product
   image: golang:1.26-bookworm
   services:
     - name: postgres:17-alpine
@@ -98,6 +107,8 @@ e2e:
 # ---------------------------------------------------------------------------
 build:
   stage: build
+  tags:
+    - product
   image: golang:1.26-bookworm
   before_script:
     - apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates
@@ -150,6 +161,8 @@ build:
 # ---------------------------------------------------------------------------
 deploy_prod:
   stage: deploy
+  tags:
+    - product
   image: javanlabs/ssh-client:latest
   needs:
     - job: build
