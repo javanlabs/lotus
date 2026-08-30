@@ -1,7 +1,10 @@
 package web
 
 import (
+	"io/fs"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -78,5 +81,45 @@ func TestCard_ClassOnlyEmitsNoStyle(t *testing.T) {
 	}
 	if strings.Contains(got, "style=") {
 		t.Errorf("class-only card emitted a style attribute: %q", got)
+	}
+}
+
+// A card argument is a Go string literal, so a {{...}} action written
+// inside one is inert text, not a substitution. That failure is silent and
+// looks like a styling bug: --lotus-row-grid once shipped as the literal
+// "{{.GridTemplate}}", which dropped the projects table onto its fallback
+// grid and left every row misaligned with its own header. Dynamic values
+// have to be built with printf instead.
+func TestCardArgs_HaveNoUnevaluatedActions(t *testing.T) {
+	call := regexp.MustCompile(`(?s)\{\{template "lotus_card[a-z_]*_open" \(dict(.*?)\)\}\}`)
+	quoted := regexp.MustCompile(`"(Padding|Class|Style|Variant)" "([^"]*)"`)
+	backtick := regexp.MustCompile("\"Attrs\" `([^`]*)`")
+
+	err := filepath.WalkDir("../../web/templates", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".html") {
+			return err
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, c := range call.FindAllStringSubmatch(string(body), -1) {
+			for _, a := range quoted.FindAllStringSubmatch(c[1], -1) {
+				if strings.Contains(a[2], "{{") {
+					t.Errorf("%s: %s is a literal containing a template action: %q — build it with printf",
+						filepath.Base(path), a[1], a[2])
+				}
+			}
+			for _, a := range backtick.FindAllStringSubmatch(c[1], -1) {
+				if strings.Contains(a[1], "{{") {
+					t.Errorf("%s: Attrs is a literal containing a template action: %q — build it with printf",
+						filepath.Base(path), a[1])
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

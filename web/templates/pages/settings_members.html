@@ -41,7 +41,7 @@
     {{end}}
     {{if and $.Data.CanRemove (ne .UserID $.Data.Self)}}
     <form method="post" action="/settings/members/{{.UserID}}/remove" onsubmit="return confirm('Remove {{.Name}} from this organization?')">
-      <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:var(--status-warn-bg);color:#9E2B47">Remove</button>
+      <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:var(--surface-danger-soft);color:var(--text-danger)">Remove</button>
     </form>
     {{end}}
   </div>
@@ -65,7 +65,7 @@
         <button type="submit" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px">Resend</button>
       </form>
       <form method="post" action="/settings/members/invitations/{{.ID}}/revoke">
-        <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:var(--status-warn-bg);color:#9E2B47">Revoke</button>
+        <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:var(--surface-danger-soft);color:var(--text-danger)">Revoke</button>
       </form>
     </div>
     {{end}}

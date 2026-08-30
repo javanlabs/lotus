@@ -485,3 +485,26 @@ document.addEventListener("htmx:load", (e) => {
     wasOpen = false;
   });
 })();
+
+// sparklines.js scans for [data-sparkline="true"] exactly once, when the
+// script runs. Every sparkline in Lotus arrives after that, lazily over
+// htmx once its row is on screen, so it would never be drawn. This
+// initializes the ones htmx brings in.
+//
+// initSparkline is a top-level const in a classic script, which puts it in
+// the global lexical scope rather than on window — reachable by name from
+// here, but only while that file is loaded as a classic script.
+document.addEventListener("htmx:load", (e) => {
+  const root = e.detail && e.detail.elt;
+  if (!root || typeof initSparkline !== "function") return;
+  const charts = root.matches?.('[data-sparkline="true"]')
+    ? [root]
+    : root.querySelectorAll?.('[data-sparkline="true"]') || [];
+  charts.forEach((chart) => {
+    // The library has no idea whether it has already drawn an element, and
+    // drawing twice stacks two polylines in the same <svg>.
+    if (chart.dataset.lotusSparklineDrawn) return;
+    chart.dataset.lotusSparklineDrawn = "true";
+    initSparkline(chart);
+  });
+});

@@ -85,7 +85,7 @@ func ComputeHeadline(c Counts, failOn string) collector.Headline {
 		case c.Critical > 0 || c.High > 0:
 			status = collector.StatusFail
 		case c.Medium > 0:
-			status = collector.StatusWarn
+			status = collector.StatusFail
 		default:
 			status = collector.StatusPass
 		}
@@ -94,7 +94,7 @@ func ComputeHeadline(c Counts, failOn string) collector.Headline {
 		case c.Critical > 0:
 			status = collector.StatusFail
 		case c.High > 0:
-			status = collector.StatusWarn
+			status = collector.StatusFail
 		default:
 			status = collector.StatusPass
 		}

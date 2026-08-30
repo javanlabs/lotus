@@ -1,5 +1,5 @@
 {{/* status_badge (task 4.2's "badge package") renders one metric-kind
-     pill. Takes (dict "Text" "70" "Tone" "pass|warn|fail|none" "Title" "4
+     pill. Takes (dict "Text" "70" "Tone" "pass|fail|none" "Title" "4
      stale branches"). Text is the score; Title is the collector's own
      phrasing, shown on hover so the reason behind the number is one
      pointer away rather than crowding the cell. */}}
@@ -9,11 +9,10 @@
      to show its rollup status at a glance, same Tone vocabulary. */}}
 {{define "status_dot"}}<span class="lotus-status-dot lotus-status-dot-{{.}}"></span>{{end}}
 
-{{/* status_legend is the pass/warn/fail/no-data key shown above the
+{{/* status_legend is the pass/fail/no-data key shown above the
      repositories table. */}}
 {{define "status_legend"}}<div style="display:flex;gap:12px;font-size:10.5px;color:#6B7280;align-items:center">
   <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-pass);display:block"></i>pass</span>
-  <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-warn);display:block"></i>warn</span>
   <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-fail);display:block"></i>fail</span>
   <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-none);display:block"></i>no data</span>
 </div>{{end}}

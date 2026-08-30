@@ -117,5 +117,9 @@ test('component page shows a lazy-loaded sparkline per binding row', async ({ pa
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
   await page.goto(`${origin}/components/${ids.componentId}`);
-  await expect(page.locator('svg path[vector-effect="non-scaling-stroke"]').first()).toBeVisible({ timeout: 5000 });
+  // The server sends data attributes; sparklines.js draws the bars in
+  // the browser. Asserting on the drawn element therefore also proves the
+  // library ran on content htmx swapped in after page load, which its own
+  // one-shot DOM scan does not do.
+  await expect(page.locator('[data-sparkline="true"] svg rect').first()).toBeVisible({ timeout: 5000 });
 });

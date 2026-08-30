@@ -168,10 +168,11 @@ func runToneFor(status string) string {
 	switch status {
 	case "ok":
 		return "pass"
-	case "partial", "skipped":
-		return "warn"
-	case "failed":
+	case "partial", "failed":
 		return "fail"
+	case "skipped":
+		// Nothing ran, so there is nothing to pass or fail.
+		return "none"
 	default:
 		return "none"
 	}

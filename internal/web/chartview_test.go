@@ -144,7 +144,6 @@ func TestResolveChartRange(t *testing.T) {
 	}{
 		"7d":    {"7d", 7 * 24 * time.Hour},
 		"30d":   {"30d", 30 * 24 * time.Hour},
-		"1y":    {"1y", 365 * 24 * time.Hour},
 		"bogus": {"7d", 7 * 24 * time.Hour},
 		"":      {"7d", 7 * 24 * time.Hour},
 	}
@@ -167,16 +166,17 @@ func TestResolveChartRange(t *testing.T) {
 }
 
 func TestResolveChartRange_TiersMatchSeriesThresholds(t *testing.T) {
-	// task 4.6's acceptance criterion that 7d/30d/1y "beneran muat
+	// task 4.6's acceptance criterion that the ranges "beneran muat
 	// resolusi yang beda" depends entirely on each width landing on a
-	// different repo.Series tier (raw/hourly/daily) — this pins that
-	// invariant at the boundary repo.Series itself defines (9d raw
-	// ceiling, 40d hourly ceiling), so a change to either constant
-	// breaks a test instead of silently producing three same-resolution
-	// charts.
+	// different repo.Series tier — this pins that invariant at the
+	// boundary repo.Series itself defines (9d raw ceiling, 40d hourly
+	// ceiling), so a change to either constant breaks a test instead of
+	// silently producing two same-resolution charts.
+	//
+	// The daily tier no longer has a range that reaches it: 1y was
+	// dropped, and 30d is now the widest window offered.
 	from7, to7, _ := resolveChartRange("7d")
 	from30, to30, _ := resolveChartRange("30d")
-	from1y, to1y, _ := resolveChartRange("1y")
 
 	if w := to7.Sub(from7); w > 9*24*time.Hour {
 		t.Errorf("7d width = %v, want <= 9d (repo.Series' raw-tier ceiling) so it reads raw, not hourly", w)
@@ -184,8 +184,11 @@ func TestResolveChartRange_TiersMatchSeriesThresholds(t *testing.T) {
 	if w := to30.Sub(from30); w <= 9*24*time.Hour || w > 40*24*time.Hour {
 		t.Errorf("30d width = %v, want in (9d, 40d] (repo.Series' hourly tier)", w)
 	}
-	if w := to1y.Sub(from1y); w <= 40*24*time.Hour {
-		t.Errorf("1y width = %v, want > 40d (repo.Series' daily tier)", w)
+	// And an unknown key still falls back to the narrowest window rather
+	// than to whatever used to be widest.
+	fromX, toX, labelX := resolveChartRange("1y")
+	if labelX != "7d" || toX.Sub(fromX) > 9*24*time.Hour {
+		t.Errorf("a retired range key resolved to %q/%v, want the 7d fallback", labelX, toX.Sub(fromX))
 	}
 }
 

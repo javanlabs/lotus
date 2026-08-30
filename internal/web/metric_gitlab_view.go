@@ -78,7 +78,8 @@ func buildGitlabDetailView(snap *repo.GitlabSnapshot) gitlabDetailView {
 		case "failed":
 			v.PipelineTone = "fail"
 		case "running", "pending":
-			v.PipelineTone = "warn"
+			// In flight, so no verdict yet — not a failure.
+			v.PipelineTone = "none"
 		}
 	}
 	if snap.LastPipelineWebURL != nil {

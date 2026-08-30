@@ -89,8 +89,8 @@ func TestComputeHeadline_ChangingFailOnChangesStatusWithoutResync(t *testing.T) 
 		t.Fatalf("fail_on=critical: Status = %q, want pass", critical.Status)
 	}
 	high := trivycollector.ComputeHeadline(counts, "high")
-	if high.Status != collector.StatusWarn {
-		t.Fatalf("fail_on=high: Status = %q, want warn (medium present)", high.Status)
+	if high.Status != collector.StatusFail {
+		t.Fatalf("fail_on=high: Status = %q, want fail (medium present, and there is no middle tier)", high.Status)
 	}
 	any := trivycollector.ComputeHeadline(counts, "any")
 	if any.Status != collector.StatusFail {

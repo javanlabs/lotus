@@ -18,22 +18,23 @@ import (
 // range key later without this list needing to grow to match; the spec's
 // "plus custom" is about the range-resolution mechanism not being
 // hardcoded to exactly three, not about shipping a date-picker in v1.
-var chartRangeOptions = []string{"7d", "30d", "1y"}
+var chartRangeOptions = []string{"7d", "30d"}
 
 // resolveChartRange turns a range key into the [from, to] window Series
 // reads — deliberately just three cases plus a fallback, not a generic
 // duration parser: task 3.7's own tier thresholds (rawTierMax=9d,
-// hourlyTierMax=40d) already have headroom specifically so these three
-// nominal widths each land on their intended tier, and a chart's whole
-// "denser 7d than 1y" acceptance criterion depends on this being exactly
-// one of those three.
+// hourlyTierMax=40d) already have headroom specifically so these nominal
+// widths each land on their intended tier, and a chart's "denser 7d than
+// 30d" acceptance criterion depends on it being exactly one of them.
+//
+// A year was offered too and was dropped: 30d is the widest window these
+// tiers keep at useful density, and a year of hourly buckets read as a
+// smear rather than a trend.
 func resolveChartRange(rangeKey string) (from, to time.Time, label string) {
 	to = time.Now()
 	switch rangeKey {
 	case "30d":
 		return to.AddDate(0, 0, -30), to, "30d"
-	case "1y":
-		return to.AddDate(-1, 0, 0), to, "1y"
 	default:
 		return to.AddDate(0, 0, -7), to, "7d"
 	}

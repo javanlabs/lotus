@@ -110,7 +110,7 @@ func TestClassOf_RateLimitedCarriesRetryAfter(t *testing.T) {
 func TestPartialResultIsNotAFailure(t *testing.T) {
 	v := 1.0
 	r := collector.Result{
-		Headline: collector.Headline{Status: collector.StatusWarn},
+		Headline: collector.Headline{Status: collector.StatusFail},
 		Facts:    []collector.Fact{{Key: "gitlab.commits_30d", ValueNum: &v}},
 		Warnings: []collector.Warning{{Step: "languages", Err: "404"}},
 	}

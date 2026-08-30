@@ -17,6 +17,10 @@
   <script src="/static/vendor/basecoat-popover.min.js" defer></script>
   <script src="/static/vendor/basecoat-combobox.min.js" defer></script>
   <script src="/static/vendor/basecoat-toast.min.js" defer></script>
+  <!-- Sparklines. Must stay a classic script, not a module: lotus.js calls
+       its top-level `initSparkline` as a bare global for htmx-swapped
+       charts, which module scoping would hide. -->
+  <script src="/static/vendor/sparklines.js" defer></script>
 </head>
 <body class="min-h-screen bg-surface text-ink antialiased">
   {{block "content" .}}{{end}}

@@ -170,8 +170,8 @@ func TestBuildScoreCard_BucketsByStatusExcludingUnknownFromBar(t *testing.T) {
 	if sc.HealthyN != 1 || sc.FailingN != 1 {
 		t.Fatalf("HealthyN=%d FailingN=%d, want 1/1", sc.HealthyN, sc.FailingN)
 	}
-	if sc.HealthyPct+sc.AtRiskPct+sc.FailingPct != 100 {
-		t.Fatalf("segments sum to %d, want 100 (unknown excluded from the denominator)", sc.HealthyPct+sc.AtRiskPct+sc.FailingPct)
+	if sc.HealthyPct+sc.FailingPct != 100 {
+		t.Fatalf("segments sum to %d, want 100 (unknown excluded from the denominator)", sc.HealthyPct+sc.FailingPct)
 	}
 	if !sc.HasScore || sc.Score != 60 {
 		t.Fatalf("Score = %+v, want HasScore=true Score=60 (the score it was handed)", sc)
@@ -180,7 +180,7 @@ func TestBuildScoreCard_BucketsByStatusExcludingUnknownFromBar(t *testing.T) {
 
 func TestBuildKPIs_NoDataYetWhenKindNeverBound(t *testing.T) {
 	kindStatuses := map[string][]collector.Status{
-		"sonarqube": statusList("pass", "pass", "warn"),
+		"sonarqube": statusList("pass", "pass", "fail"),
 		// trivy/sentry/gitlab: absent entirely — never bound anywhere.
 	}
 	kpis := buildKPIs(kindStatuses, map[string]int{"sonarqube": 3}, 5)
@@ -190,8 +190,8 @@ func TestBuildKPIs_NoDataYetWhenKindNeverBound(t *testing.T) {
 		byLabel[k.Label] = k
 	}
 	sonar := byLabel["SONAR GATE"]
-	if sonar.Value != "67" || sonar.Tone != "warn" {
-		t.Fatalf("SONAR GATE = %+v, want value=67 tone=warn (2/3 pass, rounded)", sonar)
+	if sonar.Value != "67" || sonar.Tone != "fail" {
+		t.Fatalf("SONAR GATE = %+v, want value=67 tone=fail (2/3 pass, rounded — below the 80%% pass bar)", sonar)
 	}
 	trivy := byLabel["TRIVY CLEAN"]
 	if trivy.Value != "–" || trivy.Tone != "none" || trivy.Sub != "no data yet" {

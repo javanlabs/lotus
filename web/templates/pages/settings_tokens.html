@@ -29,7 +29,7 @@
       <span style="font:400 10px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.TokenPrefix}}••••••• · last used {{.LastUsedAt}} · expires {{.ExpiresAt}}</span>
     </div>
     <form method="post" action="/settings/tokens/{{.ID}}/revoke" onsubmit="return confirm('Revoke {{.Name}}? Anything using it will stop working immediately.')">
-      <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:var(--status-warn-bg);color:#9E2B47">Revoke</button>
+      <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:var(--surface-danger-soft);color:var(--text-danger)">Revoke</button>
     </form>
   </div>
   {{end}}
@@ -57,7 +57,7 @@
       <span style="font:400 10px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.TokenPrefix}}••••••• · last used {{.LastUsedAt}} · expires {{.ExpiresAt}}</span>
     </div>
     <form method="post" action="/settings/tokens/{{.ID}}/revoke" onsubmit="return confirm('Revoke {{.Name}}? Anything using it will stop working immediately.')">
-      <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:var(--status-warn-bg);color:#9E2B47">Revoke</button>
+      <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:var(--surface-danger-soft);color:var(--text-danger)">Revoke</button>
     </form>
   </div>
   {{end}}

@@ -93,11 +93,11 @@ type kpiCard struct {
 // status distribution across every component with a projection row.
 type scoreCard struct {
 	// Info explains the headline number, same role as kpiCard.Info.
-	Info                              string
-	HasScore                          bool
-	Score                             int
-	HealthyPct, AtRiskPct, FailingPct int // segment widths, sum to 100 (0 each if NoData)
-	HealthyN, AtRiskN, FailingN       int
+	Info                   string
+	HasScore               bool
+	Score                  int
+	HealthyPct, FailingPct int // segment widths, sum to 100 (0 each if NoData)
+	HealthyN, FailingN     int
 }
 
 type dashboardViewModel struct {
@@ -154,8 +154,6 @@ func toneOf(s collector.Status) string {
 	switch s {
 	case collector.StatusPass:
 		return "pass"
-	case collector.StatusWarn:
-		return "warn"
 	case collector.StatusFail:
 		return "fail"
 	default:
@@ -338,20 +336,18 @@ func clamp(v, lo, hi int) int {
 // failing distribution beneath it, which is a per-component count and
 // deliberately independent of how the score itself is computed.
 func buildScoreCard(statuses []collector.Status, score *int) scoreCard {
-	healthy, atRisk, failing := 0, 0, 0
+	healthy, failing := 0, 0
 	for _, s := range statuses {
 		switch s {
 		case collector.StatusPass:
 			healthy++
-		case collector.StatusWarn:
-			atRisk++
 		case collector.StatusFail:
 			failing++
 		}
 	}
-	total := healthy + atRisk + failing
+	total := healthy + failing
 	sc := scoreCard{
-		HealthyN: healthy, AtRiskN: atRisk, FailingN: failing,
+		HealthyN: healthy, FailingN: failing,
 		Info: "Each tool averaged across the components reporting it, then those averages combined — one vote per tool. Unreported tools are skipped, not zeroed. The bar splits components by status.",
 	}
 	if score != nil {
@@ -360,8 +356,7 @@ func buildScoreCard(statuses []collector.Status, score *int) scoreCard {
 	}
 	if total > 0 {
 		sc.HealthyPct = healthy * 100 / total
-		sc.AtRiskPct = atRisk * 100 / total
-		sc.FailingPct = 100 - sc.HealthyPct - sc.AtRiskPct
+		sc.FailingPct = 100 - sc.HealthyPct
 	}
 	return sc
 }
@@ -405,8 +400,6 @@ func rateTone(pct int) string {
 	switch {
 	case pct >= 80:
 		return "pass"
-	case pct >= 50:
-		return "warn"
 	default:
 		return "fail"
 	}
@@ -539,8 +532,6 @@ func statusWord(s collector.Status) string {
 	switch s {
 	case collector.StatusPass:
 		return "Pass"
-	case collector.StatusWarn:
-		return "Warn"
 	case collector.StatusFail:
 		return "Fail"
 	default:

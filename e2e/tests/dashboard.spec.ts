@@ -92,6 +92,28 @@ test('the projects list renders one row per project, with its rolled-up metrics'
         JSON.stringify({ gitlab: { status: 'fail', count_value: 5, count_label: 'stale branch' } }),
       ],
     );
+
+    // A passing project too: with the "warn" tier gone the filter is
+    // All / Failing, so hiding can only be asserted against a row that
+    // is not failing.
+    const healthy = await client.query<{ id: string }>(
+      `INSERT INTO projects (org_id, slug, name) VALUES ($1, 'h', 'Identity') RETURNING id`,
+      [orgId],
+    );
+    const healthyComponent = await client.query<{ id: string }>(
+      `INSERT INTO components (org_id, project_id, slug, name, kind) VALUES ($1, $2, 'hc', 'identity-api', 'backend') RETURNING id`,
+      [orgId, healthy.rows[0].id],
+    );
+    await client.query(
+      `INSERT INTO component_metrics_current (org_id, project_id, component_id, metrics, status, score, updated_at)
+       VALUES ($1, $2, $3, $4::jsonb, 'pass', 95, now())`,
+      [
+        orgId,
+        healthy.rows[0].id,
+        healthyComponent.rows[0].id,
+        JSON.stringify({ gitlab: { status: 'pass', count_value: 0, count_label: 'stale branch' } }),
+      ],
+    );
   });
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
@@ -102,7 +124,9 @@ test('the projects list renders one row per project, with its rolled-up metrics'
   // the row, on the project's own page.
   await expect(page.getByText('Payments', { exact: true })).toBeVisible();
   await expect(page.getByText('billing-api')).not.toBeVisible();
-  await expect(page.getByText('1 component', { exact: true })).toBeVisible();
+  // Scoped to the row: there are two single-component projects now.
+  await expect(page.locator('.lotus-repo-row', { hasText: 'Payments' })
+    .getByText('1 component', { exact: true })).toBeVisible();
 
   await page.getByText('Payments', { exact: true }).click();
   await expect(page.getByText('billing-api')).toBeVisible();
@@ -117,12 +141,14 @@ test('the projects list renders one row per project, with its rolled-up metrics'
   // x-show made Alpine collapse the row to block layout on toggle. This
   // asserts the row is both present and still grid-laid-out after a
   // filter round-trip, not just present in the DOM.
-  // .first(): "At risk" also appears inside the Lotus Score card's "N at
-  // risk" summary text, further down the page — the segmented-control
-  // button is the first match in DOM order.
-  await page.getByText('At risk', { exact: false }).first().click();
-  await expect(page.getByText('Payments', { exact: true })).not.toBeVisible();
+  // .first(): "Failing" also appears in the Lotus Score card's "N failing"
+  // summary further down the page — the segmented-control button is the
+  // first match in DOM order.
+  await page.getByText('Failing', { exact: false }).first().click();
+  await expect(page.getByText('Payments', { exact: true })).toBeVisible();
+  await expect(page.getByText('Identity', { exact: true })).not.toBeVisible();
   await page.getByText('All', { exact: false }).first().click();
   await expect(page.getByText('Payments', { exact: true })).toBeVisible();
+  await expect(page.getByText('Identity', { exact: true })).toBeVisible();
   await expect(page.locator('.lotus-repo-row', { hasText: 'Payments' })).toHaveCSS('display', 'grid');
 });

@@ -68,8 +68,6 @@
   --color-brand-ink: #F7EDE1;    /* --cream-100 */
 
   --color-status-pass: #23808F;     /* --teal-600 */
-  --color-status-warn: #C68494;     /* --blush-500 — was #E08DA0, off-ramp */
-  --color-status-warn-ink: #A94D68; /* --rose-500 */
   --color-status-fail: #9E2B47;     /* --rose-700 */
   --color-status-none: #9CA3AF;     /* --ink-400 */
 
@@ -125,6 +123,7 @@ body {
      which stays a verbatim copy of the design system. */
   --focus-border: var(--plum-500);
   --focus-ring: var(--plum-a16);
+
 }
 
 /* Text inputs. This markup was 24 hand-copied inline style strings across
@@ -342,23 +341,19 @@ body {
   border-radius: var(--radius-petal-xs);
 }
 .lotus-badge-pass { color: var(--status-pass); background: var(--status-pass-bg); }
-.lotus-badge-warn { color: var(--status-warn-text); background: var(--status-warn-bg); }
 .lotus-badge-fail { color: var(--status-fail); background: var(--status-fail-bg); }
 .lotus-badge-none { color: var(--status-none); background: var(--status-none-bg); }
 
 .lotus-status-dot { display: block; width: 3px; height: 16px; border-radius: 2px; flex: none; }
 .lotus-status-dot-pass { background: var(--status-pass); }
-.lotus-status-dot-warn { background: var(--status-warn); }
 .lotus-status-dot-fail { background: var(--status-fail); }
 .lotus-status-dot-none { background: var(--status-none); }
 
 .lotus-text-pass { color: var(--status-pass); }
-.lotus-text-warn { color: var(--status-warn-text); }
 .lotus-text-fail { color: var(--status-fail); }
 .lotus-text-none { color: var(--status-none); }
 
 .lotus-bar-pass { background: var(--status-pass); }
-.lotus-bar-warn { background: var(--status-warn); }
 .lotus-bar-fail { background: var(--status-fail); }
 .lotus-bar-none { background: var(--status-none); }
 

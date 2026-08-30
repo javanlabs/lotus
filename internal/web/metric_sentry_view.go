@@ -188,8 +188,6 @@ func sentryGradeTone(grade string) string {
 	switch grade {
 	case "A", "B":
 		return "pass"
-	case "C":
-		return "warn"
 	default:
 		return "fail"
 	}

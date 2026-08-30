@@ -8,6 +8,7 @@ package web
 import (
 	"fmt"
 	"html/template"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +23,17 @@ type chartSVG struct {
 	MinLabel string
 	MaxLabel string
 	Latest   string
+
+	// SparkPoints and SparkColor feed the client-side sparkline
+	// (web/static/vendor/sparklines.js), which takes a flat list of
+	// numbers. It has no way to express a gap, so ONLY points with a
+	// value are listed: an empty bucket is omitted rather than drawn as
+	// zero. The series therefore compresses — a binding collected weekly
+	// renders as a dense line rather than a sparse one — which is the
+	// trade the library imposes. SVG above stays gap-aware and is still
+	// what the metric detail pages draw.
+	SparkPoints string
+	SparkColor  string
 }
 
 var chartToneColor = map[string]string{"pass": "#23808F", "fail": "#9E2B47", "none": "#6B7280"}
@@ -146,10 +158,36 @@ func buildChartSVG(points []repo.Point, direction, unit string, width, height fl
 		width, height, path.String(), color, dots.String(),
 	)
 
+	// Rescaled into a 20-100 window rather than passed raw. sparklines.js
+	// scales from ZERO, not from the series minimum, so a metric that
+	// lives between 70 and 90 draws as a row of near-identical full-height
+	// bars and the shape — the whole point of a sparkline — disappears.
+	//
+	// The floor is 20, not 0: these are bars, and mapping the minimum to
+	// zero would render the lowest bucket as a bar of no height at all,
+	// which reads as missing data rather than as the low point. The
+	// absolute numbers are not on the chart anyway; the title carries the
+	// latest value.
+	var spark []string
+	for _, p := range points {
+		if !p.HasValue {
+			continue
+		}
+		// A flat series has no window to rescale into, so it sits at
+		// mid-height instead of collapsing to the floor.
+		n := 60.0
+		if maxV > minV {
+			n = 20 + (p.Value-minV)/(maxV-minV)*80
+		}
+		spark = append(spark, strconv.FormatFloat(n, 'f', 2, 64))
+	}
+
 	return chartSVG{
 		HasData: true, SVG: template.HTML(svg), Tone: tone, //nolint:gosec // built entirely from numeric formatting above, no user input
 		MinLabel: formatMetricValue(minV, unit), MaxLabel: formatMetricValue(maxV, unit),
-		Latest: formatMetricValue(lastVal, unit),
+		Latest:      formatMetricValue(lastVal, unit),
+		SparkPoints: strings.Join(spark, ","),
+		SparkColor:  color,
 	}
 }
 

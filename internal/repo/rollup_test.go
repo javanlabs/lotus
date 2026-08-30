@@ -16,8 +16,8 @@ func TestRollupStatus_WorstWins(t *testing.T) {
 		{"empty", nil, collector.StatusUnknown},
 		{"all unknown", []collector.Status{collector.StatusUnknown, collector.StatusUnknown}, collector.StatusUnknown},
 		{"pass beats unknown", []collector.Status{collector.StatusUnknown, collector.StatusPass}, collector.StatusPass},
-		{"warn beats pass", []collector.Status{collector.StatusPass, collector.StatusWarn}, collector.StatusWarn},
-		{"fail beats everything", []collector.Status{collector.StatusPass, collector.StatusWarn, collector.StatusFail, collector.StatusUnknown}, collector.StatusFail},
+		{"fail beats pass", []collector.Status{collector.StatusPass, collector.StatusFail}, collector.StatusFail},
+		{"fail beats everything", []collector.Status{collector.StatusPass, collector.StatusFail, collector.StatusUnknown}, collector.StatusFail},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

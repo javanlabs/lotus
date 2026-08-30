@@ -65,7 +65,7 @@ func buildResult(h *glclient.Health) (collector.Result, error) {
 	case "failed":
 		status = collector.StatusFail
 	case "running", "pending":
-		status = collector.StatusWarn
+		status = collector.StatusFail
 	}
 
 	// Score averages two sub-scores, each 0-100, using whichever are

@@ -25,10 +25,10 @@
         <div style="font-size:12px;color:rgba(247,237,225,.6)">/100</div>
       </div>
       <div style="display:flex;gap:2px;height:5px;border-radius:3px;overflow:hidden">
-        <div class="lotus-bar-pass" style="flex:{{.Score.HealthyPct}}"></div><div class="lotus-bar-warn" style="flex:{{.Score.AtRiskPct}}"></div><div class="lotus-bar-fail" style="flex:{{.Score.FailingPct}}"></div>
+        <div class="lotus-bar-pass" style="flex:{{.Score.HealthyPct}}"></div><div class="lotus-bar-fail" style="flex:{{.Score.FailingPct}}"></div>
       </div>
       <div style="display:flex;justify-content:space-between;margin-top:7px;font:400 9.5px 'IBM Plex Mono',monospace;color:rgba(247,237,225,.55)">
-        <span style="white-space:nowrap">{{.Score.HealthyN}} healthy</span><span style="white-space:nowrap">{{.Score.AtRiskN}} at risk</span><span style="white-space:nowrap">{{.Score.FailingN}} failing</span>
+        <span style="white-space:nowrap">{{.Score.HealthyN}} healthy</span><span style="white-space:nowrap">{{.Score.FailingN}} failing</span>
       </div>
     {{template "lotus_card_close" .}}
     {{range .KPIs}}
@@ -60,7 +60,7 @@
   {{end}}
 
   {{template "lotus_card_section_open" (dict "Padding" "4px"
-    "Style" "overflow:hidden;--lotus-row-grid:{{.GridTemplate}}"
+    "Style" (printf "overflow:hidden;--lotus-row-grid:%s" .GridTemplate)
     "Attrs" (printf `x-data="lotusSort('%s')" x-effect="filter; $nextTick(() => renumber())"` .RowHeading))}}
     <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
       <div style="font-size:13px;font-weight:600;color:#43284E">{{.TableTitle}}</div>

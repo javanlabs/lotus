@@ -107,7 +107,7 @@ func TestPool_PartialResultStillStoresAndMarksPartial(t *testing.T) {
 
 	pool := &scheduler.Pool{DB: db, WorkerID: "w1", LeaseDuration: 10 * time.Minute, Execute: func(ctx context.Context, run *global.SyncRun) (collector.Result, error) {
 		return collector.Result{
-			Headline: collector.Headline{Status: collector.StatusWarn},
+			Headline: collector.Headline{Status: collector.StatusFail},
 			Facts:    []collector.Fact{numFact("gitlab.commits_30d", 5)},
 			Warnings: []collector.Warning{{Step: "languages", Err: "404"}},
 		}, nil

@@ -14,8 +14,6 @@ func RollupStatus(statuses []collector.Status) collector.Status {
 	switch {
 	case has[collector.StatusFail]:
 		return collector.StatusFail
-	case has[collector.StatusWarn]:
-		return collector.StatusWarn
 	case has[collector.StatusPass]:
 		return collector.StatusPass
 	default:
@@ -56,7 +54,7 @@ func PassRate(statuses []collector.Status) (rate float64, ok bool) {
 		case collector.StatusPass:
 			pass++
 			denom++
-		case collector.StatusWarn, collector.StatusFail:
+		case collector.StatusFail:
 			denom++
 		}
 	}

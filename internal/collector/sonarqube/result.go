@@ -68,7 +68,7 @@ func buildResult(m *sonar.Measures) (collector.Result, error) {
 	case "OK":
 		status = collector.StatusPass
 	case "WARN":
-		status = collector.StatusWarn
+		status = collector.StatusFail
 	case "ERROR":
 		status = collector.StatusFail
 	}

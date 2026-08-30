@@ -39,7 +39,7 @@
         <button type="button" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px" @click="rotate = !rotate">Rotate</button>
         <form method="post" action="/settings/connections/{{.ID}}/delete"
               onsubmit="return confirm('Delete {{.Name}}? {{.ActiveBindings}} binding(s) will be disabled along with it.')">
-          <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:var(--status-warn-bg);color:#9E2B47">Delete</button>
+          <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:var(--surface-danger-soft);color:var(--text-danger)">Delete</button>
         </form>
       </div>
       {{end}}

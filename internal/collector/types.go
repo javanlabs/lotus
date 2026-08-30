@@ -114,9 +114,13 @@ type CollectRequest struct {
 
 type Status string
 
+// Two states and an absence, deliberately. There was a third, "warn", for
+// a middle "at risk" tier; it was removed because a reader has to act on a
+// component or not, and a maybe-tier mostly deferred that decision. Every
+// case that used to warn now fails: a component with two critical CVEs is
+// not partially fine.
 const (
 	StatusPass    Status = "pass"
-	StatusWarn    Status = "warn"
 	StatusFail    Status = "fail"
 	StatusUnknown Status = "unknown"
 )

@@ -59,7 +59,7 @@ func TestBuildGitlabDetailView_FlattensAndDerivesTone(t *testing.T) {
 }
 
 func TestBuildGitlabDetailView_PipelineToneForFailedAndRunning(t *testing.T) {
-	cases := map[string]string{"success": "pass", "failed": "fail", "running": "warn", "pending": "warn", "canceled": "none"}
+	cases := map[string]string{"success": "pass", "failed": "fail", "running": "none", "pending": "none", "canceled": "none"}
 	for status, wantTone := range cases {
 		snap := &repo.GitlabSnapshot{LastPipelineStatus: strPtr(status)}
 		v := buildGitlabDetailView(snap)
@@ -264,7 +264,7 @@ func TestSentryStatusOptions_OmitsCountsAtZero(t *testing.T) {
 }
 
 func TestSentryGradeTone(t *testing.T) {
-	cases := map[string]string{"A": "pass", "B": "pass", "C": "warn", "D": "fail", "E": "fail", "": "fail"}
+	cases := map[string]string{"A": "pass", "B": "pass", "C": "fail", "D": "fail", "E": "fail", "": "fail"}
 	for grade, want := range cases {
 		if got := sentryGradeTone(grade); got != want {
 			t.Errorf("sentryGradeTone(%q) = %q, want %q", grade, got, want)
@@ -273,7 +273,7 @@ func TestSentryGradeTone(t *testing.T) {
 }
 
 func TestRunToneFor(t *testing.T) {
-	cases := map[string]string{"ok": "pass", "partial": "warn", "skipped": "warn", "failed": "fail", "queued": "none", "leased": "none", "running": "none"}
+	cases := map[string]string{"ok": "pass", "partial": "fail", "skipped": "none", "failed": "fail", "queued": "none", "leased": "none", "running": "none"}
 	for status, want := range cases {
 		if got := runToneFor(status); got != want {
 			t.Errorf("runToneFor(%q) = %q, want %q", status, got, want)

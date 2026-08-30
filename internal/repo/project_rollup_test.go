@@ -64,13 +64,13 @@ func TestRollupProject_StatusIsWorstWins(t *testing.T) {
 func TestRollupProject_ScorelessKindAffectsStatusNotScore(t *testing.T) {
 	got := repo.RollupProject([]repo.ComponentMetric{
 		cm(map[string]repo.KindHeadline{"gitlab": kh("pass", score(80))}),
-		cm(map[string]repo.KindHeadline{"trivy": kh("warn", nil)}),
+		cm(map[string]repo.KindHeadline{"trivy": kh("fail", nil)}),
 	})
 	if got.Score == nil || *got.Score != 80 {
 		t.Fatalf("Score = %v, want 80 (the scoreless kind must not count)", got.Score)
 	}
-	if got.Status != collector.StatusWarn {
-		t.Fatalf("Status = %q, want warn (the scoreless kind still counts here)", got.Status)
+	if got.Status != collector.StatusFail {
+		t.Fatalf("Status = %q, want fail (the scoreless kind still counts here)", got.Status)
 	}
 }
 

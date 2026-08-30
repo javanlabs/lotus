@@ -1,5 +1,5 @@
 {{/* metric_charts (task 4.6): one chart per active numeric metric_keys
-     row for a binding, plus the 7d/30d/1y range selector. Registered as a
+     row for a binding, plus the 7d/30d range selector. Registered as a
      component (not a partials/ fragment) specifically so the exact same
      definition serves both a full page's first render and the htmx swap
      target when the range selector changes — see httpx.Renderer.RenderNamed.
@@ -23,7 +23,7 @@
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
     {{range .Cards}}
     {{template "lotus_card_open" (dict "Padding" "13px 14px"
-      "Style" "display:flex;flex-direction:column;gap:8px;{{if not .Active}}opacity:.6{{end}}")}}
+      "Style" (printf "display:flex;flex-direction:column;gap:8px;%s" (ternary .Active "" "opacity:.6")))}}
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
         <span style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.Label}}</span>
         {{if .Chart.HasData}}<span class="lotus-text-{{.Chart.Tone}}" style="font-size:15px;font-weight:700;white-space:nowrap">{{.Chart.Latest}}</span>{{end}}

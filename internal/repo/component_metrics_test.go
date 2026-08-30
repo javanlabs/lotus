@@ -57,13 +57,13 @@ func TestUpsertComponentMetric_RollsUpWorstStatusAndAverageScore(t *testing.T) {
 	componentID := seedProjectComponent(t, db, orgID, "p")
 	scope := tenant.FromRun(db, orgID)
 
-	passScore, warnScore := 90, 60
+	passScore, failScore := 90, 60
 	if err := repo.UpsertComponentMetric(context.Background(), scope, componentID, "gitlab",
 		collector.Headline{Status: collector.StatusPass, Score: &passScore}); err != nil {
 		t.Fatalf("upsert gitlab: %v", err)
 	}
 	if err := repo.UpsertComponentMetric(context.Background(), scope, componentID, "sonarqube",
-		collector.Headline{Status: collector.StatusWarn, Score: &warnScore}); err != nil {
+		collector.Headline{Status: collector.StatusFail, Score: &failScore}); err != nil {
 		t.Fatalf("upsert sonarqube: %v", err)
 	}
 
@@ -71,14 +71,14 @@ func TestUpsertComponentMetric_RollsUpWorstStatusAndAverageScore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetComponentMetric: %v", err)
 	}
-	if cm.StatusValue() != collector.StatusWarn {
-		t.Fatalf("rollup status = %q, want warn (worst of pass/warn)", cm.Status)
+	if cm.StatusValue() != collector.StatusFail {
+		t.Fatalf("rollup status = %q, want fail (worst of pass/fail)", cm.Status)
 	}
-	if cm.Score == nil || *cm.Score != (passScore+warnScore)/2 {
-		t.Fatalf("rollup score = %v, want average of %d and %d", cm.Score, passScore, warnScore)
+	if cm.Score == nil || *cm.Score != (passScore+failScore)/2 {
+		t.Fatalf("rollup score = %v, want average of %d and %d", cm.Score, passScore, failScore)
 	}
 	metrics := cm.Metrics()
-	if len(metrics) != 2 || metrics["gitlab"].Status != "pass" || metrics["sonarqube"].Status != "warn" {
+	if len(metrics) != 2 || metrics["gitlab"].Status != "pass" || metrics["sonarqube"].Status != "fail" {
 		t.Fatalf("metrics map = %+v, want both kinds present with their own status", metrics)
 	}
 }

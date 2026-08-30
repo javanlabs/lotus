@@ -175,8 +175,17 @@ func TestSparkline_RendersForBindingsPrimaryMetric(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d:\n%s", resp.StatusCode, body)
 	}
-	if !strings.Contains(string(body), "<svg") {
-		t.Fatalf("sparkline response missing an <svg>:\n%s", body)
+	// The fragment is markup for sparklines.js, not a rendered chart: the
+	// <svg> is built in the browser. What the server owes is the data
+	// attributes the library reads, and points normalised into the 0-100
+	// window it scales from zero.
+	for _, want := range []string{`data-sparkline="true"`, `data-type="bar"`, "data-points=", "data-colors="} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("sparkline response missing %s:\n%s", want, body)
+		}
+	}
+	if strings.Contains(string(body), `data-points=""`) {
+		t.Fatalf("sparkline rendered with no points:\n%s", body)
 	}
 }
 

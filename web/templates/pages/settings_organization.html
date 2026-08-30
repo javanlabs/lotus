@@ -66,7 +66,7 @@
       <div style="flex:1">
         {{template "lotus_select" (dict "Name" "user_id" "Options" (selectOptions .Data.TransferTargets) "Label" "New owner")}}
       </div>
-      <button type="submit" class="btn-lotus" style="background:var(--status-warn-bg);color:#9E2B47;border:none">Transfer</button>
+      <button type="submit" class="btn-lotus" style="background:var(--surface-danger-soft);color:var(--text-danger);border:none">Transfer</button>
     </form>
     {{else}}
     <p style="margin:0;font-size:11.5px;color:#9CA3AF">No other members to transfer ownership to.</p>

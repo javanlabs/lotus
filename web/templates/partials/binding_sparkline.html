@@ -1,2 +1,18 @@
-{{if .HasData}}<div style="width:90px;height:26px" title="last 7 days">{{.SVG}}</div
+{{/* The per-binding trend, drawn client-side by
+     web/static/vendor/sparklines.js from data-points.
+
+     A bar per bucket. The library takes a flat list of numbers and has no
+     way to express a gap, so buildChartSVG lists only the buckets that
+     have a value: an empty bucket is omitted, never drawn as a zero-height
+     bar. That means a sparsely
+     collected binding renders as a dense line rather than a sparse one —
+     the count in the title says how many real readings are behind it, so
+     a thin series is at least legible as thin.
+
+     This fragment arrives over htmx after the row is already on screen,
+     and the library only scans the DOM once at load, so lotus.js
+     initializes it — see the sparkline hook there. */}}
+{{if .HasData}}<div data-sparkline="true" data-type="bar" data-points="{{.SparkPoints}}"
+     data-width="90" data-height="26" data-gap="1" data-colors="{{.SparkColor}}"
+     style="width:90px;height:26px" title="last 7 days · latest {{.Latest}}"></div
 >{{else}}<span style="font-size:9.5px;color:#D1D5DB">no data</span>{{end}}

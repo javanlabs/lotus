@@ -35,9 +35,6 @@
              :style="{ fontWeight: filter==='all' ? 600 : 500, color: filter==='all' ? '#43284E' : '#6B7280', background: filter==='all' ? 'linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%)' : 'transparent', boxShadow: filter==='all' ? 'var(--shadow-segment-thumb)' : 'none' }"
              @click="filter='all'">All<span style="font:500 9.5px 'IBM Plex Mono',monospace;opacity:.7">{{.Data.RowCount}}</span></div>
         <div style="display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:var(--radius-segment);white-space:nowrap;font-size:11.5px;cursor:pointer"
-             :style="{ fontWeight: filter==='warn' ? 600 : 500, color: filter==='warn' ? '#43284E' : '#6B7280', background: filter==='warn' ? 'linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%)' : 'transparent', boxShadow: filter==='warn' ? 'var(--shadow-segment-thumb)' : 'none' }"
-             @click="filter='warn'">At risk<span style="font:500 9.5px 'IBM Plex Mono',monospace;opacity:.7">{{.Data.Score.AtRiskN}}</span></div>
-        <div style="display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:var(--radius-segment);white-space:nowrap;font-size:11.5px;cursor:pointer"
              :style="{ fontWeight: filter==='fail' ? 600 : 500, color: filter==='fail' ? '#43284E' : '#6B7280', background: filter==='fail' ? 'linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%)' : 'transparent', boxShadow: filter==='fail' ? 'var(--shadow-segment-thumb)' : 'none' }"
              @click="filter='fail'">Failing<span style="font:500 9.5px 'IBM Plex Mono',monospace;opacity:.7">{{.Data.Score.FailingN}}</span></div>
       </div>

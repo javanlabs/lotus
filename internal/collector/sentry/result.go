@@ -113,8 +113,6 @@ func rollupHeadline(children []collector.Result) collector.Headline {
 		switch s {
 		case collector.StatusFail:
 			return 3
-		case collector.StatusWarn:
-			return 2
 		case collector.StatusPass:
 			return 1
 		default:
@@ -222,7 +220,7 @@ func buildEnvironmentResult(env, serviceName string, project sentryclient.Projec
 	case status.Grade == "A" || status.Grade == "B":
 		headline.Status = collector.StatusPass
 	case status.Grade == "C":
-		headline.Status = collector.StatusWarn
+		headline.Status = collector.StatusFail
 	default: // D, E
 		headline.Status = collector.StatusFail
 	}
