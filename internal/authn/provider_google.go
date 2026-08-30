@@ -36,7 +36,7 @@ func NewGoogleProvider(clientID, clientSecret, redirectURL string) *GoogleProvid
 
 func (p *GoogleProvider) Name() string { return "google" }
 
-func (p *GoogleProvider) AuthCodeURL(state, codeChallenge string) string {
+func (p *GoogleProvider) AuthCodeURL(state, codeChallenge string) (string, error) {
 	v := url.Values{
 		"client_id":             {p.ClientID},
 		"redirect_uri":          {p.RedirectURL},
@@ -46,7 +46,8 @@ func (p *GoogleProvider) AuthCodeURL(state, codeChallenge string) string {
 		"code_challenge":        {codeChallenge},
 		"code_challenge_method": {"S256"},
 	}
-	return p.AuthBaseURL + "?" + v.Encode()
+	// Endpoints are static for this provider, so this never fails.
+	return p.AuthBaseURL + "?" + v.Encode(), nil
 }
 
 func (p *GoogleProvider) Exchange(ctx context.Context, code, codeVerifier string) (string, error) {

@@ -208,7 +208,7 @@ func sweepExpiredSessions(sqlDB *sqlx.DB) {
 }
 
 // oauthProviders registers only the providers with a client secret
-// configured, so local dev works with zero, one, or both providers set up.
+// configured, so local dev works with none, some, or all of them set up.
 func oauthProviders(cfg config.Config) authn.Registry {
 	registry := authn.Registry{}
 	authHostBase := cfg.BaseURL()
@@ -217,6 +217,12 @@ func oauthProviders(cfg config.Config) authn.Registry {
 	}
 	if cfg.GoogleClientSecret != "" {
 		registry["google"] = authn.NewGoogleProvider(cfg.GoogleClientID, cfg.GoogleClientSecret, authHostBase+"/login/google/callback")
+	}
+	// Task 4.7: one entry covers every OIDC issuer. Registered under "sso",
+	// so the callback the IdP must whitelist is <base>/login/sso/callback
+	// whichever product is behind it.
+	if cfg.OIDCClientSecret != "" {
+		registry["sso"] = authn.NewOIDCProvider(cfg.OIDCIssuer, cfg.OIDCClientID, cfg.OIDCClientSecret, authHostBase+"/login/sso/callback")
 	}
 	return registry
 }

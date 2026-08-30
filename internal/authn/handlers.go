@@ -51,7 +51,11 @@ func Login(deps Deps) fiber.Handler {
 			SameSite: fiber.CookieSameSiteLaxMode,
 			Path:     "/",
 		})
-		return c.Redirect(p.AuthCodeURL(state, challenge), fiber.StatusFound)
+		authURL, err := p.AuthCodeURL(state, challenge)
+		if err != nil {
+			return err
+		}
+		return c.Redirect(authURL, fiber.StatusFound)
 	}
 }
 

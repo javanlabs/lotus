@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 
 	"github.com/jmoiron/sqlx"
 
@@ -23,15 +24,35 @@ type Identity struct {
 	Name          string // "" if the provider gave none; prefills /welcome (task 1.6)
 }
 
-// Provider is one OAuth identity provider (GitHub or Google). Every method
-// takes its own base URLs as configuration rather than hardcoding them, so
-// tests can point a Provider at an httptest.Server instead of the real
-// GitHub/Google APIs.
+// Provider is one identity provider: GitHub, Google, or any OIDC issuer
+// (task 4.7). Every method takes its own base URLs as configuration rather
+// than hardcoding them, so tests can point a Provider at an httptest.Server
+// instead of the real GitHub/Google/IdP APIs.
+//
+// AuthCodeURL returns an error because OIDCProvider must discover its
+// authorization endpoint before it can build one, and that discovery can
+// fail. GitHub and Google know their endpoints statically and always
+// return a nil error — but a signature that cannot express failure would
+// have forced the OIDC provider to redirect the browser to the empty
+// string when its issuer was unreachable.
 type Provider interface {
 	Name() string
-	AuthCodeURL(state, codeChallenge string) string
+	AuthCodeURL(state, codeChallenge string) (string, error)
 	Exchange(ctx context.Context, code, codeVerifier string) (accessToken string, err error)
 	FetchIdentity(ctx context.Context, accessToken string) (Identity, error)
+}
+
+// providerNames lists the registered providers in a stable order. The
+// Registry is a map, so ranging it directly put the login buttons in a
+// different order on every request — harmless-looking, and exactly the
+// kind of jitter that makes a login page feel broken.
+func providerNames(reg Registry) []string {
+	names := make([]string, 0, len(reg))
+	for name := range reg {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // ResolveOutcome tells the caller (the OAuth callback handler) what

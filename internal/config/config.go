@@ -78,6 +78,13 @@ type Config struct {
 	GoogleClientID     string
 	GoogleClientSecret string
 
+	// OIDC (task 4.7) is the generic path: any standards-compliant issuer,
+	// discovered from OIDCIssuer, rather than a Go type per IdP. Registered
+	// only when the secret is set, exactly like the two above.
+	OIDCIssuer       string
+	OIDCClientID     string
+	OIDCClientSecret string
+
 	// SMTP (task 1.7): sends invitation emails. With SMTPHost empty, mail
 	// is simply not sent — invitations still work via the copyable link
 	// (task 1.6), so this is a degrade, not a hard dependency.
@@ -176,6 +183,17 @@ func (c Config) Validate() error {
 	default:
 		return fmt.Errorf("config: LOTUS_MODE must be %q or %q, got %q", ModeSaaS, ModeSingle, c.Mode)
 	}
+
+	// A configured OIDC secret with no issuer to discover from is not a
+	// degraded login, it is a login button that always errors — so fail
+	// the deploy instead of the first person who clicks it.
+	if c.OIDCClientSecret != "" {
+		u, err := url.Parse(c.OIDCIssuer)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("config: OIDC_ISSUER must be an absolute URL like "+
+				"https://sso.example.com/realms/internal when OIDC_CLIENT_SECRET is set, got %q", c.OIDCIssuer)
+		}
+	}
 	return nil
 }
 
@@ -215,6 +233,9 @@ func Load() Config {
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		OIDCIssuer:         strings.TrimSuffix(os.Getenv("OIDC_ISSUER"), "/"),
+		OIDCClientID:       os.Getenv("OIDC_CLIENT_ID"),
+		OIDCClientSecret:   os.Getenv("OIDC_CLIENT_SECRET"),
 		SMTPHost:           os.Getenv("SMTP_HOST"),
 		SMTPPort:           envOr("SMTP_PORT", "587"),
 		SMTPUser:           os.Getenv("SMTP_USER"),

@@ -37,7 +37,7 @@ func (p *GitHubProvider) Name() string { return "github" }
 // AuthCodeURL requests only read:user user:email — never repo. Lotus calls
 // GitLab/Sonar/Sentry with organization-owned credentials (task 2.2), never
 // on a user's behalf, so a user-scoped GitHub token has no consumer here.
-func (p *GitHubProvider) AuthCodeURL(state, codeChallenge string) string {
+func (p *GitHubProvider) AuthCodeURL(state, codeChallenge string) (string, error) {
 	v := url.Values{
 		"client_id":             {p.ClientID},
 		"redirect_uri":          {p.RedirectURL},
@@ -46,7 +46,8 @@ func (p *GitHubProvider) AuthCodeURL(state, codeChallenge string) string {
 		"code_challenge":        {codeChallenge},
 		"code_challenge_method": {"S256"},
 	}
-	return p.AuthBaseURL + "?" + v.Encode()
+	// Endpoints are static for this provider, so this never fails.
+	return p.AuthBaseURL + "?" + v.Encode(), nil
 }
 
 func (p *GitHubProvider) Exchange(ctx context.Context, code, codeVerifier string) (string, error) {
