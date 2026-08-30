@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { retireOrg, seedOwnerSession } from './helpers/db';
-import { chooseFromDropdown, dropdownTrigger, dropdownValue } from './helpers/dropdown';
+import { chooseFromDropdown, dropdownTrigger, dropdownValue, dropdownPanel } from './helpers/dropdown';
 
 const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
 const BASE_DOMAIN = process.env.LOTUS_BASE_DOMAIN ?? 'lotus.localhost';
@@ -24,6 +24,9 @@ test('a dropdown submits the value a native select would have submitted', async 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
 
   await page.goto(`${origin}/settings/members`);
+  // The invite form is a modal now, so the dropdown only exists on screen
+  // once it is open.
+  await page.getByRole('button', { name: 'Invite a member' }).click();
 
   // Untouched, it carries the default — the same "the first option is
   // selected" contract a native select has, which forms here rely on.
@@ -31,14 +34,16 @@ test('a dropdown submits the value a native select would have submitted', async 
 
   await chooseFromDropdown(page, 'role', 'Admin');
   expect(await dropdownValue(page, 'role')).toBe('admin');
-  await expect(dropdownTrigger(page, 'role')).toHaveText(/Admin/);
+  await expect(dropdownTrigger(page, 'role')).toHaveValue(/Admin/);
 
   await page.locator('input[name="email"]').fill('dropdown-invitee@example.com');
   await page.getByRole('button', { name: 'Send invite' }).click();
 
   // The value chosen in the dropdown is what reached the server: the
   // pending invite is for an Admin, not the default Member.
-  const row = page.locator('div', { hasText: 'dropdown-invitee@example.com' }).last();
+  // Scoped to <main>: the toast sits outside it and repeats the address,
+  // so an unscoped text locator would match the toast too.
+  const row = page.locator('main').locator('div', { hasText: 'dropdown-invitee@example.com' }).last();
   await expect(row).toContainText(/admin/i);
 
   await retireOrg(orgId);
@@ -50,24 +55,30 @@ test('a dropdown opens, moves and selects from the keyboard alone', async ({ pag
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
 
   await page.goto(`${origin}/settings/members`);
+  await page.getByRole('button', { name: 'Invite a member' }).click();
   const trigger = dropdownTrigger(page, 'role');
   await trigger.focus();
 
-  await trigger.press('Enter');
-  await expect(page.locator('.lotus-select-panel').first()).toBeVisible();
+  // ArrowDown opens, which is the ARIA combobox convention. The dropdown
+  // used to be a button-triggered select that opened on Enter; it is an
+  // input-first combobox now, where Enter selects the highlighted option
+  // and does nothing while the list is closed.
+  // The opening ArrowDown also advances the highlight, so this lands on
+  // Admin — the point being that the value chosen is not the default.
+  await trigger.press('ArrowDown');
+  await expect(dropdownPanel(page, 'role')).toBeVisible();
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
 
-  await trigger.press('ArrowDown');
   await trigger.press('Enter');
   expect(await dropdownValue(page, 'role')).toBe('admin');
-  await expect(page.locator('.lotus-select-panel').first()).toBeHidden();
+  await expect(dropdownPanel(page, 'role')).toBeHidden();
 
   // Escape closes without choosing. The value surviving a dismissed panel
   // is exactly where a hand-rolled dropdown usually goes wrong.
-  await trigger.press('Enter');
+  await trigger.press('ArrowDown');
   await trigger.press('ArrowDown');
   await trigger.press('Escape');
-  await expect(page.locator('.lotus-select-panel').first()).toBeHidden();
+  await expect(dropdownPanel(page, 'role')).toBeHidden();
   expect(await dropdownValue(page, 'role')).toBe('admin');
 
   await retireOrg(orgId);

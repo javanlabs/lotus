@@ -61,7 +61,7 @@ func projectPage(d Deps) fiber.Handler {
 		vm := buildDashboardViewModel(subtitle, len(projects), components, metrics)
 
 		c.Type("html")
-		return d.Renderer.Render(c, "pages/project.html", httpx.ViewData{
+		return renderPage(c, d, "pages/project.html", httpx.ViewData{
 			Title: project.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), projectTrail(project)),
 			Data: struct {
 				Project   repo.Project
@@ -162,7 +162,7 @@ func renderNewComponentForm(c *fiber.Ctx, d Deps, form newComponentFormData, sta
 	}
 	c.Type("html")
 	c.Status(status)
-	return d.Renderer.Render(c, "pages/component_new.html", httpx.ViewData{
+	return renderPage(c, d, "pages/component_new.html", httpx.ViewData{
 		Title: "New component", Org: org, User: user, Nav: buildNav("projects", len(projects)),
 		Data: form,
 	})

@@ -1,6 +1,6 @@
 TAILWIND = bin/tailwindcss
 
-.PHONY: css watch-css dev run-once build build-linux run migrate-up migrate-down db-up db-down test lint
+.PHONY: css watch-css dev run-once build build-linux run migrate-up migrate-down db-up db-down test e2e e2e-db lint
 
 css: $(TAILWIND)
 	$(TAILWIND) -i web/static/css/app.css -o web/static/css/app.built.css --minify
@@ -36,6 +36,26 @@ migrate-down: db-up
 
 test: db-up
 	TEST_DATABASE_URL=postgres://postgres@localhost:5418/lotus_test?sslmode=disable go test ./...
+
+# The browser suite gets its OWN migrated database, never the dev one.
+# Two reasons, both learned the hard way:
+#   - it seeds an organization per test, and more than one live org makes
+#     LOTUS_MODE=single refuse to boot (global.TheOnlyOrg);
+#   - lotus_test is no good either — the Go tests build a schema per test
+#     there, so its public schema has no tables for a server to serve.
+# It also needs saas mode, because the specs address tenants as
+# <subdomain>.lotus.localhost. Both settings are passed in the environment,
+# which takes precedence over .env.
+E2E_DSN = postgres://postgres@localhost:5418/lotus_e2e?sslmode=disable
+PG_ADMIN_DSN = postgres://postgres@localhost:5418/postgres?sslmode=disable
+
+e2e-db: db-up
+	@psql "$(PG_ADMIN_DSN)" -tc "SELECT 1 FROM pg_database WHERE datname='lotus_e2e'" \
+	  | grep -q 1 || psql "$(PG_ADMIN_DSN)" -c "CREATE DATABASE lotus_e2e"
+	@MIGRATE_DATABASE_URL=$(E2E_DSN) go run ./cmd/lotus migrate up
+
+e2e: e2e-db
+	cd e2e && DATABASE_URL=$(E2E_DSN) LOTUS_MODE=saas npx playwright test
 
 lint:
 	go vet ./...

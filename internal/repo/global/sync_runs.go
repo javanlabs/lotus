@@ -220,6 +220,27 @@ func ListRunsForOrg(ctx context.Context, db *sqlx.DB, orgID uuid.UUID, limit int
 	return out, err
 }
 
+// ListRunsForOrgPage is ListRunsForOrg with an offset, for the activity
+// feed's pager. Ordered by created_at DESC then id so the sort is total —
+// runs written in the same transaction share a timestamp, and without the
+// tiebreak a row can appear on two pages or on none.
+func ListRunsForOrgPage(ctx context.Context, db *sqlx.DB, orgID uuid.UUID, limit, offset int) ([]SyncRun, error) {
+	var out []SyncRun
+	err := db.SelectContext(ctx, &out, `
+		SELECT `+syncRunColumns+` FROM sync_runs
+		WHERE org_id = $1
+		ORDER BY created_at DESC, id DESC
+		LIMIT $2 OFFSET $3`, orgID, limit, offset)
+	return out, err
+}
+
+// CountRunsForOrg is the pager's total.
+func CountRunsForOrg(ctx context.Context, db *sqlx.DB, orgID uuid.UUID) (int, error) {
+	var n int
+	err := db.GetContext(ctx, &n, `SELECT count(*) FROM sync_runs WHERE org_id = $1`, orgID)
+	return n, err
+}
+
 func isNoRowsGlobal(err error) bool {
 	return errors.Is(err, sql.ErrNoRows)
 }

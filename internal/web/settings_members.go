@@ -64,7 +64,7 @@ func settingsMembersPage(d Deps) fiber.Handler {
 		nav := buildNav("", len(projects))
 		nav.Trail = []httpx.NavCrumb{{Label: "Settings"}}
 		c.Type("html")
-		return d.Renderer.Render(c, "pages/settings_members.html", httpx.ViewData{
+		return renderPage(c, d, "pages/settings_members.html", httpx.ViewData{
 			Title: "Members", Org: org, User: user, Nav: nav,
 			Data: struct {
 				SettingsNav   []settingsNavItem
@@ -76,10 +76,12 @@ func settingsMembersPage(d Deps) fiber.Handler {
 				CanRemove     bool
 				Self          uuid.UUID
 				ActorRole     string
+				InviteForm    inviteFormView
 			}{
 				SettingsNav: buildSettingsNav("members"), Members: members, Invitations: invRows,
-				Roles:     []string{"admin", "member", "viewer"},
-				CanInvite: chrome.Principal.Can("member.invite"), CanChangeRole: chrome.Principal.Can("member.role.change"),
+				InviteForm: buildInviteForm("", "member", ""),
+				Roles:      []string{"admin", "member", "viewer"},
+				CanInvite:  chrome.Principal.Can("member.invite"), CanChangeRole: chrome.Principal.Can("member.role.change"),
 				CanRemove: chrome.Principal.Can("member.remove"), Self: chrome.Principal.UserID, ActorRole: chrome.Principal.Role,
 			},
 		})
@@ -91,6 +93,33 @@ func settingsMembersPage(d Deps) fiber.Handler {
 // is simply the settings-page entry point onboarding's own invite screen
 // doesn't cover: inviting someone into an *existing*, already-running
 // organization rather than during initial signup.
+// inviteFormView is the Invite-a-member modal's body. Unlike a
+// connection's form it never changes shape, so it exists only so a
+// rejected submit can come back with the address already typed.
+type inviteFormView struct {
+	Email string
+	Role  string
+	Error string
+}
+
+func buildInviteForm(email, role, errMsg string) inviteFormView {
+	if role != "admin" && role != "member" && role != "viewer" {
+		role = "member"
+	}
+	return inviteFormView{Email: email, Role: role, Error: errMsg}
+}
+
+// rejectInviteForm mirrors rejectConnectionForm: htmx gets the form back
+// inside the still-open modal (200, since htmx does not swap 4xx), a
+// plain post keeps the error the handler always returned.
+func rejectInviteForm(c *fiber.Ctx, d Deps, email, role, msg string, status int) error {
+	if c.Get("HX-Request") == "" {
+		return fiber.NewError(status, msg)
+	}
+	c.Type("html")
+	return d.Renderer.RenderNamed(c, "invite_form", buildInviteForm(email, role, msg))
+}
+
 func inviteMemberUI(d Deps) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		chrome, err := loadSettingsChrome(c)
@@ -100,13 +129,13 @@ func inviteMemberUI(d Deps) fiber.Handler {
 		email := strings.ToLower(strings.TrimSpace(c.FormValue("email")))
 		role := c.FormValue("role")
 		if email == "" || (role != "admin" && role != "member" && role != "viewer") {
-			return fiber.NewError(fiber.StatusUnprocessableEntity, "a valid email and role are required")
+			return rejectInviteForm(c, d, email, role, "A valid email and role are required.", fiber.StatusUnprocessableEntity)
 		}
 		since := time.Now().Add(-24 * time.Hour)
 		if n, err := global.CountRecentInvitationsByOrg(c.Context(), d.DB, chrome.OrgID, since); err != nil {
 			return writeRepoErr(c, err)
 		} else if n >= 50 {
-			return fiber.NewError(fiber.StatusTooManyRequests, "too many invitations sent recently")
+			return rejectInviteForm(c, d, email, role, "Too many invitations sent recently.", fiber.StatusTooManyRequests)
 		}
 
 		token, hash, err := newInvitationToken()
@@ -118,12 +147,13 @@ func inviteMemberUI(d Deps) fiber.Handler {
 			TokenHash: hash, ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
 		}); err != nil {
 			if errors.Is(err, global.ErrInvitationPending) {
-				return fiber.NewError(fiber.StatusConflict, "an invitation to this email is already pending")
+				return rejectInviteForm(c, d, email, role, "An invitation to this email is already pending.", fiber.StatusConflict)
 			}
 			return writeRepoErr(c, err)
 		}
 		_ = token // sent by email in the onboarding flow (task 1.6); this settings-page path has no mailer wiring yet, matching resend's own scope below
-		return c.Redirect("/settings/members", fiber.StatusFound)
+		setFlash(c, "member.invited", email)
+		return redirectAfterMutation(c, "/settings/members")
 	}
 }
 
@@ -150,6 +180,7 @@ func resendInvitationUI(d Deps) fiber.Handler {
 		if _, err := global.ResendInvitation(c.Context(), d.DB, id, hash, time.Now().Add(7*24*time.Hour)); err != nil {
 			return writeRepoErr(c, err)
 		}
+		setFlash(c, "invitation.resent")
 		return c.Redirect("/settings/members", fiber.StatusFound)
 	}
 }
@@ -163,6 +194,7 @@ func revokeInvitationUI(d Deps) fiber.Handler {
 		if err := global.RevokeInvitation(c.Context(), d.DB, id); err != nil {
 			return writeRepoErr(c, err)
 		}
+		setFlash(c, "invitation.revoked")
 		return c.Redirect("/settings/members", fiber.StatusFound)
 	}
 }
@@ -200,6 +232,7 @@ func changeMemberRoleUI(d Deps) fiber.Handler {
 		if err := global.UpdateMembershipRole(c.Context(), d.DB, chrome.OrgID, targetID, roleID); err != nil {
 			return writeRepoErr(c, err)
 		}
+		setFlash(c, "member.role")
 		return c.Redirect("/settings/members", fiber.StatusFound)
 	}
 }
@@ -217,6 +250,7 @@ func removeMemberUI(d Deps) fiber.Handler {
 		if err := global.RemoveMembership(c.Context(), d.DB, chrome.OrgID, targetID); err != nil {
 			return writeRepoErr(c, err)
 		}
+		setFlash(c, "member.removed")
 		return c.Redirect("/settings/members", fiber.StatusFound)
 	}
 }

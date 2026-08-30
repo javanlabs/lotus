@@ -6,16 +6,18 @@
   <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">to {{.Data.ComponentName}}</p>
 </header>
 
-<div style="display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:9px;padding:3px;margin-bottom:16px;width:fit-content">
+<div style="display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:var(--radius-group);padding:3px;margin-bottom:16px;width:fit-content">
   {{$current := .Data.Kind}}
   {{range .Data.Kinds}}
-  <a href="/components/{{$.Data.ComponentID}}/bind?kind={{.}}" style="padding:6px 13px;border-radius:6px;white-space:nowrap;font-size:12px;text-decoration:none;{{if eq . $current}}font-weight:600;color:#43284E;background:linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 1px 2px rgba(67,40,78,.1),0 0 0 1px rgba(67,40,78,.07){{else}}font-weight:500;color:#6B7280{{end}}">{{index $.Data.KindLabels .}}</a>
+  <a href="/components/{{$.Data.ComponentID}}/bind?kind={{.}}" style="padding:var(--pad-button-sm);border-radius:var(--radius-segment);white-space:nowrap;font-size:12px;text-decoration:none;{{if eq . $current}}font-weight:600;color:#43284E;background:linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%);box-shadow:var(--shadow-segment-thumb){{else}}font-weight:500;color:#6B7280{{end}}">{{index $.Data.KindLabels .}}</a>
   {{end}}
 </div>
 
-<section class="lotus-card lotus-shape" style="max-width:560px;padding:20px 22px;display:flex;flex-direction:column;gap:18px" x-data="{connMode: '{{if eq .Data.ConnectionID "new"}}new{{else}}existing{{end}}'}">
+{{template "lotus_card_section_open" (dict "Padding" "20px 22px"
+  "Style" "max-width:560px;display:flex;flex-direction:column;gap:18px"
+  "Attrs" (printf `x-data="{connMode: '%s'}"` (ternary (eq .Data.ConnectionID "new") "new" "existing")))}}
   {{if .Data.Error}}
-  <div style="padding:10px 12px;border-radius:8px 3px 8px 3px;background:#F6E0E5;color:#9E2B47;font-size:12.5px">{{.Data.Error}}</div>
+  <div style="padding:10px 12px;border-radius:8px 3px 8px 3px;background:var(--status-fail-bg);color:#9E2B47;font-size:12.5px">{{.Data.Error}}</div>
   {{end}}
   <form method="post" action="/components/{{.Data.ComponentID}}/bind" style="display:flex;flex-direction:column;gap:16px">
     <input type="hidden" name="kind" value="{{.Data.Kind}}">
@@ -23,7 +25,7 @@
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">{{.Data.ExternalKeyLabel}}</span>
       <input type="text" name="external_key" value="{{.Data.ExternalKey}}" required
-             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+             class="lotus-input lotus-input-mono">
     </label>
 
     {{range .Data.BindingFields}}{{template "field_input" .}}{{end}}
@@ -49,7 +51,7 @@
       <label style="display:flex;flex-direction:column;gap:6px">
         <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">CONNECTION NAME</span>
         <input type="text" name="new_connection_name" value="{{.Data.NewConnectionName}}" placeholder="e.g. gitlab.com"
-               style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12.5px system-ui;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+               class="lotus-input">
       </label>
       {{range .Data.ConnectionFields}}{{template "field_input" .}}{{end}}
     </div>
@@ -59,7 +61,7 @@
       <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none">Bind metric</button>
     </div>
   </form>
-</section>
+{{template "lotus_card_section_close" .}}
 
 {{template "shell_close" .}}
 {{end}}

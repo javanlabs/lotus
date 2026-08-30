@@ -1,0 +1,37 @@
+:root{
+/* --- Plum (primary) --- */
+--plum-900:#2D1934;--plum-800:#3A2143;--plum-700:#43284E;--plum-600:#46294F;--plum-500:#5C3A69;--plum-400:#6B4478;--plum-300:#5B4A63;--plum-200:#B6AEBC;
+--plum-a04:rgba(67,40,78,.035);--plum-a06:rgba(67,40,78,.06);--plum-a09:rgba(67,40,78,.09);--plum-a10:rgba(67,40,78,.10);--plum-a12:rgba(67,40,78,.12);--plum-a16:rgba(67,40,78,.16);--plum-a24:rgba(67,40,78,.24);
+/* --- Rose (secondary root) — the logo's centre petal --- */
+--rose-700:#9E2B47;--rose-600:#B03A55;--rose-500:#A94D68;
+--rose-a10:rgba(158,43,71,.10);--rose-a18:rgba(158,43,71,.18);--rose-a24:rgba(158,43,71,.24);
+/* --- Blush (secondary) — white tints of --rose-700 --- */
+--blush-100:#F7EEF0;--blush-200:#F1E1E5;--blush-300:#E9D0D6;--blush-400:#DAAEB9;--blush-500:#C68494;
+/* --- Teal (pass) --- */
+--teal-600:#23808F;--teal-50:#E6F2F4;
+/* --- Cream (ink on plum) --- */
+--cream-100:#F7EDE1;
+/* --- Neutrals --- */
+--ink-900:#111827;--ink-700:#4B5563;--ink-500:#6B7280;--ink-400:#9CA3AF;--ink-300:#D1D5DB;--ink-200:#E5E7EB;--ink-100:#F3F4F6;--ink-50:#F9FAFB;--white:#FFFFFF;
+--lilac-50:#FCFCFD;--lilac-100:#F6F4F8;--lilac-200:#F3EFF6;--lilac-300:#E9EBEF;
+
+/* --- Semantic: text --- */
+--text-primary:var(--ink-900);--text-secondary:var(--ink-700);--text-muted:var(--ink-500);--text-faint:var(--ink-400);
+--text-brand:var(--plum-700);--text-label:var(--plum-300);--text-on-dark:var(--cream-100);--text-on-dark-accent:var(--blush-400);--text-on-dark-muted:rgba(247,237,225,.55);
+--text-danger:var(--rose-700);
+/* --- Semantic: surface --- */
+--surface-page:var(--ink-50);--surface-card:rgba(255,255,255,.72);--surface-panel:var(--white);--surface-sidebar:var(--white);
+--surface-inverse:var(--plum-700);--surface-nav-active:var(--lilac-200);--surface-nav-hover:var(--ink-100);--surface-row-hover:var(--ink-50);
+--surface-sunken:var(--plum-a04);--surface-danger-soft:var(--blush-100);--surface-chip:var(--ink-100);
+/* --- Semantic: border --- */
+--border-subtle:var(--ink-200);--border-hairline:var(--ink-100);--border-plum:var(--plum-a10);--border-input:var(--plum-a16);--border-plum-strong:var(--plum-a12);
+/* --- Semantic: status (pass / warn / fail / no data) --- */
+--status-pass:var(--teal-600);--status-pass-bg:var(--teal-50);
+--status-warn:var(--blush-500);--status-warn-text:var(--rose-500);--status-warn-bg:var(--blush-100);
+--status-fail:var(--rose-700);--status-fail-bg:var(--blush-200);
+--status-none:var(--ink-400);--status-none-bg:var(--ink-100);
+/* --- Semantic: focus --- */
+--focus-ring:var(--rose-a18);--focus-border:var(--rose-700);
+/* --- Semantic: link --- */
+--link:var(--teal-600);--link-hover:var(--plum-700);
+}

@@ -3,9 +3,9 @@
 {{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" "Sentry")}}
 
 {{if not .Data.HasData}}
-<section class="lotus-card lotus-shape" style="padding:40px 32px;text-align:center;color:#6B7280;font-size:12.5px">
+{{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
   No Sentry data collected for this binding yet.
-</section>
+{{template "lotus_card_section_close" .}}
 {{else}}
 
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px">
@@ -22,20 +22,22 @@
 </div>
 
 <div style="display:grid;grid-template-columns:auto 1fr;gap:10px;margin-bottom:14px">
-  <div class="lotus-card-dark lotus-shape" style="padding:16px 20px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:120px">
-    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#EDBCC3">SCORE</div>
+  {{template "lotus_card_open" (dict "Variant" "inverse"
+    "Padding" "16px 20px"
+    "Style" "display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:120px")}}
+    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:var(--text-on-dark-accent)">SCORE</div>
     <div style="font-size:34px;font-weight:700;line-height:1;margin-top:6px">{{.Data.ScoreText}}</div>
     <div class="lotus-text-{{.Data.Tone}}" style="font-size:16px;font-weight:700;margin-top:2px;background:rgba(255,255,255,.15);padding:1px 8px;border-radius:4px 1px 4px 1px">{{.Data.Grade}}</div>
-  </div>
-  <div class="lotus-card lotus-shape" style="padding:14px 16px">
+  {{template "lotus_card_close" .}}
+  {{template "lotus_card_open" (dict "Padding" "14px 16px")}}
     <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:6px">HOW THIS SCORE IS CALCULATED</div>
-    <p style="margin:0;font-size:11px;line-height:1.6;color:#374151">{{.Data.Explainer}}</p>
-  </div>
+    <p style="margin:0;font-size:11px;line-height:1.6;color:var(--ink-700)">{{.Data.Explainer}}</p>
+  {{template "lotus_card_close" .}}
 </div>
 
 <div style="height:14px"></div>
 
-<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px">
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
   <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
     <div style="font-size:13px;font-weight:600;color:#43284E">Issues</div>
     {{if .Data.Statuses}}
@@ -50,7 +52,7 @@
   </div>
 
   {{if .Data.Rows}}
-  <div style="display:grid;grid-template-columns:2fr 90px 90px 110px 110px;gap:10px;align-items:center;padding:0 14px;height:32px;font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63;border-bottom:1px solid rgba(67,40,78,.12)">
+  <div class="lotus-table-head" style="grid-template-columns:2fr 90px 90px 110px 110px;gap:10px">
     <div>ISSUE</div><div>STATUS</div><div style="text-align:right">EVENTS</div><div>FIRST SEEN</div><div>LAST SEEN</div>
   </div>
   {{range .Data.Rows}}
@@ -68,7 +70,7 @@
   {{else}}
   <div style="padding:32px;text-align:center;color:#23808F;font-size:12.5px">No unresolved issues in this environment.</div>
   {{end}}
-</section>
+{{template "lotus_card_section_close" .}}
 {{end}}
 
 {{/* Outside the HasData branch — see metric_sonar.html's own comment:

@@ -1,0 +1,51 @@
+{{/* lotus_card is the Lotus surface: petal radius, translucent white over
+     the page bloom, the inset ring and the 2px blush underline.
+
+     Ported from the design system's components/core/Card.jsx, whose whole
+     API is (variant, padding, style, children) — so this takes the same
+     four, as an open/close pair because a Go template has no children
+     argument. The pairing matches shell_open/shell_close and
+     lotus_modal_open/lotus_modal_close already in this directory.
+
+       {{`{{template "lotus_card_open" (dict "Padding" "20px 22px")}}`}}
+         …contents…
+       {{`{{template "lotus_card_close" .}}`}}
+
+     Takes (dict
+       "Variant" "glass" (default) | "inverse"
+       "Padding" CSS padding shorthand — omit for the 13px/14px default
+       "Class"   extra classes, e.g. a layout utility
+       "Style"   extra declarations, e.g. "max-width:560px;display:flex")
+
+     Every panel, metric tile and menu surface in Lotus sits on a Card.
+     `inverse` is for the single hero metric of a view and nothing else.
+     Cards are translucent on purpose — the blush/plum bloom shows through
+     the blur — and they take no drop shadow beyond the token: the depth
+     is the inset ring and the underline.
+
+     Cards never sit on cards. */}}
+{{define "lotus_card_open"}}
+<div class="{{if eq (printf "%v" .Variant) "inverse"}}lotus-card-inverse{{else}}lotus-card{{end}}{{with .Class}} {{.}}{{end}}"
+     {{if or .Padding .Style}}style="{{with .Padding}}padding:{{safeCSS .}};{{end}}{{with .Style}}{{safeCSS .}}{{end}}"{{end}}
+     {{with .Attrs}}{{safeAttrs .}}{{end}}>
+{{end}}
+
+{{define "lotus_card_close"}}
+</div>
+{{end}}
+
+{{/* The same card on a <section>. Card.jsx always renders a div, but most
+     of this app's cards are sections that carry a heading — real sectioning
+     content, not a visual panel — and silently demoting 37 of them to divs
+     would be a semantic regression for no gain. html/template refuses a
+     dynamic tag name, so the element is a second pair rather than a
+     "Tag" argument. Everything else is identical. */}}
+{{define "lotus_card_section_open"}}
+<section class="{{if eq (printf "%v" .Variant) "inverse"}}lotus-card-inverse{{else}}lotus-card{{end}}{{with .Class}} {{.}}{{end}}"
+     {{if or .Padding .Style}}style="{{with .Padding}}padding:{{safeCSS .}};{{end}}{{with .Style}}{{safeCSS .}}{{end}}"{{end}}
+     {{with .Attrs}}{{safeAttrs .}}{{end}}>
+{{end}}
+
+{{define "lotus_card_section_close"}}
+</section>
+{{end}}

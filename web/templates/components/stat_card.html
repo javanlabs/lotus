@@ -1,9 +1,9 @@
 {{/* stat_card (task 4.4) is one small metric tile, reused across all
      four detail pages. Takes (dict "Label" "COVERAGE" "Value" "94%" "Tone" "pass" "Sub" "optional"). */}}
 {{define "stat_card"}}
-<div class="lotus-card lotus-shape" style="padding:13px 14px;display:flex;flex-direction:column">
+{{template "lotus_card_open" (dict "Padding" "13px 14px" "Style" "display:flex;flex-direction:column")}}
   <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;white-space:nowrap">{{.Label}}</div>
   <div class="lotus-text-{{if .Tone}}{{.Tone}}{{else}}none{{end}}" style="font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1;margin-top:8px">{{.Value}}</div>
   {{if .Sub}}<div style="margin-top:4px;font-size:10.5px;color:#6B7280">{{.Sub}}</div>{{end}}
-</div>
+{{template "lotus_card_close" .}}
 {{end}}

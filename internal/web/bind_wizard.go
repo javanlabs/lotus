@@ -234,7 +234,7 @@ func (h bindWizardHandlers) render(c *fiber.Ctx, data bindWizardData, status int
 
 	c.Type("html")
 	c.Status(status)
-	return h.d.Renderer.Render(c, "pages/bind_wizard.html", httpx.ViewData{
+	return renderPage(c, h.d, "pages/bind_wizard.html", httpx.ViewData{
 		Title: "Bind metric", Org: org, User: user, Nav: buildNav("projects", len(projects)),
 		Data: data,
 	})

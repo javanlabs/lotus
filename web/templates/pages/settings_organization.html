@@ -6,31 +6,31 @@
 {{template "settings_nav" .Data.SettingsNav}}
 
 {{if .Data.Error}}
-<div style="max-width:520px;margin-bottom:14px;padding:10px 12px;border-radius:8px 3px 8px 3px;background:#F6E0E5;color:#9E2B47;font-size:12.5px">{{.Data.Error}}</div>
+<div style="max-width:520px;margin-bottom:14px;padding:10px 12px;border-radius:8px 3px 8px 3px;background:var(--status-fail-bg);color:#9E2B47;font-size:12.5px">{{.Data.Error}}</div>
 {{end}}
 
-<section class="lotus-card lotus-shape" style="max-width:520px;padding:20px 22px;display:flex;flex-direction:column;gap:16px;margin-bottom:16px">
+{{template "lotus_card_section_open" (dict "Padding" "20px 22px" "Style" "max-width:520px;display:flex;flex-direction:column;gap:16px;margin-bottom:16px")}}
   <div style="font-size:13px;font-weight:600;color:#43284E">Profile</div>
   <form method="post" action="/settings/organization" style="display:flex;flex-direction:column;gap:14px">
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">NAME</span>
       <input type="text" name="name" value="{{.Data.Profile.Name}}" required {{if not .Data.CanUpdate}}disabled{{end}}
-             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12.5px system-ui;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+             class="lotus-input">
     </label>
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">TIMEZONE (IANA)</span>
       <input type="text" name="timezone" value="{{.Data.Profile.Timezone}}" placeholder="Asia/Jakarta" required {{if not .Data.CanUpdate}}disabled{{end}}
-             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+             class="lotus-input lotus-input-mono">
     </label>
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">DEFAULT SYNC INTERVAL (MINUTES, BLANK = 15)</span>
       <input type="number" name="default_sync_interval_minutes" value="{{.Data.DefaultIntervalMinutes}}" min="1" {{if not .Data.CanUpdate}}disabled{{end}}
-             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+             class="lotus-input lotus-input-mono">
     </label>
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">SNAPSHOT RETENTION (DAYS)</span>
       <input type="number" name="retention_days" value="{{.Data.Profile.RetentionDays}}" min="1" required {{if not .Data.CanUpdate}}disabled{{end}}
-             style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+             class="lotus-input lotus-input-mono">
     </label>
     {{if .Data.CanUpdate}}
     <div style="display:flex;justify-content:flex-end">
@@ -38,22 +38,23 @@
     </div>
     {{end}}
   </form>
-</section>
+{{template "lotus_card_section_close" .}}
 
 {{if .Data.CanChangeSlug}}
-<section class="lotus-card lotus-shape" style="max-width:520px;padding:20px 22px;display:flex;flex-direction:column;gap:14px;margin-bottom:16px">
+{{template "lotus_card_section_open" (dict "Padding" "20px 22px" "Style" "max-width:520px;display:flex;flex-direction:column;gap:14px;margin-bottom:16px")}}
   <div style="font-size:13px;font-weight:600;color:#43284E">Subdomain</div>
   <p style="margin:0;font-size:11.5px;color:#6B7280;line-height:1.5">Currently <strong>{{.Data.Profile.Subdomain}}</strong>. Changing this breaks any bookmarked links, saved CI ingest URLs, and SSO redirect URIs pointing at the old one — the old subdomain is retired, never reassigned.</p>
   <form method="post" action="/settings/organization/subdomain" style="display:flex;gap:8px">
     <input type="text" name="subdomain" placeholder="new-subdomain" required
-           style="flex:1;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+           class="lotus-input lotus-input-mono" style="flex:1;width:auto">
     <button type="submit" class="btn-lotus btn-lotus-secondary" onclick="return confirm('Change the organization subdomain? Old links will stop working.')">Change</button>
   </form>
-</section>
+{{template "lotus_card_section_close" .}}
 {{end}}
 
 {{if or .Data.CanTransfer .Data.CanDelete}}
-<section class="lotus-card lotus-shape" style="max-width:520px;padding:20px 22px;display:flex;flex-direction:column;gap:18px;border:1px solid #F6C6D0">
+{{template "lotus_card_section_open" (dict "Padding" "20px 22px"
+  "Style" "max-width:520px;display:flex;flex-direction:column;gap:18px;border:1px solid var(--blush-300)")}}
   <div style="font-size:13px;font-weight:700;color:#9E2B47">Danger zone</div>
 
   {{if .Data.CanTransfer}}
@@ -65,7 +66,7 @@
       <div style="flex:1">
         {{template "lotus_select" (dict "Name" "user_id" "Options" (selectOptions .Data.TransferTargets) "Label" "New owner")}}
       </div>
-      <button type="submit" class="btn-lotus" style="background:#FCEDF0;color:#9E2B47;border:none">Transfer</button>
+      <button type="submit" class="btn-lotus" style="background:var(--status-warn-bg);color:#9E2B47;border:none">Transfer</button>
     </form>
     {{else}}
     <p style="margin:0;font-size:11.5px;color:#9CA3AF">No other members to transfer ownership to.</p>
@@ -74,17 +75,17 @@
   {{end}}
 
   {{if .Data.CanDelete}}
-  <div style="display:flex;flex-direction:column;gap:8px;padding-top:6px;border-top:1px solid #F6C6D0">
+  <div style="display:flex;flex-direction:column;gap:8px;padding-top:6px;border-top:1px solid var(--blush-300)">
     <div style="font-size:12px;font-weight:600;color:#111827">Delete organization</div>
     <p style="margin:0;font-size:11.5px;color:#6B7280;line-height:1.5">Every project, component, connection, and history in this organization stops being reachable. Type <strong>{{.Data.Profile.Subdomain}}</strong> to confirm.</p>
     <form method="post" action="/settings/organization/delete" style="display:flex;gap:8px" onsubmit="return confirm('This cannot be undone from the UI. Really delete this organization?')">
       <input type="text" name="confirm_subdomain" placeholder="{{.Data.Profile.Subdomain}}" required
-             style="flex:1;box-sizing:border-box;padding:9px 11px;font:400 12px 'IBM Plex Mono',monospace;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+             class="lotus-input lotus-input-mono" style="flex:1;width:auto">
       <button type="submit" class="btn-lotus" style="background:#9E2B47;color:#FFFFFF;border:none">Delete organization</button>
     </form>
   </div>
   {{end}}
-</section>
+{{template "lotus_card_section_close" .}}
 {{end}}
 
 {{template "shell_close" .}}

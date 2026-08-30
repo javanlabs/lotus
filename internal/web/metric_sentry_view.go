@@ -120,7 +120,7 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 
 	if selectedEnv == "" {
 		c.Type("html")
-		return d.Renderer.Render(c, "pages/metric_sentry.html", httpx.ViewData{
+		return renderPage(c, d, "pages/metric_sentry.html", httpx.ViewData{
 			Title: chrome.Component.Name + " · Sentry", Org: org, User: user, Nav: nav, Data: data,
 		})
 	}
@@ -179,7 +179,7 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 	data.Rows = rows
 
 	c.Type("html")
-	return d.Renderer.Render(c, "pages/metric_sentry.html", httpx.ViewData{
+	return renderPage(c, d, "pages/metric_sentry.html", httpx.ViewData{
 		Title: chrome.Component.Name + " · Sentry", Org: org, User: user, Nav: nav, Data: data,
 	})
 }

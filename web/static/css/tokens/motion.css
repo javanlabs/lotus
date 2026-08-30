@@ -1,0 +1,9 @@
+:root{
+--ease-standard:cubic-bezier(.4,0,.2,1);
+--duration-fast:.2s;
+--duration-base:.22s;
+--duration-slow:.28s;
+--transition-chevron:transform .25s cubic-bezier(.4,0,.2,1);
+--transition-panel:max-height .28s cubic-bezier(.4,0,.2,1),opacity .2s ease;
+--transition-surface:border-color .22s ease,box-shadow .22s ease,background .22s ease;
+}

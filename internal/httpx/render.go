@@ -32,6 +32,24 @@ type ViewData struct {
 	Org  *Org
 	User *User
 	Nav  *Nav
+
+	// Flash is a one-shot success message for the action that redirected
+	// here, rendered by the app shell as a toast. Nil on almost every
+	// render: it is set only by the request immediately following a
+	// mutation, and reading it clears it. See internal/web/flash.go.
+	Flash *Flash
+}
+
+// Flash is a resolved one-shot message. Tone is a status key the toast
+// styles from ("pass", "warn", "fail"), matching .lotus-status-dot-*.
+//
+// Handlers never build one directly — they name a message code and the
+// web layer resolves it, so the copy stays in Go where the product's
+// voice rules apply and a tampered cookie can only select a message
+// Lotus already ships.
+type Flash struct {
+	Tone string
+	Text string
 }
 
 // Org is the current organization, for the app shell's breadcrumb.

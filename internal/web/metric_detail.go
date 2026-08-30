@@ -233,7 +233,7 @@ func runHistoryPage(d Deps) fiber.Handler {
 			httpx.NavCrumb{Label: chrome.Binding.Kind, Href: chrome.basePath()},
 			httpx.NavCrumb{Label: "Run history"})
 		c.Type("html")
-		return d.Renderer.Render(c, "pages/metric_runs.html", httpx.ViewData{
+		return renderPage(c, d, "pages/metric_runs.html", httpx.ViewData{
 			Title: chrome.Component.Name + " run history", Org: org, User: user, Nav: nav,
 			Data: struct {
 				Chrome    metricChrome

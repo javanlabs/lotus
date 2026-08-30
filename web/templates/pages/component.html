@@ -8,29 +8,30 @@
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{.Data.Component.Kind}}{{if .Data.Component.Language}} · {{.Data.Component.Language}}{{end}}</p>
   </div>
   {{if .Data.Metric}}
-  <div class="lotus-card lotus-shape" style="padding:10px 16px;display:flex;align-items:center;gap:10px">
+  {{template "lotus_card_open" (dict "Padding" "10px 16px" "Style" "display:flex;align-items:center;gap:10px")}}
     {{template "status_dot" .Data.Tone}}
     <div style="display:flex;flex-direction:column">
       <span style="font:600 20px 'IBM Plex Mono',monospace;color:#111827">{{if .Data.ScoreText}}{{.Data.ScoreText}}{{else}}–{{end}}</span>
       <span style="font-size:9.5px;color:#9CA3AF">/100</span>
     </div>
-  </div>
+  {{template "lotus_card_close" .}}
   {{end}}
   <a href="/components/{{.Data.Component.ID}}/bind" class="btn-lotus btn-lotus-primary">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#EDBCC3"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Bind metric
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Bind metric
   </a>
 </header>
 
 {{if not .Data.Bindings}}
-<section class="lotus-card lotus-shape" style="padding:40px 32px;display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:520px">
+{{template "lotus_card_section_open" (dict "Padding" "40px 32px"
+  "Style" "display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:520px")}}
   <div style="font-size:15px;font-weight:600;color:#111827">No metrics bound yet</div>
   <p style="margin:0;font-size:12.5px;color:#6B7280;line-height:1.5">Bind this component to a GitLab repository, SonarQube project, Harbor repository, or Sentry project to start collecting its metrics.</p>
   <a href="/components/{{.Data.Component.ID}}/bind" class="btn-lotus btn-lotus-primary">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#EDBCC3"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Bind metric
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Bind metric
   </a>
-</section>
+{{template "lotus_card_section_close" .}}
 {{else}}
-<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px">
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
   <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
     <div style="font-size:13px;font-weight:600;color:#43284E">Metric bindings</div>
   </div>
@@ -50,12 +51,12 @@
         <button type="submit" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px">{{if .Enabled}}Disable{{else}}Enable{{end}}</button>
       </form>
       <form method="post" action="/bindings/{{.ID}}/delete-ui" onsubmit="return confirm('Remove this binding?')">
-        <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:#FCEDF0;color:#9E2B47">Delete</button>
+        <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:var(--status-warn-bg);color:#9E2B47">Delete</button>
       </form>
     </div>
   </div>
   {{end}}
-</section>
+{{template "lotus_card_section_close" .}}
 {{end}}
 
 {{template "shell_close" .}}

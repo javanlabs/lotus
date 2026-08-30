@@ -11,18 +11,18 @@
   {{template "lotus_select" (dict "Name" .Key "Value" (ternary (eq .Value "") .Default .Value) "Options" (selectOptions .Options) "Label" .Label)}}
   {{else if eq .Type "secret"}}
   <input type="password" name="{{.Key}}" value="{{.Value}}" autocomplete="off" placeholder="{{.Default}}"
-         style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12.5px system-ui;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+         class="lotus-input">
   {{else if eq .Type "number"}}
   <input type="number" name="{{.Key}}" value="{{.Value}}" placeholder="{{.Default}}"
-         style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12.5px system-ui;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+         class="lotus-input">
   {{else if eq .Type "boolean"}}
   <input type="checkbox" name="{{.Key}}" value="true" {{if eq .Value "true"}}checked{{end}} style="width:16px;height:16px">
   {{else if eq .Type "multiselect"}}
   <input type="text" name="{{.Key}}" value="{{.Value}}" placeholder="comma-separated"
-         style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12.5px system-ui;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+         class="lotus-input">
   {{else}}
   <input type="text" name="{{.Key}}" value="{{.Value}}" placeholder="{{.Default}}" {{if .Required}}required{{end}}
-         style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 12.5px system-ui;color:#111827;background:#FFFFFF;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+         class="lotus-input">
   {{end}}
 </label>
 {{end}}

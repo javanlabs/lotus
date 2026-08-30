@@ -96,7 +96,7 @@ func componentPage(d Deps) fiber.Handler {
 		}
 
 		c.Type("html")
-		return d.Renderer.Render(c, "pages/component.html", httpx.ViewData{
+		return renderPage(c, d, "pages/component.html", httpx.ViewData{
 			Title: comp.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), componentTrail(project, comp)),
 			Data: struct {
 				Component repo.Component

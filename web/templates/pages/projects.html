@@ -7,18 +7,20 @@
   <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">every metric, surfaced</p>
 </header>
 {{if .Data.NoProjects}}
-<section class="lotus-card lotus-shape" style="padding:40px 32px;display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:520px">
+{{template "lotus_card_section_open" (dict "Padding" "40px 32px"
+  "Style" "display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:520px")}}
   <div style="font-size:15px;font-weight:600;color:#111827">No projects yet</div>
   <p style="margin:0;font-size:12.5px;color:#6B7280;line-height:1.5">Create a project and add a GitLab repository to it — Sonar and Trivy scan it automatically, and a Sentry DSN can be attached whenever you're ready.</p>
   <a href="/projects/new" class="btn-lotus btn-lotus-primary">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#EDBCC3"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>New project
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>New project
   </a>
-</section>
+{{template "lotus_card_section_close" .}}
 {{else}}
-<section class="lotus-card lotus-shape" style="padding:40px 32px;display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:520px">
+{{template "lotus_card_section_open" (dict "Padding" "40px 32px"
+  "Style" "display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:520px")}}
   <div style="font-size:15px;font-weight:600;color:#111827">No repositories yet</div>
   <p style="margin:0;font-size:12.5px;color:#6B7280;line-height:1.5">{{.Data.ProjectCount}} project(s) so far, but none with a repository bound yet. Add a GitLab repository to a project's page to start collecting metrics.</p>
-</section>
+{{template "lotus_card_section_close" .}}
 {{end}}
 {{else}}
 <div x-data="{filter:'all'}">
@@ -28,15 +30,15 @@
       <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{.Data.Subtitle}}</p>
     </div>
     <div style="margin-left:auto;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:center">
-      <div style="display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:9px;padding:3px;box-shadow:inset 0 1px 2px rgba(67,40,78,.08),0 1px 0 rgba(255,255,255,.6)">
-        <div style="display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:6px;white-space:nowrap;font-size:11.5px;cursor:pointer"
-             :style="{ fontWeight: filter==='all' ? 600 : 500, color: filter==='all' ? '#43284E' : '#6B7280', background: filter==='all' ? 'linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%)' : 'transparent', boxShadow: filter==='all' ? 'inset 0 1px 0 rgba(255,255,255,.9),0 1px 2px rgba(67,40,78,.1),0 0 0 1px rgba(67,40,78,.07)' : 'none' }"
+      <div style="display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:var(--radius-group);padding:3px;box-shadow:var(--shadow-segment-track)">
+        <div style="display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:var(--radius-segment);white-space:nowrap;font-size:11.5px;cursor:pointer"
+             :style="{ fontWeight: filter==='all' ? 600 : 500, color: filter==='all' ? '#43284E' : '#6B7280', background: filter==='all' ? 'linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%)' : 'transparent', boxShadow: filter==='all' ? 'var(--shadow-segment-thumb)' : 'none' }"
              @click="filter='all'">All<span style="font:500 9.5px 'IBM Plex Mono',monospace;opacity:.7">{{.Data.RowCount}}</span></div>
-        <div style="display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:6px;white-space:nowrap;font-size:11.5px;cursor:pointer"
-             :style="{ fontWeight: filter==='warn' ? 600 : 500, color: filter==='warn' ? '#43284E' : '#6B7280', background: filter==='warn' ? 'linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%)' : 'transparent', boxShadow: filter==='warn' ? 'inset 0 1px 0 rgba(255,255,255,.9),0 1px 2px rgba(67,40,78,.1),0 0 0 1px rgba(67,40,78,.07)' : 'none' }"
+        <div style="display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:var(--radius-segment);white-space:nowrap;font-size:11.5px;cursor:pointer"
+             :style="{ fontWeight: filter==='warn' ? 600 : 500, color: filter==='warn' ? '#43284E' : '#6B7280', background: filter==='warn' ? 'linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%)' : 'transparent', boxShadow: filter==='warn' ? 'var(--shadow-segment-thumb)' : 'none' }"
              @click="filter='warn'">At risk<span style="font:500 9.5px 'IBM Plex Mono',monospace;opacity:.7">{{.Data.Score.AtRiskN}}</span></div>
-        <div style="display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:6px;white-space:nowrap;font-size:11.5px;cursor:pointer"
-             :style="{ fontWeight: filter==='fail' ? 600 : 500, color: filter==='fail' ? '#43284E' : '#6B7280', background: filter==='fail' ? 'linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%)' : 'transparent', boxShadow: filter==='fail' ? 'inset 0 1px 0 rgba(255,255,255,.9),0 1px 2px rgba(67,40,78,.1),0 0 0 1px rgba(67,40,78,.07)' : 'none' }"
+        <div style="display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:var(--radius-segment);white-space:nowrap;font-size:11.5px;cursor:pointer"
+             :style="{ fontWeight: filter==='fail' ? 600 : 500, color: filter==='fail' ? '#43284E' : '#6B7280', background: filter==='fail' ? 'linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%)' : 'transparent', boxShadow: filter==='fail' ? 'var(--shadow-segment-thumb)' : 'none' }"
              @click="filter='fail'">Failing<span style="font:500 9.5px 'IBM Plex Mono',monospace;opacity:.7">{{.Data.Score.FailingN}}</span></div>
       </div>
       <a href="/projects/new" class="btn-lotus btn-lotus-secondary">

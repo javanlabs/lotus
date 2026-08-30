@@ -1,0 +1,59 @@
+{{/* connection_form is the New-connection modal's whole body, rendered
+     both inline by settings_connections.html and standalone by
+     GET /settings/connections/form.
+
+     It is one swappable region rather than three, because both things
+     that change it replace the same thing: picking a different kind
+     swaps in that kind's fields, and a rejected submit swaps the form
+     back with an error and the values the user typed. Sending the whole
+     region keeps those two paths identical.
+
+     Takes a connectionFormView. */}}
+{{define "connection_form"}}
+<div id="connection-form" class="lotus-modal-form">
+  <form method="post" action="/settings/connections"
+        hx-post="/settings/connections" hx-target="#connection-form" hx-swap="outerHTML">
+    <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
+
+      {{if .Error}}
+      <div role="alert" style="display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:var(--radius-petal-sm);background:var(--status-fail-bg);color:var(--status-fail);font-size:12.5px">
+        <i class="lotus-status-dot lotus-status-dot-fail" aria-hidden="true"></i>
+        <span>{{.Error}}</span>
+      </div>
+      {{end}}
+
+      {{/* Switching kind re-fetches this whole region instead of
+           navigating, which is what lets the modal stay open. Buttons,
+           not links: a link inside a form still reads as navigation to
+           assistive tech even when htmx intercepts it. */}}
+      <div style="display:flex;gap:2px;background:var(--surface-sunken);border:1px solid var(--plum-a09);border-radius:var(--radius-group);padding:3px;width:fit-content">
+        {{$current := .SelectedKind}}
+        {{range .Kinds}}
+        <button type="button" hx-get="/settings/connections/form?kind={{.}}"
+                hx-target="#connection-form" hx-swap="outerHTML"
+                {{if eq . $current}}aria-current="true"{{end}}
+                style="border:none;cursor:pointer;padding:var(--pad-button-sm);border-radius:var(--radius-segment);white-space:nowrap;font-size:12px;{{if eq . $current}}font-weight:600;color:var(--text-brand);background:linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%);box-shadow:var(--shadow-segment-thumb){{else}}font-weight:500;color:var(--text-muted);background:none{{end}}">{{index $.KindLabels .}}</button>
+        {{end}}
+      </div>
+
+      <input type="hidden" name="kind" value="{{.SelectedKind}}">
+
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">CONNECTION NAME</span>
+        <input type="text" name="name" required placeholder="e.g. gitlab.com" value="{{.Name}}" class="lotus-input">
+      </label>
+
+      {{range .Fields}}{{template "field_input" .}}{{end}}
+    </div>
+
+    <div class="lotus-modal-foot">
+      {{/* Native close rather than an Alpine call: this markup is swapped
+           in by htmx, and closest('dialog') keeps working regardless of
+           whether the fragment has been re-initialized. */}}
+      <button type="button" class="btn-lotus btn-lotus-secondary"
+              onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn-lotus btn-lotus-primary">Create connection</button>
+    </div>
+  </form>
+</div>
+{{end}}

@@ -1,0 +1,45 @@
+{{/* lotus_modal_open / lotus_modal_close wrap a form in a native <dialog>,
+     following the same open/close pairing shell_open/shell_close uses so
+     a page's markup reads the same way.
+
+     A page does:
+       {{`{{template "lotus_modal_open" (dict "Name" "new-connection"
+            "Title" "New connection" "Trigger" "New connection")}}`}}
+         ...form markup...
+       {{`{{template "lotus_modal_close" .}}`}}
+
+     Takes (dict
+       "Name"    unique handle, also the x-data scope and close-event key
+       "Title"   heading, sentence case
+       "Trigger" label for the button that opens it)
+
+     <dialog>, not a positioned div: the browser gives the focus trap,
+     Esc-to-close, ::backdrop, inert background and top-layer stacking.
+     Top layer is what keeps a modal from being clipped or offset by an
+     ancestor — .lotus-card's backdrop-filter makes it a containing block
+     for fixed descendants, which is exactly the trap the select panel
+     had to teleport out of.
+
+     The close glyph is the icon set's `plus`, turned 45° in CSS: the set
+     has no close mark and the same path in the same family beats
+     importing a foreign one. */}}
+{{define "lotus_modal_open"}}
+<div x-data="lotusModal('{{.Name}}')" style="display:contents">
+  <button type="button" class="btn-lotus btn-lotus-primary" @click="open()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+    {{.Trigger}}
+  </button>
+
+  <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="{{.Name}}-title">
+    <div class="lotus-modal-head">
+      <div class="lotus-modal-title" id="{{.Name}}-title">{{.Title}}</div>
+      <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+      </button>
+    </div>
+{{end}}
+
+{{define "lotus_modal_close"}}
+  </dialog>
+</div>
+{{end}}

@@ -10,11 +10,11 @@
 </p>
 
 {{if not .Data.Bindings}}
-<section class="lotus-card lotus-shape" style="padding:32px;text-align:center;color:#6B7280;font-size:12.5px">
+{{template "lotus_card_section_open" (dict "Padding" "32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
   No Trivy bindings yet — bind one from a component page first.
-</section>
+{{template "lotus_card_section_close" .}}
 {{else}}
-<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px">
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
   <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
     <div style="font-size:13px;font-weight:600;color:#43284E">Push-ingest URLs</div>
   </div>
@@ -24,7 +24,7 @@
     <code style="display:block;padding:8px 10px;background:rgba(67,40,78,.03);border-radius:6px;font:400 11px 'IBM Plex Mono',monospace;color:#43284E;overflow-x:auto;white-space:pre">curl -X POST -H "Authorization: Bearer &lt;service_token&gt;" -H "Content-Type: application/json" --data-binary @trivy-report.json {{.URL}}</code>
   </div>
   {{end}}
-</section>
+{{template "lotus_card_section_close" .}}
 {{end}}
 
 {{template "shell_close" .}}

@@ -59,7 +59,7 @@ func dashboardPage(d Deps) fiber.Handler {
 		vm := buildProjectDashboardViewModel(subtitle, len(projects), components, metrics)
 
 		c.Type("html")
-		return d.Renderer.Render(c, "pages/projects.html", httpx.ViewData{
+		return renderPage(c, d, "pages/projects.html", httpx.ViewData{
 			Title: "Projects", Org: org, User: user, Nav: buildNav("projects", len(projects)),
 			Data: vm,
 		})

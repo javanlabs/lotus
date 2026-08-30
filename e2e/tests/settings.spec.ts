@@ -32,12 +32,16 @@ test('creating a connection through the settings form appears in the list, real 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
 
   await page.goto(`${origin}/settings/connections`);
+  // Creating a connection is a modal now, opened from the page header.
+  await page.getByRole('button', { name: 'New connection' }).click();
   await page.locator('input[name="name"]').fill('gitlab.com');
   await page.locator('input[name="base_url"]').fill('https://gitlab.com');
   await page.locator('input[name="token"]').fill('glpat-realistictoken');
   await page.getByRole('button', { name: 'Create connection' }).click();
 
   await expect(page).toHaveURL(`${origin}/settings/connections`);
+  // Success closes the modal, refreshes the list and toasts.
+  await expect(page.locator('.toaster .toast')).toContainText('Connection created');
   await expect(page.getByText('gitlab.com', { exact: true })).toBeVisible();
   await expect(page.getByText('pending', { exact: true })).toBeVisible();
 });
@@ -48,17 +52,19 @@ test('inviting a member shows it as pending, and revoke removes it, real browser
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
 
   await page.goto(`${origin}/settings/members`);
+  await page.getByRole('button', { name: 'Invite a member' }).click();
   await page.locator('input[name="email"]').fill('newteammate@example.com');
   await chooseFromDropdown(page, 'role', 'Member');
   expect(await dropdownValue(page, 'role')).toBe('member');
   await page.getByRole('button', { name: 'Send invite' }).click();
 
   await expect(page).toHaveURL(`${origin}/settings/members`);
-  await expect(page.getByText('newteammate@example.com')).toBeVisible();
+  await expect(page.locator('.toaster .toast')).toContainText('Invitation sent to newteammate@example.com');
+  await expect(page.locator('main').getByText('newteammate@example.com')).toBeVisible();
 
   page.once('dialog', (d) => d.accept());
   await page.getByRole('button', { name: 'Revoke' }).click();
-  await expect(page.getByText('newteammate@example.com')).not.toBeVisible();
+  await expect(page.locator('main').getByText('newteammate@example.com')).not.toBeVisible();
 });
 
 test('organization danger zone requires typing the exact subdomain to delete', async ({ page, context }) => {

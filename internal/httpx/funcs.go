@@ -24,6 +24,21 @@ var funcMap = template.FuncMap{
 		}
 		return no
 	},
+	// safeCSS passes a declaration list through into a style="" attribute.
+	//
+	// html/template's CSS sanitizer allows a single VALUE there, not a list
+	// of declarations, so `style="{{.Style}}"` with "display:flex;gap:8px"
+	// renders as ZgotmplZ. Components that take a style passthrough — see
+	// lotus_card — need this to exist.
+	//
+	// It is an escape hatch and disables escaping for what it is given, so
+	// it takes ONLY literals written in a template by us. Never hand it a
+	// value that came from a request, a database row or a config file.
+	"safeCSS": func(s string) template.CSS { return template.CSS(s) },
+	// safeAttrs passes a run of attributes ("x-data=\"{open:false}\"") into
+	// a tag. Same escape hatch as safeCSS and the same rule: template
+	// literals written by us only, never a value from outside.
+	"safeAttrs": func(s string) template.HTMLAttr { return template.HTMLAttr(s) },
 }
 
 func dict(kv ...any) (map[string]any, error) {

@@ -3,9 +3,9 @@
 {{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" "Trivy (Harbor)")}}
 
 {{if not .Data.Header.HasData}}
-<section class="lotus-card lotus-shape" style="padding:40px 32px;text-align:center;color:#6B7280;font-size:12.5px">
+{{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
   No Trivy scan collected for this repository yet.
-</section>
+{{template "lotus_card_section_close" .}}
 {{else}}
 <p style="margin:0 0 14px;font-size:11px;color:#9CA3AF">
   source: {{.Data.Header.Source}}{{if .Data.Header.Digest}} · digest <span style="font-family:'IBM Plex Mono',monospace">{{.Data.Header.Digest}}</span>{{end}}{{if .Data.Header.Tags}} · tags {{.Data.Header.Tags}}{{end}}
@@ -24,8 +24,8 @@
 <div style="height:14px"></div>
 
 {{if .Data.Rows}}
-<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px" x-data="{openRow:null}">
-  <div style="display:grid;grid-template-columns:26px 1fr 90px 1fr 100px 100px 2fr;align-items:center;padding:0 14px;height:32px;font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63;border-bottom:1px solid rgba(67,40,78,.12)">
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden" "Attrs" `x-data="{openRow:null}"`)}}
+  <div class="lotus-table-head" style="grid-template-columns:26px 1fr 90px 1fr 100px 100px 2fr">
     <div></div><div>CVE</div><div>SEVERITY</div><div>PACKAGE</div><div>VERSION</div><div>FIX</div><div>DESCRIPTION</div>
   </div>
   {{range $i, $row := .Data.Rows}}
@@ -51,22 +51,22 @@
       <div style="display:flex;gap:8px">
         <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none;padding:6px 12px;font-size:11px">Save</button>
         {{if $row.HasNote}}
-        <button type="submit" formaction="/p/{{$.Data.Chrome.Project.ID}}/c/{{$.Data.Chrome.Component.ID}}/m/{{$.Data.Chrome.Binding.ID}}/trivy-notes/{{$row.NoteID}}/delete" class="btn-lotus" style="padding:6px 12px;font-size:11px;background:#FCEDF0;color:#9E2B47">Remove</button>
+        <button type="submit" formaction="/p/{{$.Data.Chrome.Project.ID}}/c/{{$.Data.Chrome.Component.ID}}/m/{{$.Data.Chrome.Binding.ID}}/trivy-notes/{{$row.NoteID}}/delete" class="btn-lotus" style="padding:6px 12px;font-size:11px;background:var(--status-warn-bg);color:#9E2B47">Remove</button>
         {{end}}
       </div>
     </form>
   </div>
   {{end}}
-</section>
+{{template "lotus_card_section_close" .}}
 {{else}}
 {{if .Data.RawDetailMissing}}
-<section class="lotus-card lotus-shape" style="padding:32px;text-align:center;color:#6B7280;font-size:12.5px">
+{{template "lotus_card_section_open" (dict "Padding" "32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
   Trivy found {{.Data.Header.Total}} CVE(s), but this snapshot only stored the summary counts, not the per-CVE detail. A future collect will include it.
-</section>
+{{template "lotus_card_section_close" .}}
 {{else}}
-<section class="lotus-card lotus-shape" style="padding:32px;text-align:center;color:#23808F;font-size:13px;font-weight:600">
+{{template "lotus_card_section_open" (dict "Padding" "32px" "Style" "text-align:center;color:#23808F;font-size:13px;font-weight:600")}}
   🎉 No vulnerabilities found — clean scan
-</section>
+{{template "lotus_card_section_close" .}}
 {{end}}
 {{end}}
 {{end}}

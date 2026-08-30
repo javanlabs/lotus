@@ -1,0 +1,21 @@
+{{/* lotus_toasts is the app's one success-message surface, rendered once
+     by shell_close so every shell page has it.
+
+     The stack and its animation are Basecoat's .toaster
+     (web/static/vendor/basecoat-toast.min.js); Lotus paints it — see
+     .toaster in app.css, where the tone is shown with the same status dot
+     the metric tables use.
+
+     Two things feed it, both through window.lotusToast() in lotus.js: a
+     server-side flash seeded here on load (a mutation redirected and the
+     next render carries the message — internal/web/flash.go), and an htmx
+     HX-Trigger event for actions that do not reload the page.
+
+     The flash is passed as a data attribute rather than an inline <script>
+     so nothing depends on inline script being allowed.
+
+     Takes "." = the page's ViewData, for .Flash. */}}
+{{define "lotus_toasts"}}
+<div id="toaster" class="toaster" data-align="end"
+     {{with .Flash}}data-flash-tone="{{.Tone}}" data-flash-text="{{.Text}}"{{end}}></div>
+{{end}}

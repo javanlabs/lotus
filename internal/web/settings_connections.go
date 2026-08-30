@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -106,27 +107,20 @@ func settingsConnectionsPage(d Deps) fiber.Handler {
 		}
 
 		kind := c.Query("kind", bindableKinds[0])
-		if !isValidKind(kind) {
-			kind = bindableKinds[0]
-		}
-		connFields := connectionFieldViews(connectionFieldsFor(kind), nil)
 
 		nav := buildNav("", len(projects))
 		nav.Trail = []httpx.NavCrumb{{Label: "Settings"}}
 		c.Type("html")
-		return d.Renderer.Render(c, "pages/settings_connections.html", httpx.ViewData{
+		return renderPage(c, d, "pages/settings_connections.html", httpx.ViewData{
 			Title: "Connections", Org: org, User: user, Nav: nav,
 			Data: struct {
-				SettingsNav      []settingsNavItem
-				Connections      []connectionRow
-				Kinds            []string
-				KindLabels       map[string]string
-				SelectedKind     string
-				ConnectionFields []fieldView
-				CanWrite         bool
+				SettingsNav []settingsNavItem
+				Connections []connectionRow
+				Form        connectionFormView
+				CanWrite    bool
 			}{
-				SettingsNav: buildSettingsNav("connections"), Connections: rows, Kinds: bindableKinds, KindLabels: kindLabels,
-				SelectedKind: kind, ConnectionFields: connFields,
+				SettingsNav: buildSettingsNav("connections"), Connections: rows,
+				Form:     buildConnectionForm(kind, "", nil, ""),
 				CanWrite: mustPrincipal(c).Can("connection.secret.write"),
 			},
 		})
@@ -144,6 +138,64 @@ func mustPrincipal(c *fiber.Ctx) authz.Principal {
 // bindview.go), just not paired with creating a binding in the same
 // submit, since a settings-page connection may be created before any
 // component is ready to bind it.
+// connectionFormView is the New-connection modal's body. Page render and
+// htmx fragment render share it, so switching kind and recovering from a
+// rejected submit go through exactly one template.
+type connectionFormView struct {
+	Kinds        []string
+	KindLabels   map[string]string
+	SelectedKind string
+	Fields       []fieldView
+	Name         string
+	Error        string
+}
+
+func buildConnectionForm(kind, name string, values map[string]string, errMsg string) connectionFormView {
+	if !isValidKind(kind) {
+		kind = bindableKinds[0]
+	}
+	return connectionFormView{
+		Kinds: bindableKinds, KindLabels: kindLabels, SelectedKind: kind,
+		Fields: connectionFieldViews(connectionFieldsFor(kind), values),
+		Name:   name, Error: errMsg,
+	}
+}
+
+// submittedConnectionValues reads back what the user typed, so a rejected
+// submit re-renders with their input rather than an empty form.
+func submittedConnectionValues(c *fiber.Ctx, kind string) map[string]string {
+	values := map[string]string{}
+	for _, f := range connectionFieldsFor(kind) {
+		values[f.Key] = c.FormValue(f.Key)
+	}
+	return values
+}
+
+// connectionFormFragment serves GET /settings/connections/form — the kind
+// switcher inside the modal, which swaps the body instead of navigating
+// so the dialog stays open.
+func connectionFormFragment(d Deps) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		c.Type("html")
+		return d.Renderer.RenderNamed(c, "connection_form",
+			buildConnectionForm(c.Query("kind"), c.Query("name"), nil, ""))
+	}
+}
+
+// rejectConnectionForm is the modal's error path. It answers htmx with the
+// form re-rendered inside the modal — 200, because htmx does not swap 4xx
+// by default and the point of this path is that the dialog stays open with
+// the user's input intact. A non-htmx post (no JS) keeps the plain error
+// the handler always returned.
+func rejectConnectionForm(c *fiber.Ctx, d Deps, kind, name, msg string) error {
+	if c.Get("HX-Request") == "" {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, msg)
+	}
+	c.Type("html")
+	return d.Renderer.RenderNamed(c, "connection_form",
+		buildConnectionForm(kind, name, submittedConnectionValues(c, kind), msg))
+}
+
 func createConnectionSettingsUI(d Deps) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		s, err := mustScope(c)
@@ -160,20 +212,20 @@ func createConnectionSettingsUI(d Deps) fiber.Handler {
 		}
 		name := strings.TrimSpace(c.FormValue("name"))
 		if name == "" {
-			return fiber.NewError(fiber.StatusUnprocessableEntity, "a connection name is required")
+			return rejectConnectionForm(c, d, kind, name, "A connection name is required.")
 		}
 		formVal := func(key string) string { return c.FormValue(key) }
 		baseURL, secret, config := planConnectionFields(kind, formVal)
 		if baseURL == "" || secret == "" {
-			return fiber.NewError(fiber.StatusUnprocessableEntity, "every connection field is required")
+			return rejectConnectionForm(c, d, kind, name, "Every connection field is required.")
 		}
 		netguardCfg := netguard.Config{AllowHTTP: d.Cfg.Dev, Resolver: d.NetguardResolver, IsBlocked: d.NetguardIsBlocked}
 		if err := netguard.ValidateBaseURL(c.Context(), netguardCfg, baseURL); err != nil {
-			return fiber.NewError(fiber.StatusUnprocessableEntity, "connection URL rejected: "+err.Error())
+			return rejectConnectionForm(c, d, kind, name, "Connection URL rejected · "+err.Error())
 		}
 		configJSON, err := marshalConfig(config)
 		if err != nil {
-			return fiber.NewError(fiber.StatusUnprocessableEntity, err.Error())
+			return rejectConnectionForm(c, d, kind, name, err.Error())
 		}
 		dek, err := global.GetOrCreateOrgDEK(c.Context(), d.DB, d.KEK, org.ID)
 		if err != nil {
@@ -182,9 +234,10 @@ func createConnectionSettingsUI(d Deps) fiber.Handler {
 		if _, err := repo.CreateConnection(c.Context(), s, dek, repo.NewConnection{
 			Provider: providerForKind(kind), Name: name, BaseURL: baseURL, Config: configJSON, Secret: secret,
 		}); err != nil {
-			return fiber.NewError(fiber.StatusUnprocessableEntity, connectionCreateErrorMessage(err))
+			return rejectConnectionForm(c, d, kind, name, connectionCreateErrorMessage(err))
 		}
-		return c.Redirect("/settings/connections", fiber.StatusFound)
+		setFlash(c, "connection.created")
+		return redirectAfterMutation(c, "/settings/connections")
 	}
 }
 
@@ -213,7 +266,8 @@ func rotateConnectionSecretUI(d Deps) fiber.Handler {
 		if _, err := repo.UpdateConnectionSecret(c.Context(), s, dek, id, secret); err != nil {
 			return writeRepoErr(c, err)
 		}
-		return c.Redirect("/settings/connections", fiber.StatusFound)
+		setFlash(c, "connection.rotated")
+		return redirectAfterMutation(c, "/settings/connections")
 	}
 }
 
@@ -304,6 +358,11 @@ func deleteConnectionUI() fiber.Handler {
 		if err := repo.RecordAuditEvent(c.Context(), s, actor, "connection.deleted", "integration_connection", &id, meta); err != nil {
 			return writeRepoErr(c, err)
 		}
+		if bindingsDeleted > 0 {
+			setFlash(c, "connection.unbound", strconv.Itoa(bindingsDeleted))
+		} else {
+			setFlash(c, "connection.deleted")
+		}
 		return c.Redirect("/settings/connections", fiber.StatusFound)
 	}
 }
@@ -311,6 +370,8 @@ func deleteConnectionUI() fiber.Handler {
 func registerConnectionSettingsRoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
 	app.Get("/settings/connections", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("connection.read"), settingsConnectionsPage(d))
+	app.Get("/settings/connections/form", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("connection.secret.write"), connectionFormFragment(d))
 	app.Post("/settings/connections", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("connection.secret.write"), createConnectionSettingsUI(d))
 	app.Post("/settings/connections/:id/rotate", tenant.RequireTenant(), requireSession, loadPrincipal,

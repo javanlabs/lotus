@@ -1,42 +1,192 @@
+/* The inverse surface is solid plum for a view's one hero metric. No
+   border and no backdrop-filter, per Card.jsx: there is nothing behind a
+   solid fill to blur, and a plum-alpha hairline on plum is invisible
+   anyway. Dropping the filter also keeps the card from becoming a
+   containing block for fixed-position descendants.
+
+   Same treatment as the glass card above, for the same two reasons: the
+   cream moat is widened to cover the blush band so no shadow boundary
+   goes square at the small corners, and the ring line is drawn by the
+   pseudo-element with its own radius. Otherwise the hero card and the
+   glass tiles beside it in a KPI row would disagree at the corners. */
+.lotus-card-inverse {
+  position: relative;
+  background: var(--surface-inverse);
+  color: var(--text-on-dark);
+  box-shadow: var(--shadow-card-inverse);
+}
+
+.lotus-card-inverse::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px solid rgba(218, 174, 185, .28);
+  border-radius: var(--radius-petal-md);
+  pointer-events: none;
+}
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
-/* Lotus design system (task 4.1) — tokens translated from the Claude
-   Design mockup "Lotus Dashboard.dc.html". Each --color-* below becomes a
-   Tailwind utility automatically (bg-brand, text-status-pass, etc). */
+/* The canonical Lotus design system tokens, copied verbatim from the Claude
+   Design project "Lotus Design System"
+   (https://claude.ai/design/p/6fdfec68-c713-4ee1-9464-993ff1c177fc) and
+   mirrored for reference in .claude/skills/lotus-design/.
+
+   These files are NOT hand-edited. Re-sync them with the DesignSync tool
+   rather than tweaking a value here; everything below builds on them. */
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/radius.css";
+@import "./tokens/elevation.css";
+@import "./tokens/motion.css";
+
+/* Basecoat supplies the STRUCTURE for the combobox and the toast — popover
+   placement, keyboard-driven listbox semantics, the toast stack's collapse
+   animation. These three files carry no colour, border, radius or shadow;
+   that skin lives in Basecoat's style packs, which we do not import, and
+   Lotus paints its own below.
+
+   Imported as Tailwind sources rather than as one of Basecoat's CDN
+   bundles: those each ship their own preflight, which would apply the
+   reset a second time on top of ours. See the README beside them. */
+@import "./vendor/basecoat/popover.css";
+@import "./vendor/basecoat/combobox.css";
+@import "./vendor/basecoat/toast.css";
+
+/* Tailwind's theme layer. The names here are the utility names templates
+   already use (bg-brand, text-status-pass, …) — only the values moved onto
+   the canonical palette. Tailwind needs literals, not var() references, so
+   opacity modifiers (bg-brand/10) keep working; each is annotated with the
+   canonical token it mirrors. */
 @theme {
-  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
 
-  --color-brand: #43284E;
-  --color-brand-accent: #EDBCC3;
-  --color-brand-ink: #F7EDE1;
+  --color-brand: #43284E;        /* --plum-700 */
+  --color-brand-accent: #DAAEB9; /* --blush-400 — was #EDBCC3, off-ramp */
+  --color-brand-ink: #F7EDE1;    /* --cream-100 */
 
-  --color-status-pass: #23808F;
-  --color-status-warn: #E08DA0;
-  --color-status-warn-ink: #A94D68;
-  --color-status-fail: #9E2B47;
-  --color-status-none: #9CA3AF;
+  --color-status-pass: #23808F;     /* --teal-600 */
+  --color-status-warn: #C68494;     /* --blush-500 — was #E08DA0, off-ramp */
+  --color-status-warn-ink: #A94D68; /* --rose-500 */
+  --color-status-fail: #9E2B47;     /* --rose-700 */
+  --color-status-none: #9CA3AF;     /* --ink-400 */
 
-  --color-surface: #F9FAFB;
-  --color-ink: #111827;
-  --color-ink-soft: #6B7280;
-  --color-ink-faint: #9CA3AF;
+  /* The complete theme surface Basecoat's three stylesheets reach for.
+     Its components are shadcn-token-shaped, so these names bridge to Lotus
+     values; nothing else in the app should use them. */
+  --color-accent: #F3F4F6;            /* --ink-100, the system's hover fill */
+  --color-accent-foreground: #111827; /* --ink-900 */
+  --color-muted-foreground: #6B7280;  /* --ink-500 */
+
+  --color-surface: #F9FAFB;   /* --ink-50 */
+  --color-ink: #111827;       /* --ink-900 */
+  --color-ink-soft: #6B7280;  /* --ink-500 */
+  --color-ink-faint: #9CA3AF; /* --ink-400 */
 }
 
 body {
   font-family: var(--font-sans);
+  color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Content links, in the base layer on purpose. An <a> that renders as a
+   component (.btn-lotus, .lotus-nav-item, …) carries its own colour, and
+   an unlayered `a:hover` (0,1,1) outranks a single component class
+   (0,1,0) — which repainted the primary button's cream label plum on
+   plum. Unlayered rules beat layered ones whatever their specificity, so
+   putting these here lets every component keep its own colour without
+   each one having to out-specify the base link. */
+@layer base {
+  a { color: var(--link); text-decoration: none; }
+  a:hover { color: var(--link-hover); }
 }
 
 [x-cloak] { display: none !important; }
 
-/* The signature asymmetric shape language: every card, button, and pill
-   in the mockup uses this exact non-uniform radius, never a plain
-   rounded-lg. Two sizes cover every instance observed. */
-.lotus-shape { border-radius: 16px 6px 16px 6px; }
-.lotus-shape-sm { border-radius: 14px 4px 14px 4px; }
-.lotus-shape-xs { border-radius: 5px 2px 5px 2px; }
+/* One height for every full-size control, so an input, a button, a select
+   and the segmented track read as one row wherever they sit together.
+   Derived, not invented: --pad-input's 9px top and bottom around 12.5px
+   body text between 1px borders is 35px, which is what the system's own
+   numbers already produce for a text input. The design system defines
+   --row-height for tables but no control height, so this token is local.
+   Buttons take the same box; their 2px ledge sits beneath it as depth
+   rather than adding height. */
+:root {
+  --lotus-control-h: 35px;
+
+  /* A DELIBERATE DEPARTURE from the design system, which puts one focus
+     treatment system-wide in the centre-petal rose (--rose-700 edge over a
+     --rose-a18 halo). In the app that rose reads as an error state next to
+     the rose used for `fail` chips and destructive rows, so focus moves to
+     a soft plum instead. Overridden here rather than in tokens/colors.css,
+     which stays a verbatim copy of the design system. */
+  --focus-border: var(--plum-500);
+  --focus-ring: var(--plum-a16);
+}
+
+/* Text inputs. This markup was 24 hand-copied inline style strings across
+   nine templates, every one of them ending in `outline:none` with nothing
+   put back — so no input in the app had a visible focus state at all.
+   One class fixes the height and restores the canonical rose focus ring. */
+.lotus-input,
+.lotus-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: 400 var(--text-body) / 1.35 var(--font-sans);
+  color: var(--text-primary);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-input);
+  box-shadow: var(--shadow-input);
+  outline: none;
+  transition: var(--transition-surface);
+}
+.lotus-input {
+  height: var(--lotus-control-h);
+  padding: 0 var(--space-10);
+}
+.lotus-textarea {
+  padding: var(--pad-input);
+  resize: vertical;
+}
+.lotus-input-mono { font: 400 var(--text-mono-body) / 1.35 var(--font-mono); }
+.lotus-input:hover,
+.lotus-textarea:hover { border-color: var(--plum-a24); }
+.lotus-input:focus,
+.lotus-textarea:focus {
+  border-color: var(--focus-border);
+  box-shadow: var(--shadow-focus);
+}
+
+/* The canonical page bloom, as a fixed backdrop layer.
+
+   Not `background-attachment: fixed` on the shell: iOS Safari has long
+   treated that value as `scroll`, which would put the radials back on a
+   box whose size changes with every page — the exact inconsistency
+   shell.html documents. A position:fixed layer resolves against the
+   viewport on every engine.
+
+   z-index:-1 keeps it below all in-flow content while the shell's
+   `isolation: isolate` stops it escaping to the root stacking context.
+   --gradient-page's last layer is opaque --ink-50, so nothing shows
+   through it. */
+.lotus-page-bloom {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--gradient-page);
+}
+
+/* PETAL radii — containers only: cards, tables, menus, avatars, chips.
+   Controls (buttons, nav rows, inputs, selects) take the plain symmetric
+   radii further down, so dense chrome stays quiet. */
+.lotus-shape { border-radius: var(--radius-petal-lg); }
+.lotus-shape-sm { border-radius: var(--radius-petal-avatar); }
+.lotus-shape-xs { border-radius: var(--radius-petal-xs); }
 
 /* Concentric nesting: a child inset by N px inside a .lotus-shape card
    needs its own radius reduced by exactly N, or its corner reads as a
@@ -53,87 +203,123 @@ body {
   border-bottom-left-radius: 2px;
 }
 
-/* Glassmorphic card: translucent white, blurred backdrop, layered inset
-   highlight + a thin pink accent stripe along the bottom edge. */
-.lotus-card {
-  position: relative;
-  background: rgba(255, 255, 255, .72);
-  border: 1px solid rgba(67, 40, 78, .1);
-  backdrop-filter: blur(12px) saturate(1.1);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .95),
-    inset 0 -2px 0 rgba(224, 141, 160, .5),
-    0 1px 1px rgba(17, 24, 39, .04),
-    0 4px 10px -8px rgba(67, 40, 78, .22);
+/* Shared by both variants, as Card.jsx applies them to both: the petal
+   radius, border-box sizing, and the metric-card padding the component
+   defaults to when a call site passes no Padding. */
+.lotus-card,
+.lotus-card-inverse {
+  box-sizing: border-box;
+  border-radius: var(--radius-petal-lg);
+  padding: var(--pad-card);
 }
 
-/* The inner double line used to be two inset ring shadows (4px and 5px
-   spread). CSS reduces an inset shadow's corner radius by its spread, so on
-   this shape's 6px corners those rings landed at 2px and 1px — practically
-   square inside a rounded corner, while the same rings stayed visibly round
-   at the 16px corners. Three lines, three different corner characters.
-   A pseudo-element carries its own radius, so the offset and the curvature
-   can be chosen independently and both corners can read as parallel. */
+/* The glass card: translucent white over the page bloom, a plum hairline,
+   the blur, and --shadow-card's colour composite.
+
+   Two things have to be true at once, and the token alone cannot do both:
+
+   COLOUR. The frame reads darker than the card interior because a 5px
+   band of rgba(67,40,78,.09) sits under the white moat — plum tints the
+   surface to ~235 and 55% white lifts it only back to ~246, against a
+   ~252 interior. Drop that band and the frame turns plain white and
+   disappears, which is what happened when an earlier version replaced it
+   with a hairline.
+
+   GEOMETRY. An inset shadow's inner corner radius is the outer radius
+   minus its spread, so the token's 5px ring lands at 6-5 = 1px on this
+   shape's small corners — square inside a rounded corner — while staying
+   round at the 16px ones. One frame, two corner characters.
+
+   So the moat is widened to 5px, covering the plum band completely and
+   leaving no shadow boundary to go square; the band still tints the whole
+   frame, so the colour is unchanged. The ring line is then drawn by the
+   pseudo-element below, which carries its own radius and stays parallel
+   to the card edge at all four corners. */
+.lotus-card {
+  position: relative;
+  background: var(--surface-card);
+  border: 1px solid var(--border-plum);
+  backdrop-filter: var(--blur-card);
+  /* The token again, not a local copy: the 5px moat that makes this work
+     now lives in tokens/elevation.css upstream. */
+  box-shadow: var(--shadow-card);
+}
+
+/* The ring line, at --radius-petal-md (12/4) inside a 16/6 card: the small
+   corners stay visibly rounded instead of collapsing to a square. */
 .lotus-card::before {
   content: "";
   position: absolute;
   inset: 4px;
-  border: 1px solid rgba(67, 40, 78, .09);
-  border-radius: 12px 4px 12px 4px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55);
+  border: 1px solid var(--plum-a09);
+  border-radius: var(--radius-petal-md);
   pointer-events: none;
-  z-index: 0;
 }
 
-.lotus-card-dark {
-  background: var(--color-brand);
-  color: var(--color-brand-ink);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .22),
-    inset 0 0 0 4px rgba(247, 237, 225, .07),
-    inset 0 0 0 5px rgba(237, 188, 195, .28),
-    inset 0 -2px 0 rgba(237, 188, 195, .75),
-    0 4px 10px -8px rgba(67, 40, 78, .32);
+/* The inverse surface is solid plum for a view's one hero metric. No
+   border and no backdrop-filter, per Card.jsx: there is nothing behind a
+   solid fill to blur, and a plum-alpha hairline on plum is invisible
+   anyway. Dropping the filter also keeps the card from becoming a
+   containing block for fixed-position descendants.
+
+   It keeps the canonical --shadow-card-inverse whole, rings included —
+   the pseudo-element split above exists for the glass card's corner
+   geometry and has no counterpart to fix here. */
+.lotus-card-inverse {
+  background: var(--surface-inverse);
+  color: var(--text-on-dark);
+  box-shadow: var(--shadow-card-inverse);
 }
 
+/* Buttons are machined, not glossy: a crisp 1px hairline holds the shape
+   and a solid unblurred ledge sits beneath it. Press collapses the ledge
+   into an inset well, so the button sinks in place and never translates. */
 .btn-lotus {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--text-ui);
+  font-weight: var(--weight-semibold);
   cursor: pointer;
-  padding: 8px 14px;
-  border-radius: 8px;
+  /* Canonical --pad-button (9px 16px) makes a 36px box, and the 2px ledge
+     beneath it takes the silhouette to 38px — too tall beside the 35px
+     segmented track it sits next to in a page header, which the system
+     says these two should align in. The inline padding is the canonical
+     16px; the block axis is pinned to the shared control height instead,
+     so a button, an input, a select and the segmented track all present
+     the same box. The 2px ledge sits beneath that box as depth, which is
+     the machined effect the system asks for, not extra height. */
+  padding: 0 var(--space-14);
+  height: var(--lotus-control-h);
+  border: 0;
+  border-radius: var(--radius-control);
+  transition: var(--transition-surface);
+}
+.btn-lotus:focus-visible {
+  outline: none;
 }
 
 .btn-lotus-secondary {
-  color: var(--color-brand);
-  background: linear-gradient(180deg, #FFFFFF 0%, #FAF9FB 55%, #F1EFF4 100%);
-  /* A real border, not an inset ring. An inset bevel paints inside the
-     border box, so it can never cover the border the way it covered the
-     ring — which is what left the top edge invisible: white bevel over a
-     white gradient on a near-white surface. */
-  border: 1px solid rgba(67, 40, 78, .22);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .9),
-    0 1px 2px rgba(67, 40, 78, .08);
+  color: var(--text-brand);
+  background: var(--gradient-button);
+  box-shadow: var(--shadow-button);
 }
-.btn-lotus-secondary:hover {
-  background: linear-gradient(180deg, #FFFFFF 0%, #F6F4F8 55%, #EBE8EF 100%);
+.btn-lotus-secondary:hover { background: var(--gradient-button-hover); }
+.btn-lotus-secondary:active { box-shadow: var(--shadow-button-press); }
+.btn-lotus-secondary:focus-visible {
+  box-shadow: var(--shadow-button), var(--shadow-focus-ring);
 }
 
 .btn-lotus-primary {
-  color: var(--color-brand-ink);
-  background: linear-gradient(180deg, #5C3A69 0%, #46294F 55%, #3A2143 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .3),
-    inset 0 0 0 1px rgba(45, 25, 52, .9),
-    0 1px 2px rgba(67, 40, 78, .24);
+  color: var(--text-on-dark);
+  background: var(--gradient-button-primary);
+  box-shadow: var(--shadow-button-primary);
 }
-.btn-lotus-primary:hover {
-  background: linear-gradient(180deg, #6B4478 0%, #523060 55%, #432749 100%);
+.btn-lotus-primary:hover { background: var(--gradient-button-primary-hover); }
+.btn-lotus-primary:active { box-shadow: var(--shadow-button-primary-press); }
+.btn-lotus-primary:focus-visible {
+  box-shadow: var(--shadow-button-primary), var(--shadow-focus-ring);
 }
 
 /* Status badge pill — used by the repositories table and the legend. */
@@ -150,31 +336,77 @@ body {
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 7px;
-  border-radius: 5px 2px 5px 2px;
+  font-size: var(--text-micro-sm);
+  font-weight: var(--weight-medium);
+  padding: var(--pad-chip);
+  border-radius: var(--radius-petal-xs);
 }
-.lotus-badge-pass { color: var(--color-status-pass); background: #E6F2F4; }
-.lotus-badge-warn { color: var(--color-status-warn-ink); background: #FCEDF0; }
-.lotus-badge-fail { color: var(--color-status-fail); background: #F6E0E5; }
-.lotus-badge-none { color: var(--color-status-none); background: #F3F4F6; }
+.lotus-badge-pass { color: var(--status-pass); background: var(--status-pass-bg); }
+.lotus-badge-warn { color: var(--status-warn-text); background: var(--status-warn-bg); }
+.lotus-badge-fail { color: var(--status-fail); background: var(--status-fail-bg); }
+.lotus-badge-none { color: var(--status-none); background: var(--status-none-bg); }
 
 .lotus-status-dot { display: block; width: 3px; height: 16px; border-radius: 2px; flex: none; }
-.lotus-status-dot-pass { background: var(--color-status-pass); }
-.lotus-status-dot-warn { background: var(--color-status-warn); }
-.lotus-status-dot-fail { background: var(--color-status-fail); }
-.lotus-status-dot-none { background: var(--color-status-none); }
+.lotus-status-dot-pass { background: var(--status-pass); }
+.lotus-status-dot-warn { background: var(--status-warn); }
+.lotus-status-dot-fail { background: var(--status-fail); }
+.lotus-status-dot-none { background: var(--status-none); }
 
-.lotus-text-pass { color: var(--color-status-pass); }
-.lotus-text-warn { color: var(--color-status-warn); }
-.lotus-text-fail { color: var(--color-status-fail); }
-.lotus-text-none { color: var(--color-status-none); }
+.lotus-text-pass { color: var(--status-pass); }
+.lotus-text-warn { color: var(--status-warn-text); }
+.lotus-text-fail { color: var(--status-fail); }
+.lotus-text-none { color: var(--status-none); }
 
-.lotus-bar-pass { background: var(--color-status-pass); }
-.lotus-bar-warn { background: var(--color-status-warn); }
-.lotus-bar-fail { background: var(--color-status-fail); }
-.lotus-bar-none { background: var(--color-status-none); }
+.lotus-bar-pass { background: var(--status-pass); }
+.lotus-bar-warn { background: var(--status-warn); }
+.lotus-bar-fail { background: var(--status-fail); }
+.lotus-bar-none { background: var(--status-none); }
+
+/* Every table's header row, so they stop reading as five different
+   products. The 135deg 1px hatch is the only texture the design system
+   defines and this is the one place it belongs (--hatch-header); four of
+   the five tables had the header typography but not the texture.
+
+   Callers still set their own grid-template-columns, gap and min-width —
+   those are per-table — but nothing else. */
+.lotus-table-head {
+  display: grid;
+  align-items: center;
+  height: var(--header-row-height);
+  padding: 0 var(--space-13);
+  font: var(--weight-semibold) var(--text-mono-label) / 1 var(--font-mono);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-label);
+  text-transform: uppercase;
+  background: var(--hatch-header);
+  border-bottom: 1px solid var(--plum-a12);
+}
+
+/* The feed pager: one row under a table, quiet enough that it does not
+   compete with the rows above it. */
+.lotus-pager {
+  display: flex;
+  align-items: center;
+  gap: var(--space-11);
+  padding: var(--space-9) var(--space-13);
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+.lotus-pager-spacer { margin-left: auto; display: flex; gap: var(--space-5); }
+.lotus-pager a,
+.lotus-pager span[aria-disabled] {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 var(--space-9);
+  border-radius: var(--radius-control-sm);
+  font-size: var(--text-ui-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-brand);
+  transition: var(--transition-surface);
+}
+.lotus-pager a:hover { background: var(--surface-nav-hover); color: var(--text-brand); }
+.lotus-pager span[aria-disabled] { color: var(--plum-200); }
 
 /* x-show toggles the inline `display` property directly — combining it
    with an inline `display:grid` loses the grid declaration entirely once
@@ -188,101 +420,292 @@ body {
      The fallback is the organization dashboard's four-column shape. */
   grid-template-columns: var(--lotus-row-grid, 26px minmax(190px, 1.5fr) 84px repeat(4, minmax(78px, .9fr)));
   align-items: center;
-  padding: 0 14px;
-  height: 38px;
-  border-bottom: 1px solid #F3F4F6;
+  padding: 0 var(--space-13);
+  height: var(--row-height);
+  border-bottom: 1px solid var(--border-hairline);
 }
+.lotus-repo-row:hover { background: var(--surface-row-hover); }
 
 .lotus-nav-item {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 7px 10px;
-  border-radius: 6px;
-  font-size: 12.5px;
-  color: #4B5563;
+  gap: var(--space-8);
+  padding: var(--pad-nav-item);
+  border-radius: var(--radius-control-sm);
+  font-size: var(--text-body);
+  color: var(--text-secondary);
+  transition: var(--transition-surface);
 }
-.lotus-nav-item:hover { background: #F3F4F6; color: var(--color-ink); }
-.lotus-nav-item.is-active { background: #F3EFF6; color: var(--color-brand); font-weight: 600; }
-.lotus-nav-item.is-disabled { color: #C4C1C8; cursor: default; }
-.lotus-nav-item.is-disabled:hover { background: transparent; color: #C4C1C8; }
+.lotus-nav-item:hover { background: var(--surface-nav-hover); color: var(--text-primary); }
+.lotus-nav-item.is-active { background: var(--surface-nav-active); color: var(--text-brand); font-weight: var(--weight-semibold); }
+.lotus-nav-item.is-disabled { color: var(--plum-200); cursor: default; }
+.lotus-nav-item.is-disabled:hover { background: transparent; color: var(--plum-200); }
 
-/* Styled dropdown (web/templates/components/select.html). The native
-   <select>'s popup is drawn by the browser and cannot be styled, so the
-   same page rendered as three different products across Chrome, Firefox
-   and Safari. The trigger deliberately keeps the plain rounded corners
-   every other form control uses — the asymmetric lotus shape is for
-   cards and buttons, not fields. */
-.lotus-select { position: relative; }
+/* Modal (web/templates/components/modal.html).
 
-.lotus-select-trigger {
+   A native <dialog>, not a positioned div: the browser supplies the focus
+   trap, Esc-to-close, the ::backdrop, inert background and top-layer
+   stacking. Top layer also means a modal is never clipped or offset by an
+   ancestor — including .lotus-card, whose backdrop-filter makes it a
+   containing block for fixed descendants.
+
+   Opaque --surface-panel, not the translucent card: this sits over a
+   backdrop, and cards never sit on cards. */
+.lotus-modal {
+  padding: 0;
+  /* A <dialog> is centred by the UA's `margin: auto`, and Tailwind's
+     preflight zeroes margin on every element — so without this the modal
+     sits in the top-left corner. */
+  margin: auto;
+  border: 1px solid var(--border-plum);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-raised);
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow: hidden;
+}
+/* Only when open: a closed dialog must keep the UA's display:none, and an
+   unconditional display would show it. Column layout so a long form
+   scrolls its body while the header and footer stay put. */
+.lotus-modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+.lotus-modal-head,
+.lotus-modal-foot { flex: none; }
+/* The form wraps body+footer, so the column has to continue through it
+   for the body to be the part that scrolls. min-height:0 is what lets a
+   flex child shrink below its content and actually scroll. */
+.lotus-modal-form,
+.lotus-modal-form > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.lotus-modal::backdrop {
+  /* No token for this — derived from --plum-900 so the scrim is the
+     brand's own shadow colour rather than neutral black. */
+  background: rgba(45, 25, 52, .32);
+}
+.lotus-modal-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  box-sizing: border-box;
-  background: #FFFFFF;
-  border: 1px solid rgba(67, 40, 78, .16);
-  border-radius: 8px;
-  color: var(--color-brand);
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
+  gap: var(--space-9);
+  padding: var(--space-13) var(--space-17);
+  border-bottom: 1px solid var(--border-subtle);
 }
-.lotus-select-trigger:hover { border-color: rgba(67, 40, 78, .3); }
-.lotus-select-trigger:focus-visible {
-  outline: 2px solid rgba(92, 58, 105, .45);
-  outline-offset: 1px;
+.lotus-modal-title {
+  font-size: var(--text-card-title);
+  font-weight: var(--weight-semibold);
+  color: var(--text-brand);
+  letter-spacing: var(--tracking-tight);
 }
-
-.lotus-select-md .lotus-select-trigger { padding: 9px 11px; font-size: 12.5px; }
-.lotus-select-sm .lotus-select-trigger { padding: 6px 10px; font-size: 12px; border-radius: 7px; }
-/* An inline filter sits beside other controls and should be as wide as
-   its content; a form field fills its label. */
-.lotus-select-sm { display: inline-block; }
-.lotus-select-sm .lotus-select-trigger { width: auto; }
-
-.lotus-select-value {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.lotus-select-chevron {
+/* The 22-glyph set has no close mark, so this is the `plus` glyph turned
+   45° — the same path, stroke and family rather than a foreign icon. */
+.lotus-modal-close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
   flex: none;
-  color: #9CA3AF;
-  transition: transform .18s cubic-bezier(.4, 0, .2, 1);
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  border-radius: var(--radius-control-sm);
+  cursor: pointer;
+  transition: var(--transition-surface);
 }
-
-.lotus-select-panel {
-  position: fixed;
-  z-index: 60;
+.lotus-modal-close svg { transform: rotate(45deg); }
+.lotus-modal-close:hover { background: var(--surface-nav-hover); color: var(--text-primary); }
+.lotus-modal-close:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
+}
+.lotus-modal-body {
+  padding: var(--space-16) var(--space-17);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 4px;
-  /* Opaque, not the card's translucent white: a list of options read
-     through the table underneath it is not readable. */
-  background: #FFFFFF;
-  border: 1px solid rgba(67, 40, 78, .14);
-  border-radius: 10px;
-  box-shadow: 0 12px 28px -12px rgba(67, 40, 78, .45), 0 2px 6px rgba(17, 24, 39, .06);
+}
+.lotus-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-7);
+  padding: var(--space-11) var(--space-17) var(--space-16);
 }
 
-.lotus-select-option {
-  padding: 7px 9px;
-  border-radius: 6px;
-  font-size: 12.5px;
-  color: #111827;
+/* Lotus skin over Basecoat's structure.
+
+   Basecoat gives the combobox and the toast their behaviour and layout and
+   nothing else — no colour, border, radius or shadow — so everything a
+   viewer actually sees is defined here in canonical tokens. Menus and
+   toasts are CONTAINERS, so they take the petal radius; the combobox's
+   input is a CONTROL and keeps the plain 8px every other field uses. */
+
+/* --- Combobox (replaces the hand-rolled lotus_select) --------------- */
+.lotus-combobox { width: 100%; }
+.lotus-combobox > input[role="combobox"] {
+  height: var(--lotus-control-h);
+  padding: 0 var(--space-16) 0 var(--space-10);
+  box-sizing: border-box;
+  font: 400 var(--text-body) / 1.35 var(--font-sans);
+  color: var(--text-primary);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-input);
+  box-shadow: var(--shadow-input);
+  cursor: pointer;
+  transition: var(--transition-surface);
+}
+.lotus-combobox > input[role="combobox"]:hover { border-color: var(--plum-a24); }
+.lotus-combobox > input[role="combobox"]:focus {
+  border-color: var(--focus-border);
+  box-shadow: var(--shadow-focus);
+}
+/* Basecoat positions this icon; the colour and the open-state rotation are
+   ours, matching the disclosure chevron everywhere else in the app. */
+.lotus-combobox .combobox-trigger-icon {
+  right: var(--space-8);
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  color: var(--text-faint);
+  transition: var(--transition-chevron);
+}
+.lotus-combobox:has([aria-expanded="true"]) .combobox-trigger-icon { transform: rotate(180deg); }
+
+/* The list is promoted to the TOP LAYER while open (lotus.js calls
+   showPopover on it), because Basecoat positions it absolutely inside the
+   combobox and anything with an overflow clips it there: the modal's
+   scrolling body, and every card with overflow:hidden. position:fixed is
+   not enough on its own — .lotus-card's backdrop-filter makes the card a
+   containing block AND a clip for fixed descendants, which is the same
+   trap the old hand-rolled dropdown teleported to <body> to escape. The
+   top layer escapes both, with no teleport.
+
+   The coordinates come from lotus.js; everything here just undoes the
+   positioning Basecoat and the UA's :popover-open styles apply. */
+/* The list wears the card's frame: the same white moat over a plum band,
+   the same hairline border, and the same pseudo-element ring so its small
+   corners stay parallel. Only the outer shadow differs — a menu lifts off
+   the page more than a card does. */
+.lotus-combobox [data-popover] {
+  padding: var(--space-4);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-plum);
+  /* A plain rounded corner, not the petal shape: this list is the open
+     state of a control and reads as part of it, so it takes the control
+     radius the input itself uses. */
+  border-radius: var(--radius-input);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    inset 0 0 0 5px rgba(255, 255, 255, .55),
+    inset 0 0 0 5px rgba(67, 40, 78, .09),
+    0 12px 28px -8px rgba(17, 24, 39, .18);
+  /* The panel does not scroll — the listbox inside it does. If the panel
+     were the scroll container, the ring below would scroll away with the
+     options instead of framing them. */
+  overflow: visible;
+}
+.lotus-combobox [data-popover]::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px solid var(--plum-a09);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 1;
+}
+.lotus-combobox [role="listbox"] {
+  overflow-y: auto;
+  max-height: 268px;
+}
+.lotus-combobox [data-popover]:popover-open,
+.lotus-combobox [data-popover][data-lotus-placed] {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  height: auto;
+  /* max-content, never auto: a fixed-position box with `width:auto` is
+     shrink-to-fit against the VIEWPORT, so the list sprawled to the
+     window edge on open. max-content sizes it to the longest option, and
+     min-width (set from the input in lotus.js) keeps it at least as wide
+     as the control, which is what a select does. */
+  width: max-content;
+  max-width: calc(100vw - 32px);
+}
+.lotus-combobox [role="option"] {
+  padding: var(--pad-menu-item);
+  /* Square and full-bleed inside the ring, the way a native select
+     highlights a row — not an inset pill. */
+  border-radius: 0;
+  font-size: var(--text-body);
+  color: var(--text-primary);
   cursor: pointer;
   white-space: nowrap;
 }
-/* Hover and keyboard highlight are the same state on purpose: two
-   different highlights visible at once is the classic dropdown confusion
-   about which one Enter will pick. */
-.lotus-select-option[data-active="true"] { background: #F3EFF6; }
-.lotus-select-option[aria-selected="true"] { color: var(--color-brand); font-weight: 600; }
-.lotus-select-option[data-disabled="true"] {
-  color: #C4C1C8;
+/* Hover and keyboard highlight are deliberately the same state: two
+   highlights at once is the classic confusion about which one Enter takes.
+   Basecoat drives .active, so this is one rule rather than two.
+
+   The fill is the plum-tinted lilac the sidebar uses for the active nav
+   row, not the neutral --ink-100 the design system specifies for menu
+   items: a brand tint rather than grey, per the app's own call. */
+/* The same soft plum as the focus ring, so the two brand tints on a
+   control agree. --plum-a06 over the white panel lands around #F2EFF3. */
+.lotus-combobox [role="option"].active { background: var(--plum-a06); }
+.lotus-combobox [role="option"][aria-selected="true"] {
+  color: var(--text-brand);
+  font-weight: var(--weight-semibold);
+}
+.lotus-combobox [role="option"][aria-disabled="true"] {
+  color: var(--plum-200);
   cursor: default;
   background: transparent;
 }
+.lotus-combobox-sm > input[role="combobox"] {
+  height: auto;
+  padding: var(--pad-input-sm);
+  padding-right: var(--space-16);
+  font-size: var(--text-ui);
+  border-radius: var(--radius-control-md);
+}
+.lotus-combobox-sm { width: auto; display: inline-flex; }
+
+/* --- Toast (replaces the hand-rolled region) ------------------------ */
+/* Basecoat's .toaster handles the fixed stack and the collapse animation;
+   the panel itself is a Lotus menu surface with the tone shown by the same
+   .lotus-status-dot the tables use, not a coloured left border. */
+.toaster .toast-content {
+  background: var(--surface-panel);
+  border-radius: var(--radius-petal-md);
+  box-shadow: var(--shadow-menu);
+  font-size: var(--text-body);
+  color: var(--text-primary);
+  padding: var(--space-10) var(--space-13);
+}
+.toaster .toast h2 {
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  letter-spacing: 0;
+}
+.toaster .toast p { font-size: var(--text-caption); color: var(--text-muted); }
+/* Basecoat ships an icon per category; Lotus uses its own status dot, so
+   the icon is hidden and the dot drawn in its place. */
+.toaster .toast-content > svg { display: none; }
+.toaster .toast-content::before {
+  content: "";
+  flex: none;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--status-none);
+}
+.toaster .toast[data-category="success"] .toast-content::before { background: var(--status-pass); }
+.toaster .toast[data-category="warning"] .toast-content::before { background: var(--status-warn); }
+.toaster .toast[data-category="error"] .toast-content::before { background: var(--status-fail); }

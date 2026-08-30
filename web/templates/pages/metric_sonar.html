@@ -16,9 +16,9 @@
 </div>
 
 {{if not .Data.View.HasData}}
-<section class="lotus-card lotus-shape" style="padding:40px 32px;text-align:center;color:#6B7280;font-size:12.5px">
+{{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
   {{if .Data.SelectedDate}}No SonarQube snapshot exists for this repository on {{.Data.SelectedDate}}.{{else}}No SonarQube data collected for this repository yet.{{end}}
-</section>
+{{template "lotus_card_section_close" .}}
 {{else}}
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
   <span class="lotus-badge {{if .Data.View.QualityGatePass}}lotus-badge-pass{{else}}lotus-badge-fail{{end}}" style="font-size:11px;padding:5px 12px">Quality gate: {{.Data.View.QualityGate}}</span>
@@ -39,19 +39,19 @@
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-  <div class="lotus-card lotus-shape" style="padding:16px">
+  {{template "lotus_card_open" (dict "Padding" "16px")}}
     <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:10px">RATINGS</div>
     <div style="display:flex;gap:18px">
       <div><div style="font-size:9.5px;color:#9CA3AF">Reliability</div><div style="font-size:18px;font-weight:700;color:#111827">{{.Data.View.Reliability}}</div></div>
       <div><div style="font-size:9.5px;color:#9CA3AF">Security</div><div style="font-size:18px;font-weight:700;color:#111827">{{.Data.View.Security}}</div></div>
       <div><div style="font-size:9.5px;color:#9CA3AF">Maintainability</div><div style="font-size:18px;font-weight:700;color:#111827">{{.Data.View.Maintainability}}</div></div>
     </div>
-  </div>
-  <div class="lotus-card lotus-shape" style="padding:16px">
+  {{template "lotus_card_close" .}}
+  {{template "lotus_card_open" (dict "Padding" "16px")}}
     <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:10px">OTHER</div>
     <div style="font-size:11.5px;color:#111827">languages: {{.Data.View.Languages}}</div>
     <div style="margin-top:6px;font-size:11.5px;color:#111827">unit-test execution time: {{.Data.View.TestDuration}}</div>
-  </div>
+  {{template "lotus_card_close" .}}
 </div>
 {{end}}
 

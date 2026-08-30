@@ -137,7 +137,7 @@ func renderTokensPage(c *fiber.Ctx, d Deps, plain, label, errMsg string, status 
 	nav.Trail = []httpx.NavCrumb{{Label: "Settings"}}
 	c.Type("html")
 	c.Status(status)
-	return d.Renderer.Render(c, "pages/settings_tokens.html", httpx.ViewData{
+	return renderPage(c, d, "pages/settings_tokens.html", httpx.ViewData{
 		Title: "Tokens", Org: org, User: user, Nav: nav,
 		Data: struct {
 			SettingsNav   []settingsNavItem

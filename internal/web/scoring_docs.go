@@ -33,7 +33,7 @@ func scoringDocsPage(d Deps) fiber.Handler {
 		}
 
 		c.Type("html")
-		return d.Renderer.Render(c, "pages/scoring.html", httpx.ViewData{
+		return renderPage(c, d, "pages/scoring.html", httpx.ViewData{
 			Title: "How scoring works", Org: org, User: user,
 			Nav: buildNav("scoring", len(projects)),
 		})

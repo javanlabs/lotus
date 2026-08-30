@@ -7,18 +7,19 @@
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{if .Data.Project.Description}}{{.Data.Project.Description}}{{else}}{{.Data.Dashboard.Subtitle}}{{end}}</p>
   </div>
   <a href="/projects/{{.Data.Project.ID}}/components/new" class="btn-lotus btn-lotus-primary">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#EDBCC3"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Add component
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Add component
   </a>
 </header>
 
 {{if .Data.Dashboard.Empty}}
-<section class="lotus-card lotus-shape" style="padding:40px 32px;display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:520px">
+{{template "lotus_card_section_open" (dict "Padding" "40px 32px"
+  "Style" "display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:520px")}}
   <div style="font-size:15px;font-weight:600;color:#111827">No components yet</div>
   <p style="margin:0;font-size:12.5px;color:#6B7280;line-height:1.5">Add a component (a GitLab repository) to this project — Sonar and Trivy scan it automatically, and a Sentry DSN can be attached whenever you're ready.</p>
   <a href="/projects/{{.Data.Project.ID}}/components/new" class="btn-lotus btn-lotus-primary">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#EDBCC3"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Add component
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Add component
   </a>
-</section>
+{{template "lotus_card_section_close" .}}
 {{else}}
 <div x-data="{filter:'all'}">
   {{template "dashboard_block" .Data.Dashboard}}

@@ -83,7 +83,7 @@ func renderNewProjectFormWithCount(c *fiber.Ctx, d Deps, s tenant.Scope, org *ht
 func renderNewProjectForm(c *fiber.Ctx, d Deps, org *httpx.Org, user *httpx.User, projectCount int, form newProjectFormData, status int) error {
 	c.Type("html")
 	c.Status(status)
-	return d.Renderer.Render(c, "pages/project_new.html", httpx.ViewData{
+	return renderPage(c, d, "pages/project_new.html", httpx.ViewData{
 		Title: "New project", Org: org, User: user, Nav: buildNav("projects", projectCount),
 		Data: form,
 	})

@@ -10,8 +10,15 @@
        x-data expressions resolve at init. -->
   <script src="/static/js/lotus.js"></script>
   <script src="/static/vendor/alpine.min.js" defer></script>
+  <!-- Basecoat supplies the combobox and the toast. Its runtime must load
+       before the components it initializes; it then keeps watching the DOM
+       with a MutationObserver, so htmx swaps are picked up on their own. -->
+  <script src="/static/vendor/basecoat.min.js" defer></script>
+  <script src="/static/vendor/basecoat-popover.min.js" defer></script>
+  <script src="/static/vendor/basecoat-combobox.min.js" defer></script>
+  <script src="/static/vendor/basecoat-toast.min.js" defer></script>
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+<body class="min-h-screen bg-surface text-ink antialiased">
   {{block "content" .}}{{end}}
 </body>
 </html>

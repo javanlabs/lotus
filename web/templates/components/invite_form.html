@@ -1,0 +1,45 @@
+{{/* invite_form is the Invite-a-member modal's body, rendered inline by
+     settings_members.html and re-rendered by the invite handler when a
+     submit is rejected — same region, so the dialog stays open with the
+     address already typed.
+
+     Simpler than connection_form: nothing here changes shape, so there is
+     no fragment route, only the error re-render.
+
+     Takes an inviteFormView. */}}
+{{define "invite_form"}}
+<div id="invite-form" class="lotus-modal-form">
+  <form method="post" action="/settings/members/invite"
+        hx-post="/settings/members/invite" hx-target="#invite-form" hx-swap="outerHTML">
+    <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
+
+      {{if .Error}}
+      <div role="alert" style="display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:var(--radius-petal-sm);background:var(--status-fail-bg);color:var(--status-fail);font-size:12.5px">
+        <i class="lotus-status-dot lotus-status-dot-fail" aria-hidden="true"></i>
+        <span>{{.Error}}</span>
+      </div>
+      {{end}}
+
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">EMAIL</span>
+        <input type="email" name="email" required value="{{.Email}}" placeholder="rizky@alurkerja.id" class="lotus-input">
+      </label>
+
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">ROLE</span>
+        {{template "lotus_select" (dict "Name" "role" "Value" .Role "Label" "Role"
+          "Options" (selectOptions
+            (dict "Value" "member" "Label" "Member")
+            (dict "Value" "admin" "Label" "Admin")
+            (dict "Value" "viewer" "Label" "Viewer")))}}
+      </label>
+    </div>
+
+    <div class="lotus-modal-foot">
+      <button type="button" class="btn-lotus btn-lotus-secondary"
+              onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn-lotus btn-lotus-primary">Send invite</button>
+    </div>
+  </form>
+</div>
+{{end}}

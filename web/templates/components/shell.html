@@ -3,17 +3,18 @@
        {{template "shell_open" .}} ...page markup... {{template "shell_close" .}}
      "." is the page's top-level httpx.ViewData — Org/User/Nav must be set. */}}
 {{define "shell_open"}}
-<div style="display:flex;min-height:100vh;background:#F9FAFB;color:#111827">
+<div style="display:flex;min-height:100vh;color:var(--text-primary);position:relative;isolation:isolate">
+  <div class="lotus-page-bloom"></div>
 
   <aside style="width:238px;flex:none;background:#FFFFFF;box-shadow:inset -1px 0 0 rgba(67,40,78,.10),inset -5px 0 6px -5px rgba(67,40,78,.14);display:flex;flex-direction:column;padding:18px 0 16px;position:sticky;top:0;height:100vh;box-sizing:border-box;isolation:isolate">
-    <div style="position:absolute;inset:0;z-index:0;pointer-events:none;background:linear-gradient(180deg,rgba(237,188,195,.20) 0%,rgba(67,40,78,.05) 34%,rgba(249,250,251,.6) 72%,#F9FAFB 100%);-webkit-mask-image:linear-gradient(90deg,transparent 0,transparent 46%,#000 100%),linear-gradient(180deg,transparent 0,#000 64px,#000 calc(100% - 96px),transparent 100%);-webkit-mask-composite:source-in;mask-image:linear-gradient(90deg,transparent 0,transparent 46%,#000 100%),linear-gradient(180deg,transparent 0,#000 64px,#000 calc(100% - 96px),transparent 100%);mask-composite:intersect"></div>
+    <div style="position:absolute;inset:0;z-index:0;pointer-events:none;background:var(--gradient-sidebar-bloom);-webkit-mask-image:linear-gradient(90deg,transparent 0,transparent 46%,#000 100%),linear-gradient(180deg,transparent 0,#000 64px,#000 calc(100% - 96px),transparent 100%);-webkit-mask-composite:source-in;mask-image:linear-gradient(90deg,transparent 0,transparent 46%,#000 100%),linear-gradient(180deg,transparent 0,#000 64px,#000 calc(100% - 96px),transparent 100%);mask-composite:intersect"></div>
 
     {{if .User}}
     <div style="position:relative;z-index:1;padding:0 12px;margin:0 0 12px" x-data="{open:false}">
       <div class="lotus-shape-sm" style="background:#FCFCFD;border:1px solid #E5E7EB;overflow:hidden;transition:border-color .22s ease,box-shadow .22s ease"
            :style="{ borderColor: open ? 'rgba(67,40,78,.18)' : '#E5E7EB', boxShadow: open ? '0 8px 20px -10px rgba(67,40,78,.35)' : 'none' }">
         <div style="display:flex;align-items:center;gap:9px;padding:7px 9px;cursor:pointer" @click="open = !open" @click.outside="open = false">
-          <div class="lotus-shape-sm" style="width:28px;height:28px;flex:none;background:linear-gradient(180deg,#5C3A69 0%,#43284E 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font:600 11px 'IBM Plex Mono',monospace;color:#EDBCC3;letter-spacing:.02em">{{.User.Initials}}</div>
+          <div class="lotus-shape-sm" style="width:28px;height:28px;flex:none;background:linear-gradient(180deg,#5C3A69 0%,#43284E 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font:600 11px 'IBM Plex Mono',monospace;color:var(--text-on-dark-accent);letter-spacing:.02em">{{.User.Initials}}</div>
           <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
             <div style="font-size:12.5px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.User.Name}}</div>
             <div style="font:400 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF;text-transform:capitalize">{{.User.Role}}</div>
@@ -69,14 +70,22 @@
     </div>
   </aside>
 
-  {{/* Flat, deliberately: the two radial washes that used to sit here
-       showed through wherever a page left the top-left open (the projects
-       list) and were hidden wherever a page opened with a wide card
-       (settings, scoring) — so the same shell read as two different
-       backgrounds depending on the page. The brand gradient now lives in
-       one place, the sidebar, and the content area stays quiet behind the
-       translucent cards that need something plain to sit on. */}}
-  <main style="flex:1;min-width:0;padding:22px 26px 40px;background:#F9FAFB">
+  {{/* The page bloom is canonical (--gradient-page): blush from the
+       top-left, plum from the top-right, over --ink-50. It is painted by
+       the fixed .lotus-page-bloom layer above, NOT by <main>.
+
+       That anchoring is the point. The washes used to sit on <main>, whose
+       box changes size with every page, so the radials landed somewhere
+       different each time — showing through wherever a page left the
+       top-left open (the projects list) and hidden wherever a page opened
+       with a wide card (settings, scoring), and the same shell read as two
+       different backgrounds. Resolved against the viewport instead, they
+       land in the same place on every page.
+
+       <main> deliberately paints no background of its own: the cards on it
+       are translucent with a backdrop blur, and over a flat fill there is
+       nothing behind them to tint or blur. */}}
+  <main style="flex:1;min-width:0;padding:var(--pad-main)">
 
     <nav style="display:flex;align-items:center;gap:7px;margin-bottom:14px;font-size:11.5px;color:#6B7280">
       <a href="/projects" aria-label="Lotus" style="display:inline-flex;align-items:center;padding:3px 5px;border-radius:5px">{{template "lotus_logo" (dict "ID" "bc" "Width" 20 "Height" 13)}}</a>
@@ -92,4 +101,5 @@
 {{define "shell_close"}}
   </main>
 </div>
+{{template "lotus_toasts" .}}
 {{end}}

@@ -3,7 +3,20 @@
      Chrome each draw their own popup, so the same page looked like three
      different products.
 
-     Takes (dict
+     The behaviour is Basecoat's combobox (web/static/vendor/basecoat-*.js):
+     listbox semantics, keyboard navigation, type-to-filter and popover
+     placement. Lotus paints it — see .lotus-combobox in app.css. This
+     replaced ~200 lines of hand-rolled Alpine, including a manual teleport
+     that existed only to escape .lotus-card's backdrop-filter; Basecoat
+     positions the popover inside the component instead, so that whole
+     class of containing-block bug is gone.
+
+     Basecoat's runtime auto-initializes through a MutationObserver, so a
+     combobox arriving in an htmx swap needs no re-init hook.
+
+     THE CONTRACT IS UNCHANGED from the Alpine version — every call site
+     (field_input, invite_form, the bind wizard) passes the same dict:
+
        "Name"       form field name          — required
        "Value"      currently selected value — "" means "first option"
        "Options"    (selectOptions ...)      — required, see httpx/funcs.go
@@ -11,52 +24,42 @@
        "AutoSubmit" true                     — submits the form on change,
                                                replacing onchange="this.form.submit()"
        "Label"      accessible name for screen readers, when the visible
-                    label is a sibling <span> rather than a wrapping <label>)
+                    label is a sibling <span> rather than a wrapping <label>
 
-     The options are rendered as real DOM rather than passed to Alpine as
-     JSON: the markup then still says what the choices are with scripting
-     off or broken, and server-side tests can assert on them. Alpine reads
-     them back out of the DOM on init.
+     The options are rendered as real DOM rather than passed as JSON: the
+     markup then still says what the choices are with scripting off or
+     broken, and server-side tests can assert on them. Basecoat reads the
+     initial selection back out of aria-selected.
 
      The submitted value lives in a hidden input, so a form sees exactly
      what a native select would have submitted. */}}
 {{define "lotus_select"}}
-{{$size := ternary (eq (printf "%v" .Size) "sm") "lotus-select-sm" "lotus-select-md"}}
-<div class="lotus-select {{$size}}" x-data="lotusSelect({ autoSubmit: {{if .AutoSubmit}}true{{else}}false{{end}} })" x-id="['lotus-select']">
-  <input type="hidden" name="{{.Name}}" value="{{.Value}}" x-ref="input">
+{{$size := ternary (eq (printf "%v" .Size) "sm") "lotus-combobox-sm" ""}}
+{{$id := printf "lotus-combobox-%s" .Name}}
+{{$value := .Value}}
+<div id="{{$id}}" class="combobox lotus-combobox {{$size}}" data-auto-highlight="true"
+     {{if .AutoSubmit}}onchange="this.closest('form') && this.closest('form').requestSubmit()"{{end}}>
+  <input type="text" role="combobox" autocomplete="off" autocorrect="off" spellcheck="false"
+         aria-autocomplete="list" aria-expanded="false" aria-controls="{{$id}}-listbox"
+         {{if .Label}}aria-label="{{.Label}}"{{end}}>
+  <svg class="combobox-trigger-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9s-4.419 6-6 6s-6-6-6-6"></path>
+  </svg>
 
-  <button type="button" class="lotus-select-trigger" x-ref="trigger"
-          role="combobox" aria-haspopup="listbox" :aria-expanded="open ? 'true' : 'false'"
-          :aria-controls="$id('lotus-select')"{{if .Label}} aria-label="{{.Label}}"{{end}}
-          @click.stop="toggle()" @keydown="onTriggerKey($event)">
-    <span class="lotus-select-value" x-text="label"></span>
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="lotus-select-chevron"
-         :style="{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }" aria-hidden="true">
-      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9s-4.419 6-6 6s-6-6-6-6"></path>
-    </svg>
-  </button>
-
-  {{/* position:fixed, not absolute: a dropdown inside a table row or a
-       horizontally scrolling strip would otherwise be clipped by the
-       ancestor's overflow. Fixed is measured against the viewport, so it
-       escapes the clip; lotusSelect keeps it aligned on scroll.
-
-       x-teleport to <body> is what makes that true. A fixed element is
-       positioned against the viewport only while no ancestor creates a
-       containing block — and .lotus-card's backdrop-filter does exactly
-       that, which put the first version of this panel a card's width off
-       to the right. Teleporting lifts it out of every card. */}}
-  <template x-teleport="body">
-    <div class="lotus-select-panel" :id="$id('lotus-select')" role="listbox" x-ref="panel"
-         x-show="open" x-cloak @click.outside="close()"
-         :style="{ top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: pos.maxHeight }">
+  {{/* popover="manual": lotus.js promotes this to the top layer while it
+       is open, so the list is never clipped by a scrolling modal body or a
+       card's overflow. Basecoat drives open/close; the attribute only
+       makes the promotion possible. */}}
+  <div id="{{$id}}-popover" data-popover popover="manual" aria-hidden="true">
+    <div role="listbox" id="{{$id}}-listbox" aria-orientation="vertical">
       {{range .Options}}
-      <div class="lotus-select-option" role="option" data-value="{{.Value}}"
-           {{if .Disabled}}data-disabled="true" aria-disabled="true"{{end}}
-           :aria-selected="isSelected($el) ? 'true' : 'false'"
-           @click="choose($el)" @mousemove="markActive($el)">{{.Label}}</div>
+      <div role="option" data-value="{{.Value}}"
+           {{if eq .Value $value}}aria-selected="true"{{end}}
+           {{if .Disabled}}aria-disabled="true"{{end}}>{{.Label}}</div>
       {{end}}
     </div>
-  </template>
+  </div>
+
+  <input type="hidden" name="{{.Name}}" value="{{.Value}}">
 </div>
 {{end}}

@@ -1,0 +1,40 @@
+/* Lotus elevation is inset-first: surfaces are lit from above with a white top edge, framed by a
+   double inset ring (a light moat, then a plum hairline) and closed with a blush underline.
+   Cards use a 5px moat and a 2px underline. Buttons are machined instead of glossy: a crisp 1px
+   hairline holds the shape and a solid unblurred ledge sits beneath it, so the control reads as a
+   milled part resting in a panel. No cast shadow, no highlight bloom. Pressing collapses the ledge
+   into an inset well — the button sinks in place and never moves.
+
+   The card moat is 5px, not 4px, and so covers the tint band beneath it completely: the band still
+   darkens the whole frame (plum tints the surface to ~235, and 55% white lifts it only back to
+   ~246 against a ~252 interior, which is what makes the frame read) but leaves no shadow boundary
+   to go square. The ring LINE is drawn by Card itself, as an element with its own radius, because
+   an inset shadow's inner corner radius is the outer radius minus its spread — a 5px ring lands at
+   1px on the petal's 6px corners. See components/core/Card.jsx. */
+:root{
+--shadow-card:inset 0 1px 0 rgba(255,255,255,.95),inset 0 0 0 5px rgba(255,255,255,.55),inset 0 0 0 5px rgba(67,40,78,.09),inset 0 -2px 0 rgba(198,132,148,.5),0 1px 1px rgba(17,24,39,.04),0 4px 10px -8px rgba(67,40,78,.22);
+--shadow-card-inverse:inset 0 1px 0 rgba(255,255,255,.22),inset 0 0 0 5px rgba(247,237,225,.07),inset 0 0 0 5px rgba(218,174,185,.28),inset 0 -2px 0 rgba(218,174,185,.75),0 4px 10px -8px rgba(67,40,78,.32);
+--shadow-button:0 0 0 1px rgba(67,40,78,.17),0 2px 0 rgba(67,40,78,.12);
+--shadow-button-press:0 0 0 1px rgba(67,40,78,.19),inset 0 2px 3px rgba(67,40,78,.13);
+--shadow-focus-ring:0 0 0 3px var(--focus-ring);
+--shadow-button-primary:0 0 0 1px rgba(45,25,52,.7),0 2px 0 #2A1731;
+--shadow-button-primary-press:0 0 0 1px rgba(45,25,52,.75),inset 0 2px 4px rgba(28,15,34,.45);
+--shadow-menu:inset 0 0 0 4px #F9FAFB,inset 0 0 0 5px #E9EBEF,0 12px 28px -8px rgba(17,24,39,.18);
+--shadow-sidebar:inset -1px 0 0 rgba(67,40,78,.10),inset -5px 0 6px -5px rgba(67,40,78,.14);
+--shadow-input:inset 0 1px 2px rgba(67,40,78,.06);
+--shadow-focus:inset 0 1px 2px rgba(67,40,78,.06),0 0 0 3px var(--focus-ring);
+--shadow-segment-track:inset 0 1px 2px rgba(67,40,78,.08),0 1px 0 rgba(255,255,255,.6);
+--shadow-segment-thumb:inset 0 1px 0 rgba(255,255,255,.9),0 1px 2px rgba(67,40,78,.1),0 0 0 1px rgba(67,40,78,.07);
+--shadow-raised:0 8px 20px -10px rgba(67,40,78,.3);
+--shadow-hairline-top:inset 0 1px 0 rgba(67,40,78,.08);
+
+--gradient-page:radial-gradient(900px 420px at 12% -8%,rgba(218,174,185,.4),transparent 60%),radial-gradient(760px 380px at 88% 4%,rgba(67,40,78,.1),transparent 62%),#F9FAFB; /* @kind color */
+--gradient-button:linear-gradient(180deg,#FCFBFD 0%,#F5F3F8 100%); /* @kind color */
+--gradient-button-hover:linear-gradient(180deg,#F8F6FA 0%,#EFECF4 100%); /* @kind color */
+--gradient-button-primary:linear-gradient(180deg,#573465 0%,#432749 100%); /* @kind color */
+--gradient-button-primary-hover:linear-gradient(180deg,#634073 0%,#4C2D56 100%); /* @kind color */
+--gradient-avatar:linear-gradient(180deg,#5C3A69 0%,#43284E 100%); /* @kind color */
+--gradient-sidebar-bloom:linear-gradient(180deg,rgba(218,174,185,.20) 0%,rgba(67,40,78,.05) 34%,rgba(249,250,251,.6) 72%,#F9FAFB 100%); /* @kind color */
+--hatch-header:repeating-linear-gradient(135deg,rgba(67,40,78,.055) 0px,rgba(67,40,78,.055) 1px,transparent 1px,transparent 5px),linear-gradient(180deg,rgba(255,255,255,.9),rgba(255,255,255,.55)); /* @kind color */
+--blur-card:blur(12px) saturate(1.1); /* @kind other */
+}

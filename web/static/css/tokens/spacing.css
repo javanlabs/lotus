@@ -1,0 +1,14 @@
+/* Lotus spacing is a fine-grained px scale, not a 4/8 grid. Odd values (5, 7, 9, 11, 13) are used
+   deliberately for dense control padding; do not round them. */
+:root{
+--space-1:1px;--space-2:2px;--space-3:4px;--space-4:5px;--space-5:6px;--space-6:7px;--space-7:8px;--space-8:9px;
+--space-9:10px;--space-10:11px;--space-11:12px;--space-12:13px;--space-13:14px;--space-14:16px;--space-15:18px;
+--space-16:20px;--space-17:22px;--space-18:26px;--space-19:32px;--space-20:40px;
+
+/* Common compound paddings */
+--pad-nav-item:7px 10px;--pad-menu-item:7px 9px;--pad-button:9px 16px;--pad-button-sm:6px 13px;
+--pad-input:9px 11px;--pad-input-sm:8px 10px;--pad-chip:2px 7px;--pad-card:13px 14px;--pad-card-lg:20px 22px;
+--pad-main:22px 26px 40px;
+
+--sidebar-width:238px;--row-height:38px;--header-row-height:32px;
+}

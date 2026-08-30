@@ -65,7 +65,7 @@ func settingsOrgPage(d Deps) fiber.Handler {
 		nav := buildNav("", len(projects))
 		nav.Trail = []httpx.NavCrumb{{Label: "Settings"}}
 		c.Type("html")
-		return d.Renderer.Render(c, "pages/settings_organization.html", httpx.ViewData{
+		return renderPage(c, d, "pages/settings_organization.html", httpx.ViewData{
 			Title: "Organization", Org: org, User: user, Nav: nav,
 			Data: struct {
 				SettingsNav            []settingsNavItem

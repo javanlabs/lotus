@@ -1,0 +1,15 @@
+:root{
+--font-sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+--font-mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,monospace;
+
+--text-metric-xl:40px;--text-metric:27px;--text-h1:23px;--text-logo:15px;--text-h2:15px;
+--text-card-title:13px;--text-body:12.5px;--text-ui:12px;--text-ui-sm:11.5px;--text-caption:11px;--text-micro:10.5px;--text-micro-sm:10px;
+--text-mono-label:9.5px;--text-mono-micro:9px;--text-mono-eyebrow:8.5px;--text-mono-field:10.5px;--text-mono-body:12px;
+
+--weight-regular:400;--weight-medium:500;--weight-semibold:600;--weight-bold:700;
+
+--leading-tight:1;--leading-snug:1.35;--leading-normal:1.5;
+
+--tracking-tighter:-.03em;--tracking-tight:-.02em;--tracking-wide:.02em;
+--tracking-mono:.08em;--tracking-mono-wide:.1em;--tracking-mono-wider:.12em;
+}

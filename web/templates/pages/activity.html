@@ -6,12 +6,12 @@
 </header>
 
 {{if not .Data.Runs}}
-<section class="lotus-card lotus-shape" style="padding:40px 32px;text-align:center;color:#6B7280;font-size:12.5px">
+{{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
   No sync runs recorded for this organization yet.
-</section>
+{{template "lotus_card_section_close" .}}
 {{else}}
-<section class="lotus-card lotus-shape" style="overflow:hidden;padding:4px">
-  <div style="display:grid;grid-template-columns:90px 100px 90px 140px 90px 1fr;gap:10px;align-items:center;padding:0 14px;height:32px;font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63;border-bottom:1px solid rgba(67,40,78,.12)">
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
+  <div class="lotus-table-head" style="grid-template-columns:90px 100px 90px 140px 90px 1fr;gap:10px">
     <div>STATUS</div><div>KIND</div><div>TRIGGER</div><div>STARTED</div><div>DURATION</div><div>ERROR / WARNINGS</div>
   </div>
   {{range .Data.Runs}}
@@ -29,7 +29,23 @@
     </div>
   </div>
   {{end}}
-</section>
+
+  {{/* Shown whenever there is more than one page. The counts are stated
+       rather than implied: a feed that only ever shows a slice needs to
+       say which slice, or a reader cannot tell a quiet day from a filter. */}}
+  {{if gt .Data.Pages 1}}
+  <div class="lotus-pager">
+    <span>{{.Data.From}}–{{.Data.To}} of {{.Data.Total}} runs</span>
+    <span class="lotus-pager-spacer">
+      {{if gt .Data.Page 1}}<a href="/activity?page={{.Data.PrevPage}}" rel="prev">← Previous</a>
+      {{else}}<span aria-disabled="true">← Previous</span>{{end}}
+      <span style="align-self:center;font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.Data.Page}} / {{.Data.Pages}}</span>
+      {{if lt .Data.Page .Data.Pages}}<a href="/activity?page={{.Data.NextPage}}" rel="next">Next →</a>
+      {{else}}<span aria-disabled="true">Next →</span>{{end}}
+    </span>
+  </div>
+  {{end}}
+{{template "lotus_card_section_close" .}}
 {{end}}
 
 {{template "shell_close" .}}
