@@ -26,7 +26,7 @@
     {{range .Data.Providers}}
     <a href="/login/{{.}}?return={{$.Data.ReturnPath}}"
        class="w-full rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-900 hover:bg-slate-50">
-      Continue with {{.}}
+      Continue with {{providerLabel .}}
     </a>
     {{end}}
   </div>

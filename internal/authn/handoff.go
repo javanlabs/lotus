@@ -223,10 +223,7 @@ func LoginPage(deps Deps) fiber.Handler {
 		if !ok {
 			return fiber.ErrNotFound
 		}
-		names := make([]string, 0, len(deps.OAuthProviders))
-		for name := range deps.OAuthProviders {
-			names = append(names, name)
-		}
+		names := providerNames(deps.OAuthProviders)
 
 		var devUsers []global.DevUser
 		if deps.Cfg.Dev {

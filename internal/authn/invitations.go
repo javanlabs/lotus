@@ -104,6 +104,12 @@ type inviteViewState struct {
 	Token       string
 	State       string // "login" | "mismatch_soft" | "mismatch_hard" | "invalid"
 	ActorEmail  string // set only for the mismatch states, for the warning copy
+
+	// Providers is filled in by renderInvite from the live registry. The
+	// template used to hardcode a GitHub and a Google button, which meant
+	// an instance configured with neither — this one, which uses OIDC —
+	// showed an invitee two buttons that could only fail, and no way in.
+	Providers []string
 }
 
 // InviteLanding is GET /invite/:token on the auth host — task 1.7's accept
@@ -118,11 +124,11 @@ func InviteLanding(deps Deps) fiber.Handler {
 		token := c.Params("token")
 		inv, err := global.InvitationByTokenHash(c.Context(), deps.DB, sha256Hex(token))
 		if err != nil {
-			return renderInvite(c, deps.Renderer, inviteViewState{Token: token, State: "invalid"})
+			return renderInvite(c, deps, inviteViewState{Token: token, State: "invalid"})
 		}
 		org, err := global.OrgByID(c.Context(), deps.DB, inv.OrgID)
 		if err != nil {
-			return renderInvite(c, deps.Renderer, inviteViewState{Token: token, State: "invalid"})
+			return renderInvite(c, deps, inviteViewState{Token: token, State: "invalid"})
 		}
 		inviter, _ := global.UserByID(c.Context(), deps.DB, inv.InvitedBy)
 		inviterName := ""
@@ -132,7 +138,7 @@ func InviteLanding(deps Deps) fiber.Handler {
 
 		session, ok := currentGlobalSession(c, deps.DB, deps.CookieSecure)
 		if !ok {
-			return renderInvite(c, deps.Renderer, inviteViewState{
+			return renderInvite(c, deps, inviteViewState{
 				OrgName: org.Name, InviterName: inviterName, RoleKey: inv.RoleKey, Token: token, State: "login",
 			})
 		}
@@ -156,7 +162,7 @@ func InviteLanding(deps Deps) fiber.Handler {
 		if inv.RoleKey == "admin" || inv.RoleKey == "owner" {
 			state = "mismatch_hard"
 		}
-		return renderInvite(c, deps.Renderer, inviteViewState{
+		return renderInvite(c, deps, inviteViewState{
 			OrgName: org.Name, InviterName: inviterName, RoleKey: inv.RoleKey, Token: token,
 			State: state, ActorEmail: actorEmail,
 		})
@@ -173,10 +179,10 @@ func InviteConfirm(deps Deps) fiber.Handler {
 		token := c.Params("token")
 		inv, err := global.InvitationByTokenHash(c.Context(), deps.DB, sha256Hex(token))
 		if err != nil {
-			return renderInvite(c, deps.Renderer, inviteViewState{Token: token, State: "invalid"})
+			return renderInvite(c, deps, inviteViewState{Token: token, State: "invalid"})
 		}
 		if inv.RoleKey == "admin" || inv.RoleKey == "owner" {
-			return renderInvite(c, deps.Renderer, inviteViewState{Token: token, RoleKey: inv.RoleKey, State: "mismatch_hard"})
+			return renderInvite(c, deps, inviteViewState{Token: token, RoleKey: inv.RoleKey, State: "mismatch_hard"})
 		}
 		session, ok := currentGlobalSession(c, deps.DB, deps.CookieSecure)
 		if !ok {
@@ -201,12 +207,12 @@ func InviteDecline(deps Deps) fiber.Handler {
 		token := c.Params("token")
 		inv, err := global.InvitationByTokenHash(c.Context(), deps.DB, sha256Hex(token))
 		if err != nil {
-			return renderInvite(c, deps.Renderer, inviteViewState{Token: token, State: "invalid"})
+			return renderInvite(c, deps, inviteViewState{Token: token, State: "invalid"})
 		}
 		if err := global.DeclineInvitation(c.Context(), deps.DB, inv.ID); err != nil {
 			return err
 		}
-		return renderInvite(c, deps.Renderer, inviteViewState{Token: token, State: "declined"})
+		return renderInvite(c, deps, inviteViewState{Token: token, State: "declined"})
 	}
 }
 
@@ -215,7 +221,8 @@ func emailMatches(user *global.User, invitedEmail string) bool {
 		strings.EqualFold(*user.Email, invitedEmail)
 }
 
-func renderInvite(c *fiber.Ctx, renderer *httpx.Renderer, data inviteViewState) error {
+func renderInvite(c *fiber.Ctx, deps Deps, data inviteViewState) error {
+	data.Providers = providerNames(deps.OAuthProviders)
 	c.Type("html")
-	return renderer.Render(c, "pages/invite.html", httpx.ViewData{Title: "Invitation", Data: data})
+	return deps.Renderer.Render(c, "pages/invite.html", httpx.ViewData{Title: "Invitation", Data: data})
 }

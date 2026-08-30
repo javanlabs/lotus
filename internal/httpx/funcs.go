@@ -18,6 +18,24 @@ var funcMap = template.FuncMap{
 	// ternary picks yes/no by cond — for a one-line tone/class choice
 	// inline in an attribute value, where {{if}}...{{else}}...{{end}} is
 	// too heavy a construct for the surrounding markup to read cleanly.
+	// providerLabel turns a provider registry key into something worth
+	// showing a human. The keys are URL segments — lowercase, no spaces —
+	// so rendering them raw produced "Continue with github".
+	"providerLabel": func(name string) string {
+		switch name {
+		case "github":
+			return "GitHub"
+		case "google":
+			return "Google"
+		case "sso":
+			// Deliberately generic. Which OIDC server is behind this is
+			// the operator's business, not a detail to publish on an
+			// unauthenticated login page.
+			return "SSO"
+		default:
+			return name
+		}
+	},
 	"ternary": func(cond bool, yes, no string) string {
 		if cond {
 			return yes

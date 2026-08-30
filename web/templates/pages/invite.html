@@ -12,14 +12,12 @@
   <h1 class="text-xl font-semibold text-slate-900">You're invited</h1>
   <p class="text-slate-600">{{if .Data.InviterName}}{{.Data.InviterName}}{{else}}Someone{{end}}
     invited you to join <strong>{{.Data.OrgName}}</strong> as {{.Data.RoleKey}}.</p>
-  <a href="/login/github?return=/invite/{{.Data.Token}}"
+  {{range .Data.Providers}}
+  <a href="/login/{{.}}?return=/invite/{{$.Data.Token}}"
      class="w-full rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-900 hover:bg-slate-50">
-    Continue with GitHub
+    Continue with {{providerLabel .}}
   </a>
-  <a href="/login/google?return=/invite/{{.Data.Token}}"
-     class="w-full rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-900 hover:bg-slate-50">
-    Continue with Google
-  </a>
+  {{end}}
   <form method="post" action="/invite/{{.Data.Token}}/decline" class="w-full">
     <button type="submit" class="w-full text-sm text-slate-500 underline">Decline</button>
   </form>
