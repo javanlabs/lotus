@@ -74,9 +74,30 @@ e2e:
     POSTGRES_USER: lotus
     POSTGRES_PASSWORD: lotus
     POSTGRES_DB: lotus
+    # These two are documentation only — a project CI/CD variable of the
+    # same name beats them. before_script exports the values that actually
+    # take effect.
     DATABASE_URL: "postgres://lotus:lotus@postgres:5432/lotus?sslmode=disable"
     MIGRATE_DATABASE_URL: "postgres://lotus:lotus@postgres:5432/lotus?sslmode=disable"
   before_script:
+    # Neutralize the deploy-only project variables before anything reads
+    # them. Project CI/CD variables OUTRANK a job's own `variables:` block,
+    # so the production DATABASE_URL set for deploy_prod silently replaced
+    # the one declared above and this job tried to migrate
+    # user=lotuscheck_migrate database=lotuscheck. It only failed safe
+    # because 127.0.0.1 inside a job container is the container itself.
+    #
+    # The same applies to everything Playwright's webServer inherits:
+    # LOTUS_MODE=single would put the app under test in single-org mode,
+    # where the tenant-subdomain specs cannot pass, and there is no reason
+    # for a test process to hold the production KEK or session secret.
+    - |
+      unset LOTUS_MODE LOTUS_URL LOTUS_KEK SESSION_SECRET \
+            OIDC_ISSUER OIDC_CLIENT_ID OIDC_CLIENT_SECRET \
+            KEYCLOAK_URL KEYCLOAK_REALM KEYCLOAK_CLIENT KEYCLOAK_CLIENT_SECRET
+      export DATABASE_URL="postgres://lotus:lotus@postgres:5432/lotus?sslmode=disable"
+      export MIGRATE_DATABASE_URL="$DATABASE_URL"
+      export LOTUS_BASE_DOMAIN="lotus.localhost"
     - for i in $(seq 1 30); do (echo > /dev/tcp/postgres/5432) >/dev/null 2>&1 && break; sleep 1; done
     - apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates nodejs npm
     - go run ./cmd/lotus migrate up
