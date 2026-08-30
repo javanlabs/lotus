@@ -64,7 +64,7 @@ EnvironmentFile is the only source of config — see `deploy/`, added in task
 | `SESSION_SECRET` | random per-boot | Signs session cookies. Set to a stable value in production, or sessions reset on every restart. |
 | `LOTUS_MODE` | `saas` | `saas` = multi-tenant with subdomains (apex / auth host / `<slug>.<domain>`). `single` = one organization on one origin, for self-hosted and local installs: no subdomains, so no wildcard DNS and no wildcard certificate. |
 | `LOTUS_URL` | unset | Absolute base URL of a `single`-mode install, e.g. `http://localhost:8008`. **Required when `LOTUS_MODE=single`** (startup fails without it) and unused in `saas` mode. It replaces `LOTUS_BASE_DOMAIN` as what absolute links — OAuth redirect URIs, invitation links — are built against. |
-| `LOTUS_BASE_DOMAIN` | `lotus.localhost` | Wildcard root Lotus is served under. Required in `saas` mode, **ignored when `LOTUS_MODE=single`** — apex is this value, auth host is `auth.`+this, tenants are `<slug>.`+this. **No production value has been chosen yet** — see the open decision logged in ActiveCollab. |
+| `LOTUS_BASE_DOMAIN` | `lotus.localhost` | Wildcard root Lotus is served under. Required in `saas` mode, **ignored when `LOTUS_MODE=single`** — apex is this value, auth host is `auth.`+this, tenants are `<slug>.`+this. Production is `lotus.javan.id`, but the deployed instance runs `single` mode, where this is ignored — see [`deploy/README.md`](deploy/README.md). |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | unset | GitHub OAuth app credentials (task 1.1). Login via GitHub is simply not offered when the secret is empty. Redirect URI to register: `<scheme>://auth.<LOTUS_BASE_DOMAIN>/login/github/callback`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset | Google OAuth app credentials (task 1.1). Same on/off behavior as GitHub's. Redirect URI: `<scheme>://auth.<LOTUS_BASE_DOMAIN>/login/google/callback`. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | unset (`SMTP_PORT` defaults `587`) | Sends invitation emails (task 1.7). With `SMTP_HOST` empty, no mail is sent — invitations still work via the copyable link. |
@@ -163,14 +163,29 @@ internal/web                HTTP routes + task 1.5's route-coverage test
 web/templates, web/static  layout, pages, vendored htmx/Alpine, Tailwind source
 e2e                         Playwright end-to-end tests
 scripts                     CI guardrail scripts
-deploy                      local dev docker-compose (production deploy: task 5.2, not yet implemented)
+deploy                      production deploy (bootstrap/deploy/update scripts, nginx, systemd) + local dev docker-compose
 ```
+
+## Production
+
+Lotus runs at **<https://lotus.javan.id>**, single mode, on the `collab`
+host — see [`deploy/README.md`](deploy/README.md) for the full picture.
+Deploys are the manual `deploy_prod` job on `main`, or `deploy/deploy.sh`
+from a laptop; runtime config is rendered from GitLab CI/CD variables on
+every deploy, so nothing on the server is hand-edited.
+
+It runs `LOTUS_MODE=single` rather than the multi-tenant default because
+saas needs a wildcard DNS record and a certificate valid two labels below
+`javan.id`, and Cloudflare's edge certificate is `*.javan.id` — one level
+only. Neither is a code change; both are described under "Switching to
+multi-tenant (saas) mode" in the deploy README.
 
 ## Status / open items
 
 Tracked as tasks in [ActiveCollab project 697](https://collab.javan.co.id/projects/697):
-production base domain not yet decided, deploy CI stage deferred to task
-5.2, and anything else flagged along the way.
+the saas-mode wildcard DNS and certificate above, an SMTP or OAuth
+credential without which no one can log in to the deployed instance, and
+anything else flagged along the way.
 
 ## Single-tenant / self-hosted
 
