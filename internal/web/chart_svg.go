@@ -36,6 +36,11 @@ type chartSVG struct {
 	SparkColor  string
 }
 
+// sparkMaxBars caps how many bars a 90px sparkline is asked to draw. See
+// the downsampling in buildChartSVG for why this is a hard requirement of
+// sparklines.js and not just a taste call.
+const sparkMaxBars = 24
+
 var chartToneColor = map[string]string{"pass": "#23808F", "fail": "#9E2B47", "none": "#6B7280"}
 
 // buildChartSVG renders points as a gap-aware line: a point with
@@ -168,8 +173,39 @@ func buildChartSVG(points []repo.Point, direction, unit string, width, height fl
 	// which reads as missing data rather than as the low point. The
 	// absolute numbers are not on the chart anyway; the title carries the
 	// latest value.
-	var spark []string
+	// Downsampled to at most sparkMaxBars buckets before anything else.
+	// Two reasons, one cosmetic and one fatal: 90px cannot show a raw 7d
+	// series (a few hundred readings) as bars, and sparklines.js sizes a
+	// bar as (gap/n + width/n - gap), which goes NEGATIVE once n exceeds
+	// width+gap — the browser then rejects every <rect> with "attribute
+	// width: A negative value is not valid" and the chart is blank.
+	real := make([]repo.Point, 0, len(points))
 	for _, p := range points {
+		if p.HasValue {
+			real = append(real, p)
+		}
+	}
+	sampled := real
+	if len(real) > sparkMaxBars {
+		sampled = make([]repo.Point, 0, sparkMaxBars)
+		for i := 0; i < sparkMaxBars; i++ {
+			// Mean of the bucket, not a sample of it: a spike that lands
+			// between two sampled indices should still move the bar.
+			lo := i * len(real) / sparkMaxBars
+			hi := (i + 1) * len(real) / sparkMaxBars
+			if hi <= lo {
+				hi = lo + 1
+			}
+			sum := 0.0
+			for _, p := range real[lo:hi] {
+				sum += p.Value
+			}
+			sampled = append(sampled, repo.Point{HasValue: true, Value: sum / float64(hi-lo), At: real[lo].At})
+		}
+	}
+
+	var spark []string
+	for _, p := range sampled {
 		if !p.HasValue {
 			continue
 		}

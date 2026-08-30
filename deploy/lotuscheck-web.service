@@ -1,0 +1,34 @@
+[Unit]
+Description=Lotus — engineering metrics dashboard
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=lotuscheck
+Group=lotuscheck
+WorkingDirectory=/opt/lotuscheck
+# Rendered from GitLab CI/CD variables by the deploy job, never hand-edited.
+# Mandatory (no leading '-'): a missing env file must fail the unit loudly
+# rather than start Lotus on its dev defaults — which include a KEK that is
+# published in this repository (internal/config.devOnlyKEK).
+EnvironmentFile=/etc/lotuscheck/lotuscheck.env
+ExecStart=/opt/lotuscheck/bin/lotus serve
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+
+# Hardening. The binary is self-contained — templates and static assets are
+# //go:embed'ed and all state lives in Postgres — so it needs no writable
+# path of its own at all.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

@@ -1,10 +1,12 @@
 package web
 
 import (
+	"github.com/uyab/lotus/internal/repo"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -208,5 +210,36 @@ func TestSparkline_NoDataRendersPlaceholderNotError(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "no data") {
 		t.Fatalf("empty sparkline should say \"no data\", got:\n%s", body)
+	}
+}
+
+// A 90px bar sparkline cannot be handed a raw multi-day series.
+// sparklines.js sizes each bar as (gap/n + width/n - gap), which turns
+// NEGATIVE once n exceeds width+gap; the browser then rejects every
+// <rect> with "attribute width: A negative value is not valid" and the
+// chart renders blank. This pins the cap that prevents it.
+func TestBuildChartSVG_SparkPointsAreCappedForTheBarRenderer(t *testing.T) {
+	var points []repo.Point
+	base := time.Now().Add(-7 * 24 * time.Hour)
+	for i := 0; i < 300; i++ {
+		points = append(points, repo.Point{
+			At: base.Add(time.Duration(i) * time.Minute), HasValue: true, Value: float64(i % 50),
+		})
+	}
+	got := buildChartSVG(points, "higher_better", "%", 90, 26)
+	if !got.HasData {
+		t.Fatal("HasData = false for 300 real points")
+	}
+	n := len(strings.Split(got.SparkPoints, ","))
+	if n > sparkMaxBars {
+		t.Errorf("SparkPoints has %d values, want at most %d — the bar renderer computes a negative width past that", n, sparkMaxBars)
+	}
+	// And the cap must not flatten the series into one repeated value.
+	seen := map[string]bool{}
+	for _, v := range strings.Split(got.SparkPoints, ",") {
+		seen[v] = true
+	}
+	if len(seen) < 2 {
+		t.Errorf("downsampling collapsed the series to %d distinct value(s): %q", len(seen), got.SparkPoints)
 	}
 }
