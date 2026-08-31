@@ -32,7 +32,7 @@ func NewGitHubProvider(clientID, clientSecret, redirectURL string) *GitHubProvid
 	}
 }
 
-func (p *GitHubProvider) Name() string { return "github" }
+func (p *GitHubProvider) Name() string { return ProviderGitHub }
 
 // AuthCodeURL requests only read:user user:email — never repo. Lotus calls
 // GitLab/Sonar/Sentry with organization-owned credentials (task 2.2), never

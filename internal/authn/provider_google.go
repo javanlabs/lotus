@@ -34,7 +34,7 @@ func NewGoogleProvider(clientID, clientSecret, redirectURL string) *GoogleProvid
 	}
 }
 
-func (p *GoogleProvider) Name() string { return "google" }
+func (p *GoogleProvider) Name() string { return ProviderGoogle }
 
 func (p *GoogleProvider) AuthCodeURL(state, codeChallenge string) (string, error) {
 	v := url.Values{

@@ -63,7 +63,7 @@ func NewOIDCProvider(issuer, clientID, clientSecret, redirectURL string) *OIDCPr
 // login page labels the button with. "sso" rather than the issuer's own
 // product name: which OIDC server sits behind it is the operator's
 // business, not something to leak onto a login page.
-func (p *OIDCProvider) Name() string { return "sso" }
+func (p *OIDCProvider) Name() string { return ProviderOIDC }
 
 func (p *OIDCProvider) discover(ctx context.Context) (*oidcEndpoints, error) {
 	p.mu.Lock()

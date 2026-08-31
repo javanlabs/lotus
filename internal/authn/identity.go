@@ -14,6 +14,24 @@ import (
 	"github.com/uyab/lotus/internal/repo/global"
 )
 
+// The provider keys. These are the registry key, the ":provider" URL
+// segment, and the value written to oauth_states.provider — which carries
+// a CHECK constraint listing them. Constants rather than string literals
+// scattered across three packages so that adding a provider without
+// widening that constraint fails a test instead of failing a user's login
+// with a 23514 after they have already clicked the button.
+const (
+	ProviderGitHub = "github"
+	ProviderGoogle = "google"
+	// ProviderOIDC covers every OIDC issuer, so it stays one key no matter
+	// how many different IdPs Lotus is pointed at.
+	ProviderOIDC = "sso"
+)
+
+// ProviderNames is every key a Provider.Name() can return. internal/db has
+// a test asserting the database accepts all of them.
+var ProviderNames = []string{ProviderGitHub, ProviderGoogle, ProviderOIDC}
+
 // Identity is what a Provider hands back after exchanging a code: enough
 // to find-or-create a user, nothing more (no access token is ever
 // persisted — see task 1.3's removal of stored provider tokens).
