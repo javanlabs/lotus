@@ -83,6 +83,16 @@ func TestDropStaleRawDetail_NullsRawJSONKeepsRow(t *testing.T) {
 	orgID, componentID, bindingID := seedRetentionFixture(t, db)
 
 	old := time.Now().Add(-40 * 24 * time.Hour)
+	// Migration 00018 builds partitions from the start of LAST month
+	// onwards, so a 40-day-old row falls outside them during the first
+	// days of any month — this test failed on 1 September with "no
+	// partition of relation gitlab_snapshots found for row (23514)" and
+	// would have failed for the first nine days of every month since it
+	// was written. Create the partition the row needs instead of depending
+	// on which day the suite happens to run.
+	if err := retention.EnsurePartitions(context.Background(), db, old, 3); err != nil {
+		t.Fatalf("EnsurePartitions covering the old row's month: %v", err)
+	}
 	var snapID uuid.UUID
 	if err := db.Get(&snapID, `
 		INSERT INTO gitlab_snapshots (org_id, binding_id, component_id, captured_at, raw_json)
