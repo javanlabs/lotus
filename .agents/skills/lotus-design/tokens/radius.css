@@ -1,0 +1,19 @@
+/* Two radius families, and the split is the rule:
+
+   PETAL — asymmetric, large corner on the top-left/bottom-right diagonal. Containers only:
+   cards, tables, menus, avatars, status chips. This is the brand's structural signature.
+
+   CONTROL — plain symmetric. Anything the user operates: buttons and the segmented track share
+   8px so they line up in a page header; a segment thumb is 5px (8px track less its 3px padding,
+   so the two are concentric); inputs 8px; menu rows 7px; nav rows 6px. */
+:root{
+--radius-petal-lg:16px 6px 16px 6px;
+--radius-petal-md:12px 4px 12px 4px;
+--radius-petal-sm:8px 3px 8px 3px;
+--radius-petal-xs:5px 2px 5px 2px;
+--radius-petal-chip:7px 2px 7px 2px;
+--radius-petal-avatar:14px 4px 14px 4px;
+--radius-petal-menu:14px 5px 14px 5px;
+
+--radius-input:8px;--radius-control:8px;--radius-control-sm:6px;--radius-control-md:7px;--radius-group:8px;--radius-segment:5px;--radius-app-icon:11px;--radius-pill:999px;
+}
