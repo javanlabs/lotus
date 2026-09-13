@@ -155,3 +155,66 @@ func assertIdentityCount(t *testing.T, db *sqlx.DB, want int) {
 		t.Fatalf("identities count = %d, want %d", got, want)
 	}
 }
+
+// The production incident, replayed: the first SSO login arrives with an
+// unverified address and creates an address-less user; once the provider
+// vouches for it, the same identity logging in again must pick the
+// address up rather than stay address-less forever.
+func TestResolveUser_ReturningIdentityAdoptsANewlyVerifiedEmail(t *testing.T) {
+	db := dbtest.Open(t)
+	ctx := context.Background()
+
+	first, _, err := authn.ResolveUser(ctx, db, "sso", authn.Identity{
+		ProviderSub: "kc-1", Email: "bayu@javan.co.id", EmailVerified: false,
+	})
+	if err != nil {
+		t.Fatalf("first login: %v", err)
+	}
+	if first.Email != nil {
+		t.Fatalf("unverified first login stored email %q; the premise of this test is that it does not", *first.Email)
+	}
+
+	second, outcome, err := authn.ResolveUser(ctx, db, "sso", authn.Identity{
+		ProviderSub: "kc-1", Email: "Bayu@Javan.co.id", EmailVerified: true,
+	})
+	if err != nil {
+		t.Fatalf("second login: %v", err)
+	}
+	if outcome != authn.OutcomeLinked || second.ID != first.ID {
+		t.Fatalf("second login did not return the same user (outcome %v)", outcome)
+	}
+	if second.Email == nil || *second.Email != "bayu@javan.co.id" || second.EmailVerifiedAt == nil {
+		t.Fatalf("returning user was not given the verified address: email=%v verifiedAt=%v", second.Email, second.EmailVerifiedAt)
+	}
+	assertUserCount(t, db, 1)
+}
+
+// Adopting an address must never move it off another account.
+func TestResolveUser_ReturningIdentityDoesNotTakeAnAddressAnotherUserHolds(t *testing.T) {
+	db := dbtest.Open(t)
+	ctx := context.Background()
+
+	holder, _, err := authn.ResolveUser(ctx, db, "github", authn.Identity{
+		ProviderSub: "gh-9", Email: "shared@acme.com", EmailVerified: true,
+	})
+	if err != nil {
+		t.Fatalf("holder: %v", err)
+	}
+	orphan, _, err := authn.ResolveUser(ctx, db, "sso", authn.Identity{ProviderSub: "kc-9"})
+	if err != nil {
+		t.Fatalf("orphan: %v", err)
+	}
+
+	again, _, err := authn.ResolveUser(ctx, db, "sso", authn.Identity{
+		ProviderSub: "kc-9", Email: "shared@acme.com", EmailVerified: true,
+	})
+	if err != nil {
+		t.Fatalf("orphan returning: %v", err)
+	}
+	if again.ID != orphan.ID {
+		t.Fatalf("returning identity switched users")
+	}
+	if again.Email != nil {
+		t.Fatalf("orphan took %q, which user %s already holds", *again.Email, holder.ID)
+	}
+}

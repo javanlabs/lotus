@@ -104,7 +104,27 @@ const (
 func ResolveUser(ctx context.Context, db *sqlx.DB, provider string, identity Identity) (*global.User, ResolveOutcome, error) {
 	if existing, err := global.IdentityByProviderSub(ctx, db, provider, identity.ProviderSub); err == nil {
 		user, err := global.UserByID(ctx, db, existing.UserID)
-		return user, OutcomeLinked, err
+		if err != nil {
+			return nil, 0, err
+		}
+		// A user created while the provider withheld verification — before
+		// OIDC_TRUST_EMAIL was switched on, or before an IdP admin marked
+		// the address verified — would otherwise stay address-less forever,
+		// because a returning identity never reaches the create path below.
+		// That is not hypothetical: it is how the first Owner login on
+		// production ended up with no email and no way to accept an invite.
+		if user.Email == nil && identity.EmailVerified && identity.Email != "" {
+			adopted, err := global.AdoptVerifiedEmail(ctx, db, user.ID, identity.Email)
+			if err != nil {
+				return nil, 0, err
+			}
+			if adopted {
+				if user, err = global.UserByID(ctx, db, user.ID); err != nil {
+					return nil, 0, err
+				}
+			}
+		}
+		return user, OutcomeLinked, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, 0, err
 	}

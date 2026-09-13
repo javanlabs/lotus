@@ -213,3 +213,47 @@ func TestOIDCProviderRetriesDiscoveryAfterAFailure(t *testing.T) {
 		t.Fatalf("second attempt after the IdP recovered: %v", err)
 	}
 }
+
+func TestOIDCProviderLeavesAnUnverifiedEmailUnverifiedByDefault(t *testing.T) {
+	idp := newFakeIdP(t, map[string]any{"sub": "kc-3", "email": "bayu@javan.co.id", "email_verified": false})
+	p := authn.NewOIDCProvider(idp.server.URL, "lotus", "shh", "cb")
+
+	id, err := p.FetchIdentity(context.Background(), "at-123")
+	if err != nil {
+		t.Fatalf("FetchIdentity: %v", err)
+	}
+	if id.EmailVerified {
+		t.Error("EmailVerified = true without TrustEmail — the default must be to believe the issuer's claim")
+	}
+}
+
+func TestOIDCProviderTrustEmailVouchesForAnAdministeredAddress(t *testing.T) {
+	// Javan's Keycloak reports email_verified=false for every account,
+	// because an administrator creates them and nobody clicks a
+	// verification link. That locked the first Owner out of production.
+	idp := newFakeIdP(t, map[string]any{"sub": "kc-4", "email": "bayu@javan.co.id", "email_verified": false})
+	p := authn.NewOIDCProvider(idp.server.URL, "lotus", "shh", "cb")
+	p.TrustEmail = true
+
+	id, err := p.FetchIdentity(context.Background(), "at-123")
+	if err != nil {
+		t.Fatalf("FetchIdentity: %v", err)
+	}
+	if !id.EmailVerified {
+		t.Error("EmailVerified = false with TrustEmail on")
+	}
+}
+
+func TestOIDCProviderTrustEmailNeverVerifiesAnEmptyAddress(t *testing.T) {
+	idp := newFakeIdP(t, map[string]any{"sub": "kc-5", "email": "", "email_verified": false})
+	p := authn.NewOIDCProvider(idp.server.URL, "lotus", "shh", "cb")
+	p.TrustEmail = true
+
+	id, err := p.FetchIdentity(context.Background(), "at-123")
+	if err != nil {
+		t.Fatalf("FetchIdentity: %v", err)
+	}
+	if id.EmailVerified {
+		t.Error("an empty address came back verified; there is nothing to vouch for")
+	}
+}

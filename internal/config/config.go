@@ -85,6 +85,16 @@ type Config struct {
 	OIDCClientID     string
 	OIDCClientSecret string
 
+	// OIDCTrustEmail is the operator attesting that this issuer's email
+	// addresses are assigned by an administrator, so an address it reports
+	// is treated as verified even when its email_verified claim is false.
+	// Off by default, and it matters: a verified address is what links an
+	// identity to an existing account, accepts an invitation, and claims
+	// a fresh single-mode instance's Owner seat. Only turn it on for an IdP
+	// whose users cannot choose their own address — a corporate Keycloak,
+	// not a public sign-up realm.
+	OIDCTrustEmail bool
+
 	// SMTP (task 1.7): sends invitation emails. With SMTPHost empty, mail
 	// is simply not sent — invitations still work via the copyable link
 	// (task 1.6), so this is a degrade, not a hard dependency.
@@ -236,6 +246,7 @@ func Load() Config {
 		OIDCIssuer:         strings.TrimSuffix(os.Getenv("OIDC_ISSUER"), "/"),
 		OIDCClientID:       os.Getenv("OIDC_CLIENT_ID"),
 		OIDCClientSecret:   os.Getenv("OIDC_CLIENT_SECRET"),
+		OIDCTrustEmail:     os.Getenv("OIDC_TRUST_EMAIL") == "1" || os.Getenv("OIDC_TRUST_EMAIL") == "true",
 		SMTPHost:           os.Getenv("SMTP_HOST"),
 		SMTPPort:           envOr("SMTP_PORT", "587"),
 		SMTPUser:           os.Getenv("SMTP_USER"),

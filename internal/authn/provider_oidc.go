@@ -33,6 +33,14 @@ type OIDCProvider struct {
 	ClientID, ClientSecret, RedirectURL string
 	HTTPClient                          *http.Client
 
+	// TrustEmail treats a reported address as verified regardless of the
+	// email_verified claim; see config.OIDCTrustEmail for when that is
+	// safe. It exists because Javan's Keycloak provisions accounts by
+	// administrator and never marks addresses verified, so an honest
+	// reading of the claim locked every employee out of every
+	// verified-email path — starting with the first Owner login.
+	TrustEmail bool
+
 	// Discovery is cached after the first success and retried after every
 	// failure. Doing it lazily rather than at construction matters: the
 	// IdP is the only way into a single-mode instance, so making startup
@@ -202,9 +210,11 @@ func (p *OIDCProvider) FetchIdentity(ctx context.Context, accessToken string) (I
 		name = body.PreferredUsername
 	}
 	return Identity{
-		ProviderSub:   body.Sub,
-		Email:         body.Email,
-		EmailVerified: body.EmailVerified,
+		ProviderSub: body.Sub,
+		Email:       body.Email,
+		// An empty address is never verified, trusted or not: there is
+		// nothing there to vouch for.
+		EmailVerified: body.EmailVerified || (p.TrustEmail && body.Email != ""),
 		Name:          name,
 	}, nil
 }

@@ -222,7 +222,9 @@ func oauthProviders(cfg config.Config) authn.Registry {
 	// so the callback the IdP must whitelist is <base>/login/sso/callback
 	// whichever product is behind it.
 	if cfg.OIDCClientSecret != "" {
-		registry["sso"] = authn.NewOIDCProvider(cfg.OIDCIssuer, cfg.OIDCClientID, cfg.OIDCClientSecret, authHostBase+"/login/sso/callback")
+		oidc := authn.NewOIDCProvider(cfg.OIDCIssuer, cfg.OIDCClientID, cfg.OIDCClientSecret, authHostBase+"/login/sso/callback")
+		oidc.TrustEmail = cfg.OIDCTrustEmail
+		registry["sso"] = oidc
 	}
 	return registry
 }

@@ -111,6 +111,27 @@ func LinkIdentity(ctx context.Context, db *sqlx.DB, userID uuid.UUID, provider, 
 
 // TouchLastLogin stamps last_login_at = now(). Best-effort: a failure here
 // shouldn't fail the login itself.
+// AdoptVerifiedEmail gives a user that has no email address the verified
+// one an identity provider has just vouched for. It reports whether the
+// row changed.
+//
+// It refuses — returning false, not an error — when the user already has
+// an address, or when another user already holds this one: users.email is
+// unique, and quietly moving an address between accounts is exactly the
+// takeover a verified-email rule is there to prevent.
+func AdoptVerifiedEmail(ctx context.Context, db *sqlx.DB, userID uuid.UUID, email string) (bool, error) {
+	res, err := db.ExecContext(ctx, `
+		UPDATE users SET email = $2, email_verified_at = now()
+		WHERE id = $1 AND email IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM users WHERE email = $2)`,
+		userID, strings.ToLower(strings.TrimSpace(email)))
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 func TouchLastLogin(ctx context.Context, db *sqlx.DB, userID uuid.UUID) error {
 	_, err := db.ExecContext(ctx, `UPDATE users SET last_login_at = now() WHERE id = $1`, userID)
 	return err
