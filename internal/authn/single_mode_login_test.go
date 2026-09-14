@@ -116,7 +116,14 @@ func TestSingleMode_OAuthLoginByANonMemberIsToldRatherThanLooped(t *testing.T) {
 	app := newSingleModeLoginApp(t, db)
 
 	resp := signInThroughGitHub(t, app, "/projects")
-	assertSentBackToLogin(t, resp, "/login", authn.NoticeNoAccess)
+	loc, err := resp.Location()
+	if resp.StatusCode != http.StatusFound || err != nil || loc.Path != "/login" || loc.Query().Get("notice") != authn.NoticeNoAccess {
+		t.Fatalf("status %d location %v, want /login?notice=%s", resp.StatusCode, loc, authn.NoticeNoAccess)
+	}
+	// Unlike a rejected callback, this sign-in succeeded: the identity is
+	// real, only membership is missing. The global session is kept on
+	// purpose so an invitation link can recognise them later; what they
+	// must not get is the tenant session that opens the app.
 	if tenantSessionCookie(resp) != nil {
 		t.Fatal("a non-member was given a tenant session")
 	}
