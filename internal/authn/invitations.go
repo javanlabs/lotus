@@ -151,6 +151,17 @@ func InviteLanding(deps Deps) fiber.Handler {
 			if err := global.AcceptInvitation(c.Context(), deps.DB, inv.ID, session.UserID); err != nil {
 				return err
 			}
+			// Single mode has no tenant subdomain and no handoff: the
+			// saas redirect below pointed accepted invitees at
+			// <subdomain>.<base>/handoff/start, a host that does not
+			// exist on a single-origin install. Mint the tenant session
+			// here instead, exactly as a member's own login does.
+			if deps.Cfg.IsSingle() {
+				if err := issueTenantSession(c, deps, session.UserID, org); err != nil {
+					return err
+				}
+				return c.Redirect("/", fiber.StatusFound)
+			}
 			return c.Redirect(deps.Cfg.Scheme()+"://"+org.Subdomain+"."+deps.Cfg.BaseDomain+"/handoff/start?return=/", fiber.StatusFound)
 		}
 

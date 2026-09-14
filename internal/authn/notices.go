@@ -16,6 +16,7 @@ const (
 	NoticeLoginCancelled = "login_cancelled"
 	NoticeLoginFailed    = "login_failed"
 	NoticeOwnerPending   = "owner_pending"
+	NoticeNoAccess       = "no_access"
 )
 
 var loginNotices = map[string]string{
@@ -25,6 +26,8 @@ var loginNotices = map[string]string{
 	NoticeLoginFailed:    "We couldn't finish signing you in with your identity provider. Please try again.",
 	NoticeOwnerPending: "This Lotus instance is waiting for its first Owner. " +
 		"Sign in with the email address that was nominated when it was set up.",
+	NoticeNoAccess: "You're signed in, but your account isn't a member of this organization yet. " +
+		"Ask an administrator to send you an invitation.",
 }
 
 // LoginNotice returns the message for a notice code, or "" for a code it

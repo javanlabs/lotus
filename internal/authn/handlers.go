@@ -1,8 +1,11 @@
 package authn
 
 import (
+	"database/sql"
 	"errors"
+	"github.com/uyab/lotus/internal/tenant"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -154,7 +157,48 @@ func Callback(deps Deps) fiber.Handler {
 			return err
 		}
 
+		if deps.Cfg.IsSingle() {
+			return finishSingleModeLogin(c, deps, user.ID, consumed.ReturnPath)
+		}
+		// Saas: the return path is /handoff/authorize on this auth host, and
+		// the handoff is what mints the tenant session on the tenant host.
 		return c.Redirect(consumed.ReturnPath, fiber.StatusFound)
+	}
+}
+
+// finishSingleModeLogin gives a successful OAuth/OIDC login in single mode
+// the session the app actually reads.
+//
+// The callback used to stop at the global (auth-host) session, which is
+// all saas mode needs — the handoff that follows mints the tenant session.
+// Single mode has no handoff, so nothing ever did: the first Owner signed
+// in through Keycloak, the claim succeeded, and every request to /projects
+// bounced straight back to /login because RequireTenantSession found no
+// lotus_session cookie. Magic-link login in single mode already minted the
+// tenant session itself; this is the OAuth path catching up.
+//
+// A signed-in person who is not a member still gets the global session, so
+// an invitation link they were sent can recognise them and accept. Anyone
+// else would loop between /projects and /login, so they are told instead.
+func finishSingleModeLogin(c *fiber.Ctx, deps Deps, userID uuid.UUID, returnPath string) error {
+	org, ok := tenant.OrgFromContext(c)
+	if !ok {
+		return fiber.ErrNotFound
+	}
+	_, err := global.ActiveMembership(c.Context(), deps.DB, userID, org.ID)
+	switch {
+	case err == nil:
+		if err := issueTenantSession(c, deps, userID, org); err != nil {
+			return err
+		}
+		return c.Redirect(returnPath, fiber.StatusFound)
+	case errors.Is(err, sql.ErrNoRows):
+		if strings.HasPrefix(returnPath, "/invite/") {
+			return c.Redirect(returnPath, fiber.StatusFound)
+		}
+		return redirectToLogin(c, deps, NoticeNoAccess, "")
+	default:
+		return err
 	}
 }
 
