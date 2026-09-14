@@ -186,7 +186,12 @@ func healthz(c *fiber.Ctx) error {
 func home(renderer *httpx.Renderer) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		c.Type("html")
-		return renderer.Render(c, "pages/home.html", httpx.ViewData{Title: "Home"})
+		// A failed sign-in in saas mode lands here (the auth host has no
+		// login page of its own), so the notice is shown here too.
+		return renderer.Render(c, "pages/home.html", httpx.ViewData{
+			Title: "Home",
+			Data:  struct{ Notice string }{authn.LoginNotice(c.Query("notice"))},
+		})
 	}
 }
 

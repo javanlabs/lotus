@@ -2,6 +2,11 @@
 <main class="mx-auto flex max-w-2xl flex-col items-start gap-4 px-6 py-16">
   <span class="rounded-full bg-indigo-100 px-3 py-1 text-sm font-medium text-indigo-700">Fase 0</span>
   <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Lotus</h1>
+  {{if .Data.Notice}}
+  <div role="alert" class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+    {{.Data.Notice}}
+  </div>
+  {{end}}
   <p class="text-slate-600">Scaffold is up. Toolchain, package layout, and rendering path are wired
     end to end — schema, auth, and the real UI land in the phases after this one.</p>
   <a href="/healthz"

@@ -2,6 +2,7 @@ package authn
 
 import (
 	"errors"
+	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -73,29 +74,59 @@ func Callback(deps Deps) fiber.Handler {
 		stateParam := c.Query("state")
 		c.ClearCookie(stateName)
 
+		// Every way this can fail short of a database fault sends the person
+		// back to sign in again with a sentence saying why. A bare 400 is
+		// the whole page as far as the browser is concerned, and it left
+		// someone who had simply taken too long on the Keycloak page staring
+		// at "invalid or missing oauth state" with no way forward.
+		//
+		// None of these redirects weakens a check: no session is created on
+		// any of them, and the state is still single-use and cookie-bound.
+
+		// The IdP reports a refusal (the person clicked Cancel, or the
+		// client is misconfigured) by coming back with ?error= and no code.
+		if idpErr := c.Query("error"); idpErr != "" {
+			if idpErr == "access_denied" {
+				return redirectToLogin(c, deps, NoticeLoginCancelled, "")
+			}
+			log.Printf("oauth callback: %s returned error=%q description=%q", p.Name(), idpErr, c.Query("error_description"))
+			return redirectToLogin(c, deps, NoticeLoginFailed, "")
+		}
+
+		// A missing cookie is by far the common case: the state cookie lives
+		// ten minutes, so a sign-in page left open longer comes back without
+		// it. A mismatch is either a stale tab or a forged callback; both get
+		// the same answer, and neither gets told which it was.
 		if stateParam == "" || cookieState == "" || stateParam != cookieState {
-			return fiber.NewError(fiber.StatusBadRequest, "invalid or missing oauth state")
+			return redirectToLogin(c, deps, NoticeLoginExpired, "")
 		}
 
 		consumed, err := global.ConsumeOAuthState(c.Context(), db, sha256Hex(stateParam))
 		if err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, "expired or already-used oauth state")
+			return redirectToLogin(c, deps, NoticeLoginExpired, "")
 		}
 		if consumed.Provider != p.Name() {
-			return fiber.NewError(fiber.StatusBadRequest, "provider mismatch")
+			log.Printf("oauth callback: state issued for %q arrived at %q", consumed.Provider, p.Name())
+			return redirectToLogin(c, deps, NoticeLoginFailed, "")
 		}
 
 		code := c.Query("code")
 		if code == "" {
-			return fiber.NewError(fiber.StatusBadRequest, "missing code")
+			return redirectToLogin(c, deps, NoticeLoginFailed, consumed.ReturnPath)
 		}
+		// Exchange and userinfo failures are the IdP or its configuration
+		// (a rotated client secret, an unreachable issuer) — nothing the
+		// person can fix, so they get a retry prompt and the operator gets
+		// the detail in the log. The token itself is never logged.
 		accessToken, err := p.Exchange(c.Context(), code, consumed.CodeVerifier)
 		if err != nil {
-			return err
+			log.Printf("oauth callback: %s token exchange: %v", p.Name(), err)
+			return redirectToLogin(c, deps, NoticeLoginFailed, consumed.ReturnPath)
 		}
 		identity, err := p.FetchIdentity(c.Context(), accessToken)
 		if err != nil {
-			return err
+			log.Printf("oauth callback: %s identity: %v", p.Name(), err)
+			return redirectToLogin(c, deps, NoticeLoginFailed, consumed.ReturnPath)
 		}
 
 		user, _, err := ResolveUser(c.Context(), db, p.Name(), identity)
@@ -113,8 +144,7 @@ func Callback(deps Deps) fiber.Handler {
 		if deps.Cfg.IsSingle() {
 			if _, err := ClaimOwnershipIfPending(c.Context(), db, user.ID, identity); err != nil {
 				if errors.Is(err, ErrNotTheOwner) {
-					return fiber.NewError(fiber.StatusForbidden,
-						"This instance is waiting for its first Owner to sign in.")
+					return redirectToLogin(c, deps, NoticeOwnerPending, consumed.ReturnPath)
 				}
 				return err
 			}

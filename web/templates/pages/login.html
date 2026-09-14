@@ -5,6 +5,12 @@
     <p class="mt-1 text-sm text-slate-600">We'll email you a link — no password needed.</p>
   </div>
 
+  {{if .Data.Notice}}
+  <div role="alert" class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+    {{.Data.Notice}}
+  </div>
+  {{end}}
+
   <form method="post" action="/login/email" class="flex flex-col gap-3">
     <input type="hidden" name="return" value="{{.Data.ReturnPath}}">
     <input type="email" name="email" required autofocus autocomplete="email"

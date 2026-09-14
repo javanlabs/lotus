@@ -241,7 +241,8 @@ func LoginPage(deps Deps) fiber.Handler {
 				Providers  []string
 				ReturnPath string
 				DevUsers   []global.DevUser
-			}{org.Name, names, sanitizeReturnPath(c.Query("return")), devUsers},
+				Notice     string
+			}{org.Name, names, sanitizeReturnPath(c.Query("return")), devUsers, LoginNotice(c.Query("notice"))},
 		})
 	}
 }
