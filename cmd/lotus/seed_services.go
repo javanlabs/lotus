@@ -224,6 +224,10 @@ func importServices(ctx context.Context, conn *sqlx.DB, orgID uuid.UUID, reg leg
 				if name == "" {
 					name = s.Name
 				}
+				// language is NOT NULL DEFAULT '', and an explicit NULL does
+				// not fall back to the default — so a registry entry with no
+				// language used to abort the whole import. Pass the empty
+				// string the column already means "unknown" by.
 				var componentID uuid.UUID
 				if err := tx.GetContext(ctx, &componentID, `
 					INSERT INTO components (org_id, project_id, slug, name, kind, language, legacy_name)
@@ -231,7 +235,7 @@ func importServices(ctx context.Context, conn *sqlx.DB, orgID uuid.UUID, reg leg
 					ON CONFLICT (project_id, slug) DO UPDATE
 					  SET name = EXCLUDED.name, kind = EXCLUDED.kind, language = EXCLUDED.language
 					RETURNING id`,
-					orgID, projectID, s.Name, name, s.Kind, nullIfEmpty(s.Language), s.Name); err != nil {
+					orgID, projectID, s.Name, name, s.Kind, s.Language, s.Name); err != nil {
 					return fmt.Errorf("component %s: %w", s.Name, err)
 				}
 				sum.Components++
@@ -285,13 +289,6 @@ func importServices(ctx context.Context, conn *sqlx.DB, orgID uuid.UUID, reg leg
 		return nil
 	})
 	return sum, err
-}
-
-func nullIfEmpty(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }
 
 // displayName turns a registry product key into something presentable.
