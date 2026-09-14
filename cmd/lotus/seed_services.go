@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -10,11 +12,13 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 	"gopkg.in/yaml.v3"
 
 	"github.com/uyab/lotus/internal/config"
 	"github.com/uyab/lotus/internal/db"
 	"github.com/uyab/lotus/internal/repo/global"
+	"github.com/uyab/lotus/internal/tenant"
 )
 
 // legacyService is the subset of the old services.yaml registry that maps
@@ -56,20 +60,33 @@ const (
 // it.
 const defaultProduct = "alurkerja"
 
-// runSeedServices turns the legacy services.yaml registry into projects,
-// components, and metric bindings. This is a development seeder, not the
-// real task 5.1 importer: it creates no connections of its own (it binds
-// to whatever gitlab/sonarqube/sentry connection the org already has) and
-// imports no historical metrics.
+// runSeedServices imports the legacy services.yaml registry as projects,
+// components and metric bindings.
+//
+// It began as a development seeder and was only ever run against a
+// superuser connection, which is the one kind of connection Row-Level
+// Security does not apply to. On a real deployment it could not have
+// worked: the migrate role owns the tables but is not a superuser, FORCE
+// ROW LEVEL SECURITY binds it, and with no app.org_id set every INSERT
+// fails the tenant policy and every connection lookup comes back empty.
+// It now runs as the application's own restricted role inside a
+// tenant-scoped transaction, exactly as a request would — so it is safe to
+// run on production, and a test can prove RLS is satisfied rather than
+// bypassed.
+//
+// It creates no connections: inventing base URLs and credentials is not an
+// importer's business, and a credential must go through the sealed
+// connection flow. Bindings are created for whichever gitlab, sonarqube and
+// sentry connections the organization already has, and skipped otherwise.
+// Every write is idempotent, so running it again after adding a connection
+// fills in exactly the bindings that were skipped.
 func runSeedServices(cfg config.Config, args []string) {
 	fs := flag.NewFlagSet("seed-services", flag.ExitOnError)
 	path := fs.String("file", "", "path to the legacy services.yaml (required)")
 	only := fs.String("only", "", "comma-separated products to import; default all")
+	orgSlug := fs.String("org", "", "slug of the organization to import into; required outside LOTUS_DEV=1")
 	if err := fs.Parse(args); err != nil {
 		log.Fatal(err)
-	}
-	if !cfg.Dev {
-		log.Fatal("lotus seed-services: refusing to run without LOTUS_DEV=1 — this writes fixture data")
 	}
 	if *path == "" {
 		fs.Usage()
@@ -95,7 +112,9 @@ func runSeedServices(cfg config.Config, args []string) {
 		}
 	}
 
-	conn, err := db.Open(cfg.MigrateDatabaseURL)
+	// The application role, not the migrate role: this importer needs only
+	// DML, and running under the same RLS the app runs under is the point.
+	conn, err := db.OpenApp(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("lotus seed-services: connect: %v", err)
 	}
@@ -106,23 +125,53 @@ func runSeedServices(cfg config.Config, args []string) {
 	if err != nil {
 		log.Fatalf("lotus seed-services: %v (run `lotus init` first)", err)
 	}
+	// Outside dev, name the organization explicitly. It costs one flag and
+	// means a command pasted into the wrong server's shell stops here
+	// instead of writing into somebody else's instance.
+	if !cfg.Dev && *orgSlug != org.Subdomain {
+		log.Fatalf("lotus seed-services: this instance's organization is %q; pass --org=%s to confirm", org.Subdomain, org.Subdomain)
+	}
 
-	// Bind to whatever connection of each kind the organization already
-	// has. Creating connections here would mean inventing base URLs and
-	// credentials, which a seeder has no business doing.
-	connIDs := map[string]uuid.UUID{}
-	for _, pv := range []struct{ provider, kind string }{
-		{"gitlab", "gitlab"}, {"sonarqube", "sonarqube"}, {"sentry", "sentry"},
-	} {
-		var id uuid.UUID
-		err := conn.GetContext(ctx, &id,
-			`SELECT id FROM integration_connections
-			  WHERE org_id = $1 AND provider = $2 AND deleted_at IS NULL
-			  ORDER BY created_at LIMIT 1`, org.ID, pv.provider)
-		if err == nil {
-			connIDs[pv.kind] = id
+	sum, err := importServices(ctx, conn, org.ID, reg, wanted)
+	if err != nil {
+		log.Fatalf("lotus seed-services: %v", err)
+	}
+
+	for _, p := range sum.Projects {
+		fmt.Printf("%s (%d components)\n", displayName(p.Product), len(p.Components))
+		for _, c := range p.Components {
+			fmt.Printf("  %-34s %s\n", c.Name, c.Kind)
 		}
 	}
+	fmt.Printf("\n%d projects, %d components, %d bindings created (%d already present).\n",
+		len(sum.Projects), sum.Components, sum.BindingsCreated, sum.BindingsExisting)
+	for _, kind := range []string{"gitlab", "sonarqube", "sentry"} {
+		if !sum.Connected[kind] {
+			fmt.Printf("note: no %s connection in this organization — those bindings were skipped. Add it in Settings → Connections and run this again.\n", kind)
+		}
+	}
+	fmt.Println("note: services.yaml carries no Harbor/Trivy image data, so no trivy bindings were created.")
+}
+
+type importedComponent struct{ Name, Kind string }
+
+type importedProject struct {
+	Product    string
+	Components []importedComponent
+}
+
+type importSummary struct {
+	Projects         []importedProject
+	Components       int
+	BindingsCreated  int
+	BindingsExisting int
+	Connected        map[string]bool
+}
+
+// importServices does the work in one tenant-scoped transaction: all of it
+// lands, or none of it does.
+func importServices(ctx context.Context, conn *sqlx.DB, orgID uuid.UUID, reg legacyRegistry, wanted map[string]bool) (importSummary, error) {
+	sum := importSummary{Connected: map[string]bool{}}
 
 	grouped := map[string][]legacyService{}
 	for _, s := range reg.Services {
@@ -141,84 +190,101 @@ func runSeedServices(cfg config.Config, args []string) {
 	}
 	sort.Strings(products)
 
-	totalComponents, totalBindings := 0, 0
-	for _, product := range products {
-		var projectID uuid.UUID
-		if err := conn.GetContext(ctx, &projectID, `
-			INSERT INTO projects (org_id, slug, name) VALUES ($1, $2, $3)
-			ON CONFLICT (org_id, slug) DO UPDATE SET name = EXCLUDED.name
-			RETURNING id`, org.ID, product, displayName(product)); err != nil {
-			log.Fatalf("lotus seed-services: project %s: %v", product, err)
+	err := tenant.FromRun(conn, orgID).Tx(ctx, func(tx *sqlx.Tx) error {
+		// Bind to whatever connection of each kind the organization already
+		// has. Inside the scoped transaction, so RLS lets this see them.
+		connIDs := map[string]uuid.UUID{}
+		for _, provider := range []string{"gitlab", "sonarqube", "sentry"} {
+			var id uuid.UUID
+			err := tx.GetContext(ctx, &id,
+				`SELECT id FROM integration_connections
+				  WHERE org_id = $1 AND provider = $2 AND deleted_at IS NULL
+				  ORDER BY created_at LIMIT 1`, orgID, provider)
+			switch {
+			case err == nil:
+				connIDs[provider] = id
+				sum.Connected[provider] = true
+			case !errors.Is(err, sql.ErrNoRows):
+				return fmt.Errorf("look up %s connection: %w", provider, err)
+			}
 		}
-		fmt.Printf("%s (%d components)\n", displayName(product), len(grouped[product]))
 
-		for _, s := range grouped[product] {
-			name := s.Label
-			if name == "" {
-				name = s.Name
+		for _, product := range products {
+			var projectID uuid.UUID
+			if err := tx.GetContext(ctx, &projectID, `
+				INSERT INTO projects (org_id, slug, name) VALUES ($1, $2, $3)
+				ON CONFLICT (org_id, slug) DO UPDATE SET name = EXCLUDED.name
+				RETURNING id`, orgID, product, displayName(product)); err != nil {
+				return fmt.Errorf("project %s: %w", product, err)
 			}
-			var componentID uuid.UUID
-			if err := conn.GetContext(ctx, &componentID, `
-				INSERT INTO components (org_id, project_id, slug, name, kind, language, legacy_name)
-				VALUES ($1, $2, $3, $4, $5, $6, $7)
-				ON CONFLICT (project_id, slug) DO UPDATE
-				  SET name = EXCLUDED.name, kind = EXCLUDED.kind, language = EXCLUDED.language
-				RETURNING id`,
-				org.ID, projectID, s.Name, name, s.Kind, nullIfEmpty(s.Language), s.Name); err != nil {
-				log.Fatalf("lotus seed-services: component %s: %v", s.Name, err)
-			}
-			totalComponents++
+			imported := importedProject{Product: product}
 
-			// One binding per integration the registry actually carries a
-			// key for. Sentry has no per-service field set anywhere in the
-			// file, so it falls back to the documented default: the shared
-			// project, separated by a service_name tag equal to the
-			// service's own name.
-			bindings := []struct{ kind, externalKey, cfg string }{
-				{"gitlab", s.GitlabPat, `{}`},
-				{"sonarqube", s.SonarKey, `{}`},
-			}
-			// Only AlurKerja's shared Sentry projects are known. The header
-			// claims SyarQ and AOS Online each have their own via
-			// `sentry_project`, but no entry in the file actually sets it,
-			// so there is nothing to bind them to — inventing a slug would
-			// just produce 404s that look like a broken integration.
-			if product == defaultProduct {
-				project := sentryProjectBackend
-				if s.Kind == "frontend" {
-					project = sentryProjectFrontend
+			for _, s := range grouped[product] {
+				name := s.Label
+				if name == "" {
+					name = s.Name
 				}
-				bindings = append(bindings, struct{ kind, externalKey, cfg string }{
-					"sentry", project,
-					fmt.Sprintf(`{"mode":"shared","service_tag_key":%q,"service_tag_value":%q}`,
-						sentryServiceTagKey, s.Name),
-				})
-			}
-			for _, b := range bindings {
-				cid, ok := connIDs[b.kind]
-				if !ok || b.externalKey == "" {
-					continue
+				var componentID uuid.UUID
+				if err := tx.GetContext(ctx, &componentID, `
+					INSERT INTO components (org_id, project_id, slug, name, kind, language, legacy_name)
+					VALUES ($1, $2, $3, $4, $5, $6, $7)
+					ON CONFLICT (project_id, slug) DO UPDATE
+					  SET name = EXCLUDED.name, kind = EXCLUDED.kind, language = EXCLUDED.language
+					RETURNING id`,
+					orgID, projectID, s.Name, name, s.Kind, nullIfEmpty(s.Language), s.Name); err != nil {
+					return fmt.Errorf("component %s: %w", s.Name, err)
 				}
-				if _, err := conn.ExecContext(ctx, `
-					INSERT INTO metric_bindings (org_id, component_id, connection_id, kind, external_key, config)
-					VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-					ON CONFLICT DO NOTHING`,
-					org.ID, componentID, cid, b.kind, b.externalKey, b.cfg); err != nil {
-					log.Fatalf("lotus seed-services: binding %s/%s: %v", s.Name, b.kind, err)
+				sum.Components++
+				imported.Components = append(imported.Components, importedComponent{Name: s.Name, Kind: s.Kind})
+
+				// One binding per integration the registry carries a key
+				// for. Sentry has no per-service field anywhere in the file,
+				// so it uses the documented default: the shared project,
+				// narrowed by a service_name tag equal to the service name.
+				bindings := []struct{ kind, externalKey, cfg string }{
+					{"gitlab", s.GitlabPat, `{}`},
+					{"sonarqube", s.SonarKey, `{}`},
 				}
-				totalBindings++
+				// Only AlurKerja's shared Sentry projects are known; no
+				// entry sets sentry_project for the others, and inventing a
+				// slug would only produce 404s that look like a broken
+				// integration.
+				if product == defaultProduct {
+					project := sentryProjectBackend
+					if s.Kind == "frontend" {
+						project = sentryProjectFrontend
+					}
+					bindings = append(bindings, struct{ kind, externalKey, cfg string }{
+						"sentry", project,
+						fmt.Sprintf(`{"mode":"shared","service_tag_key":%q,"service_tag_value":%q}`,
+							sentryServiceTagKey, s.Name),
+					})
+				}
+				for _, b := range bindings {
+					cid, ok := connIDs[b.kind]
+					if !ok || b.externalKey == "" {
+						continue
+					}
+					res, err := tx.ExecContext(ctx, `
+						INSERT INTO metric_bindings (org_id, component_id, connection_id, kind, external_key, config)
+						VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+						ON CONFLICT DO NOTHING`,
+						orgID, componentID, cid, b.kind, b.externalKey, b.cfg)
+					if err != nil {
+						return fmt.Errorf("binding %s/%s: %w", s.Name, b.kind, err)
+					}
+					if n, _ := res.RowsAffected(); n == 1 {
+						sum.BindingsCreated++
+					} else {
+						sum.BindingsExisting++
+					}
+				}
 			}
-			fmt.Printf("  %-34s %s\n", s.Name, s.Kind)
+			sum.Projects = append(sum.Projects, imported)
 		}
-	}
-
-	fmt.Printf("\n%d projects, %d components, %d bindings.\n", len(products), totalComponents, totalBindings)
-	for _, kind := range []string{"gitlab", "sonarqube", "sentry"} {
-		if _, ok := connIDs[kind]; !ok {
-			fmt.Printf("note: no %s connection in this organization — those bindings were skipped.\n", kind)
-		}
-	}
-	fmt.Println("note: services.yaml carries no Harbor/Trivy image data, so no trivy bindings were created.")
+		return nil
+	})
+	return sum, err
 }
 
 func nullIfEmpty(s string) *string {
