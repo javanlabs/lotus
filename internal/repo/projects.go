@@ -39,27 +39,40 @@ type Project struct {
 	ArchivedAt  *time.Time `db:"archived_at"`
 	SortOrder   int        `db:"sort_order"`
 	CreatedAt   time.Time  `db:"created_at"`
+	// FolderID is the folder the project is filed in, nil at the root.
+	FolderID *uuid.UUID `db:"folder_id"`
 }
+
+// projectCols is every Project column, in struct order, so the queries
+// below cannot drift apart when a column is added.
+const projectCols = `id, org_id, slug, name, description, archived_at, sort_order, created_at, folder_id`
 
 type NewProject struct {
 	Slug        string
 	Name        string
 	Description string
+	FolderID    *uuid.UUID
 }
 
 func CreateProject(ctx context.Context, s tenant.Scope, in NewProject) (*Project, error) {
 	var out Project
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.GetContext(ctx, &out, `
-			INSERT INTO projects (org_id, slug, name, description)
-			VALUES ($1, $2, $3, $4)
-			RETURNING id, org_id, slug, name, description, archived_at, sort_order, created_at`,
-			s.OrgID(), in.Slug, in.Name, in.Description)
+			INSERT INTO projects (org_id, slug, name, description, folder_id)
+			VALUES ($1, $2, $3, $4, $5)
+			RETURNING `+projectCols,
+			s.OrgID(), in.Slug, in.Name, in.Description, in.FolderID)
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return nil, ErrSlugTaken
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505":
+				return nil, ErrSlugTaken
+			case "23503":
+				// folder_id names a folder this organization cannot see.
+				return nil, ErrNotFound
+			}
 		}
 		return nil, err
 	}
@@ -69,9 +82,7 @@ func CreateProject(ctx context.Context, s tenant.Scope, in NewProject) (*Project
 func ProjectByID(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Project, error) {
 	var out Project
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		return tx.GetContext(ctx, &out, `
-			SELECT id, org_id, slug, name, description, archived_at, sort_order, created_at
-			FROM projects WHERE id = $1`, id)
+		return tx.GetContext(ctx, &out, `SELECT `+projectCols+` FROM projects WHERE id = $1`, id)
 	})
 	if err != nil {
 		if isNoRows(err) {
@@ -89,7 +100,7 @@ func ProjectByID(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Project, e
 func ListProjects(ctx context.Context, s tenant.Scope, includeArchived bool) ([]Project, error) {
 	var out []Project
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		q := `SELECT id, org_id, slug, name, description, archived_at, sort_order, created_at FROM projects`
+		q := `SELECT ` + projectCols + ` FROM projects`
 		if !includeArchived {
 			q += ` WHERE archived_at IS NULL`
 		}
@@ -112,7 +123,7 @@ func UpdateProject(ctx context.Context, s tenant.Scope, id uuid.UUID, in Project
 		return tx.GetContext(ctx, &out, `
 			UPDATE projects SET slug = $2, name = $3, description = $4, sort_order = $5
 			WHERE id = $1
-			RETURNING id, org_id, slug, name, description, archived_at, sort_order, created_at`,
+			RETURNING `+projectCols,
 			id, in.Slug, in.Name, in.Description, in.SortOrder)
 	})
 	if err != nil {
