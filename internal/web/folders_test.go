@@ -1,0 +1,204 @@
+package web
+
+import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
+)
+
+func folderFormReq(host, path, raw string, form url.Values, htmx bool) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "http://"+host+path, strings.NewReader(form.Encode()))
+	req.Host = host
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if htmx {
+		req.Header.Set("HX-Request", "true")
+	}
+	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
+	return req
+}
+
+func folderIDNamed(t *testing.T, db *sqlx.DB, orgID uuid.UUID, name string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&id, `SELECT id FROM folders WHERE name = $1`, name); err != nil {
+			t.Fatalf("find folder %q: %v", name, err)
+		}
+	})
+	return id
+}
+
+func auditCount(t *testing.T, db *sqlx.DB, orgID uuid.UUID, action string) int {
+	t.Helper()
+	var n int
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&n, `SELECT count(*) FROM audit_events WHERE action = $1`, action); err != nil {
+			t.Fatalf("count audit %s: %v", action, err)
+		}
+	})
+	return n
+}
+
+func TestFolders_MemberCreatesNestedFoldersAndItIsAudited(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-fold", "member")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-fold." + dashboardTestDomain
+
+	resp, err := app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"IT Services"}}, false))
+	if err != nil || resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects" {
+		t.Fatalf("create = %v, %v; want 302 to /projects", resp, err)
+	}
+	it := folderIDNamed(t, db, orgID, "IT Services")
+
+	resp, err = app.Test(folderFormReq(host, "/folders", raw,
+		url.Values{"name": {"Tribe lead A"}, "parent_id": {it.String()}}, true))
+	if err != nil || resp.StatusCode != http.StatusNoContent || resp.Header.Get("HX-Refresh") != "true" {
+		t.Fatalf("htmx create = %v, %v; want 204 with HX-Refresh", resp, err)
+	}
+	folderIDNamed(t, db, orgID, "Tribe lead A")
+	if n := auditCount(t, db, orgID, "folder.create"); n != 2 {
+		t.Fatalf("folder.create audit events = %d, want 2", n)
+	}
+}
+
+func TestFolders_ViewerCannotCreate_MemberCannotDelete(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, viewerID := seedMember(t, db, "acme-perm", "viewer")
+	viewerRaw := seedSession(t, db, orgID, viewerID)
+	host := "acme-perm." + dashboardTestDomain
+
+	resp, _ := app.Test(folderFormReq(host, "/folders", viewerRaw, url.Values{"name": {"X"}}, false))
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("viewer create status = %d, want 403", resp.StatusCode)
+	}
+
+	var memberID uuid.UUID
+	if err := db.Get(&memberID, `INSERT INTO users (email, email_verified_at) VALUES ('m@acme-perm.test', now()) RETURNING id`); err != nil {
+		t.Fatalf("insert member: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO memberships (org_id, user_id, role_id) SELECT $1, $2, id FROM roles WHERE key = 'member' AND org_id IS NULL`, orgID, memberID); err != nil {
+		t.Fatalf("membership: %v", err)
+	}
+	memberRaw := seedSession(t, db, orgID, memberID)
+	app.Test(folderFormReq(host, "/folders", memberRaw, url.Values{"name": {"Old"}}, false))
+	id := folderIDNamed(t, db, orgID, "Old")
+
+	resp, _ = app.Test(folderFormReq(host, "/folders/"+id.String()+"/delete", memberRaw, nil, false))
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("member delete status = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestFolders_RejectionsComeBackIntoTheDialogForHtmx(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-rej", "owner")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-rej." + dashboardTestDomain
+	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"Product"}}, false))
+	product := folderIDNamed(t, db, orgID, "Product")
+	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"Inner"}, "parent_id": {product.String()}}, false))
+	inner := folderIDNamed(t, db, orgID, "Inner")
+
+	cases := []struct {
+		name, path string
+		form       url.Values
+		wantStatus int
+		wantText   string
+	}{
+		{"duplicate name", "/folders", url.Values{"name": {"product"}}, http.StatusConflict,
+			"There's already a folder called 'product' here."},
+		{"blank name", "/folders", url.Values{"name": {"  "}}, http.StatusUnprocessableEntity,
+			"Folder name is required"},
+		{"cycle", "/folders/" + product.String() + "/move", url.Values{"parent_id": {inner.String()}}, http.StatusConflict,
+			"Can't move a folder into itself."},
+		{"not empty", "/folders/" + product.String() + "/delete", nil, http.StatusConflict,
+			"'Product' still contains 1 folder."},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			resp, err := app.Test(folderFormReq(host, c.path, raw, c.form, true))
+			if err != nil || resp.StatusCode != http.StatusOK {
+				t.Fatalf("htmx status = %v, %v; want 200", resp, err)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			if !strings.Contains(string(body), c.wantText) && !strings.Contains(string(body), strings.ReplaceAll(c.wantText, "'", "&#39;")) {
+				t.Fatalf("htmx body = %s, want it to contain %q", body, c.wantText)
+			}
+			resp, _ = app.Test(folderFormReq(host, c.path, raw, c.form, false))
+			if resp.StatusCode != c.wantStatus {
+				t.Fatalf("plain status = %d, want %d", resp.StatusCode, c.wantStatus)
+			}
+		})
+	}
+}
+
+func TestFolders_RenameMoveDeleteAreAudited(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-aud", "admin")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-aud." + dashboardTestDomain
+	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"IT"}}, false))
+	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"Tribe"}}, false))
+	it := folderIDNamed(t, db, orgID, "IT")
+	tribe := folderIDNamed(t, db, orgID, "Tribe")
+
+	for _, step := range []struct {
+		path string
+		form url.Values
+	}{
+		{"/folders/" + it.String() + "/rename", url.Values{"name": {"IT Services"}}},
+		{"/folders/" + tribe.String() + "/move", url.Values{"parent_id": {it.String()}}},
+		{"/folders/" + tribe.String() + "/move", url.Values{"parent_id": {""}}},
+		{"/folders/" + tribe.String() + "/delete", nil},
+	} {
+		resp, err := app.Test(folderFormReq(host, step.path, raw, step.form, false))
+		if err != nil || resp.StatusCode != http.StatusFound {
+			t.Fatalf("%s = %v, %v; want 302", step.path, resp, err)
+		}
+	}
+	for action, want := range map[string]int{"folder.rename": 1, "folder.move": 2, "folder.delete": 1} {
+		if n := auditCount(t, db, orgID, action); n != want {
+			t.Fatalf("%s audit events = %d, want %d", action, n, want)
+		}
+	}
+}
+
+func TestProjects_MoveIntoAFolderIsAudited(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-mv", "member")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-mv." + dashboardTestDomain
+	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"Product"}}, false))
+	product := folderIDNamed(t, db, orgID, "Product")
+	var projectID uuid.UUID
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&projectID, `INSERT INTO projects (org_id, slug, name) VALUES ($1,'syarq','SyarQ') RETURNING id`, orgID); err != nil {
+			t.Fatalf("insert project: %v", err)
+		}
+	})
+
+	resp, err := app.Test(folderFormReq(host, "/projects/"+projectID.String()+"/move", raw,
+		url.Values{"folder_id": {product.String()}}, false))
+	if err != nil || resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects/"+projectID.String() {
+		t.Fatalf("move = %v, %v; want 302 back to the project", resp, err)
+	}
+	var folderID *uuid.UUID
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&folderID, `SELECT folder_id FROM projects WHERE id = $1`, projectID); err != nil {
+			t.Fatalf("read project: %v", err)
+		}
+	})
+	if folderID == nil || *folderID != product {
+		t.Fatalf("folder_id = %v, want %v", folderID, product)
+	}
+	if n := auditCount(t, db, orgID, "project.move"); n != 1 {
+		t.Fatalf("project.move audit events = %d, want 1", n)
+	}
+}

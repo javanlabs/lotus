@@ -132,6 +132,7 @@ func New(d Deps) *fiber.App {
 	// the bind-metric wizard that creates a connection (if needed) and a
 	// binding together.
 	registerProjectPageDetailRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+	registerFolderRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerComponentPageRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerBindWizardRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 

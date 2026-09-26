@@ -1,0 +1,10 @@
+{{/* form_error is the alert a dialog shows when its form was rejected. It
+     is returned on its own as an htmx fragment and swapped into the
+     dialog's error slot, so the dialog stays open with what was typed.
+     Takes "." = the message. */}}
+{{define "form_error"}}
+<div role="alert" style="display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:var(--radius-petal-sm);background:var(--status-fail-bg);color:var(--status-fail);font-size:12.5px">
+  <i class="lotus-status-dot lotus-status-dot-fail" aria-hidden="true"></i>
+  <span>{{.}}</span>
+</div>
+{{end}}
