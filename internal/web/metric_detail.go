@@ -128,8 +128,12 @@ func metricDetailPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
+		folders, err := repo.ListFolders(c.Context(), s)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
 		nav := buildNav("projects", len(projects))
-		nav.Trail = componentTrail(&chrome.Project, &chrome.Component,
+		nav.Trail = componentTrail(folders, &chrome.Project, &chrome.Component,
 			httpx.NavCrumb{Label: chrome.Binding.Kind})
 
 		switch chrome.Binding.Kind {
@@ -229,8 +233,12 @@ func runHistoryPage(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 
+		folders, err := repo.ListFolders(c.Context(), s)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
 		nav := buildNav("projects", len(projects))
-		nav.Trail = componentTrail(&chrome.Project, &chrome.Component,
+		nav.Trail = componentTrail(folders, &chrome.Project, &chrome.Component,
 			httpx.NavCrumb{Label: chrome.Binding.Kind, Href: chrome.basePath()},
 			httpx.NavCrumb{Label: "Run history"})
 		c.Type("html")

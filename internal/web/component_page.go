@@ -95,9 +95,14 @@ func componentPage(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 
+		folders, err := repo.ListFolders(c.Context(), s)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+
 		c.Type("html")
 		return renderPage(c, d, "pages/component.html", httpx.ViewData{
-			Title: comp.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), componentTrail(project, comp)),
+			Title: comp.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), componentTrail(folders, project, comp)),
 			Data: struct {
 				Component repo.Component
 				Project   repo.Project

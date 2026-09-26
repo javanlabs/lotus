@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/repo"
 )
 
@@ -59,8 +60,22 @@ func (f *treeFixture) project(name string, in *repo.Folder, status string, score
 	return p.ID
 }
 
+// build is the top level of the folder view; buildIn opens one folder.
 func (f *treeFixture) build() dashboardViewModel {
-	return buildProjectDashboardViewModel("", f.projects, f.folders, f.components, f.metrics)
+	return buildProjectDashboardViewModel("", f.projects, f.folders, f.components, f.metrics, nil)
+}
+
+func (f *treeFixture) buildIn(folder repo.Folder) dashboardViewModel {
+	id := folder.ID
+	return buildProjectDashboardViewModel("", f.projects, f.folders, f.components, f.metrics, &id)
+}
+
+func failingNames(vm dashboardViewModel) []string {
+	out := make([]string, 0, len(vm.FailingRows))
+	for _, r := range vm.FailingRows {
+		out = append(out, r.Name)
+	}
+	return out
 }
 
 func rowNames(vm dashboardViewModel) []string {
@@ -96,7 +111,10 @@ func projectsOf(comps []componentInfo) []repo.Project {
 	return out
 }
 
-func TestProjectTree_FoldersFirstThenProjectsDepthFirst(t *testing.T) {
+// The folder view is flat: a level shows its own subfolders first, then the
+// projects filed directly in it — never the contents of the folders it
+// lists. Clicking a folder opens the next level.
+func TestFolderView_ShowsOnlyTheCurrentLevelFoldersFirst(t *testing.T) {
 	f := newTreeFixture(t)
 	product := f.folder("Product", nil)
 	it := f.folder("IT Services", nil)
@@ -104,27 +122,84 @@ func TestProjectTree_FoldersFirstThenProjectsDepthFirst(t *testing.T) {
 	f.project("Unfiled", nil, "pass", intPtr(90))
 	f.project("Linknet", &tribeA, "fail", intPtr(42))
 	f.project("AlurKerja", &product, "pass", intPtr(84))
-	vm := f.build()
 
-	want := []string{"IT Services", "Tribe lead A", "Linknet", "Product", "AlurKerja", "Unfiled"}
-	if got := rowNames(vm); strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("rows = %v, want %v", got, want)
+	for _, c := range []struct {
+		name string
+		vm   dashboardViewModel
+		want []string
+	}{
+		{"top level", f.build(), []string{"IT Services", "Product", "Unfiled"}},
+		{"IT Services", f.buildIn(it), []string{"Tribe lead A"}},
+		{"Tribe lead A", f.buildIn(tribeA), []string{"Linknet"}},
+	} {
+		if got := rowNames(c.vm); strings.Join(got, "|") != strings.Join(c.want, "|") {
+			t.Fatalf("%s rows = %v, want %v", c.name, got, c.want)
+		}
+		if !c.vm.Tree {
+			t.Fatalf("%s: Tree = false on the organization dashboard", c.name)
+		}
 	}
-	if !vm.Tree {
-		t.Fatal("Tree = false on the organization dashboard")
+	if href := rowNamed(t, f.build(), "IT Services").Href; href != "/projects?folder="+it.ID.String() {
+		t.Fatalf("folder row Href = %q, want it to open the folder", href)
 	}
-	linknet := rowNamed(t, vm, "Linknet")
-	if linknet.ParentID != tribeA.ID.String() {
-		t.Fatalf("Linknet ParentID = %q, want %q", linknet.ParentID, tribeA.ID)
+}
+
+func TestFolderView_BreadcrumbLeadsBackToTheTop(t *testing.T) {
+	f := newTreeFixture(t)
+	it := f.folder("IT Services", nil)
+	tribeA := f.folder("Tribe lead A", &it)
+	f.project("Linknet", &tribeA, "pass", intPtr(90))
+	vm := f.buildIn(tribeA)
+
+	want := []crumb{
+		{Name: "Projects", Href: "/projects"},
+		{Name: "IT Services", Href: "/projects?folder=" + it.ID.String(), FolderID: it.ID.String()},
+		{Name: "Tribe lead A", Href: "/projects?folder=" + tribeA.ID.String(), FolderID: tribeA.ID.String(), Current: true},
 	}
-	if want := it.ID.String() + " " + tribeA.ID.String(); linknet.Ancestors != want {
-		t.Fatalf("Linknet Ancestors = %q, want %q", linknet.Ancestors, want)
+	if len(vm.Crumbs) != len(want) {
+		t.Fatalf("crumbs = %+v, want %+v", vm.Crumbs, want)
 	}
-	if linknet.IndentPx != 2*treeIndentPx {
-		t.Fatalf("Linknet IndentPx = %d, want %d", linknet.IndentPx, 2*treeIndentPx)
+	for i := range want {
+		if vm.Crumbs[i] != want[i] {
+			t.Fatalf("crumb %d = %+v, want %+v", i, vm.Crumbs[i], want[i])
+		}
 	}
-	if unfiled := rowNamed(t, vm, "Unfiled"); unfiled.ParentID != "" || unfiled.IndentPx != 0 {
-		t.Fatalf("Unfiled = parent %q indent %d, want root", unfiled.ParentID, unfiled.IndentPx)
+	if vm.CurrentFolderID != tribeA.ID.String() {
+		t.Fatalf("CurrentFolderID = %q, want %q", vm.CurrentFolderID, tribeA.ID)
+	}
+	if top := f.build(); len(top.Crumbs) != 1 || !top.Crumbs[0].Current || top.CurrentFolderID != "" {
+		t.Fatalf("top-level crumbs = %+v (current %q), want just the current Projects crumb", top.Crumbs, top.CurrentFolderID)
+	}
+}
+
+// "Failing" lists every failing project beneath the current folder at any
+// depth, flat, worst first, each saying where it lives — so a team sees
+// what to fix without clicking through folders.
+func TestFolderView_FailingListsEveryFailingProjectBeneathWithItsPath(t *testing.T) {
+	f := newTreeFixture(t)
+	it := f.folder("IT Services", nil)
+	tribeA := f.folder("Tribe lead A", &it)
+	tribeB := f.folder("Tribe lead B", &it)
+	f.project("Linknet", &tribeA, "fail", intPtr(42))
+	f.project("Dignas", &tribeA, "pass", intPtr(95))
+	f.project("ANRI", &tribeB, "fail", intPtr(55))
+	f.project("Loose", nil, "fail", intPtr(60))
+
+	top := f.build()
+	if got := failingNames(top); strings.Join(got, "|") != "Linknet|ANRI|Loose" {
+		t.Fatalf("top-level failing = %v, want Linknet|ANRI|Loose (worst first)", got)
+	}
+	if top.FailingCount != 3 {
+		t.Fatalf("FailingCount = %d, want 3", top.FailingCount)
+	}
+	if sub := top.FailingRows[0].Subtext; !strings.HasPrefix(sub, "IT Services / Tribe lead A") {
+		t.Fatalf("Linknet failing subtext = %q, want it to start with its folder path", sub)
+	}
+	if sub := top.FailingRows[2].Subtext; !strings.HasPrefix(sub, "Top level") {
+		t.Fatalf("Loose failing subtext = %q, want it to say Top level", sub)
+	}
+	if got := failingNames(f.buildIn(tribeB)); strings.Join(got, "|") != "ANRI" {
+		t.Fatalf("Tribe lead B failing = %v, want only ANRI", got)
 	}
 }
 
@@ -142,10 +217,10 @@ func TestProjectTree_FolderRowCountsPassingAtAnyDepthAndNamesFailing(t *testing.
 	if !row.IsFolder || row.Score != "1 / 3 passing" || row.Tone != "fail" || row.BarTone != "fail" {
 		t.Fatalf("IT Services = folder %v, score %q, tone %q, bar %q", row.IsFolder, row.Score, row.Tone, row.BarTone)
 	}
-	if want := "3 projects · failing: Linknet 42, ANRI 55"; row.Subtext != want {
+	if want := "3 projects · 2 failing"; row.Subtext != want {
 		t.Fatalf("subtext = %q, want %q", row.Subtext, want)
 	}
-	if got := rowNamed(t, vm, "Tribe lead A").Score; got != "1 / 2 passing" {
+	if got := rowNamed(t, f.buildIn(it), "Tribe lead A").Score; got != "1 / 2 passing" {
 		t.Fatalf("Tribe lead A score = %q, want 1 / 2 passing", got)
 	}
 }
@@ -204,7 +279,7 @@ func TestProjectTree_UnmeasuredProjectsAreCalledOutNotCounted(t *testing.T) {
 	if !strings.Contains(row.Subtext, "2 not measured") {
 		t.Fatalf("subtext = %q, want it to call out 2 not measured", row.Subtext)
 	}
-	if nc := rowNamed(t, vm, "No components"); nc.Subtext != "0 components" || nc.Tone != "none" {
+	if nc := rowNamed(t, f.buildIn(product), "No components"); nc.Subtext != "0 components" || nc.Tone != "none" {
 		t.Fatalf("componentless project row = %+v, want a 0 components row with no verdict", nc)
 	}
 	if row.DeleteBlocked == "" {
@@ -212,14 +287,16 @@ func TestProjectTree_UnmeasuredProjectsAreCalledOutNotCounted(t *testing.T) {
 	}
 }
 
-func TestProjectTree_FailingNamesCapAtThree(t *testing.T) {
+// A folder row counts its failing projects rather than naming them; the
+// "Failing" filter is where they are listed.
+func TestProjectTree_FolderSubtextCountsFailingWithoutNamingThem(t *testing.T) {
 	f := newTreeFixture(t)
 	bad := f.folder("Bad", nil)
 	for i, name := range []string{"A", "B", "C", "D", "E"} {
 		f.project(name, &bad, "fail", intPtr(10*(i+1)))
 	}
 	row := rowNamed(t, f.build(), "Bad")
-	if want := "5 projects · failing: A 10, B 20, C 30 +2 more"; row.Subtext != want {
+	if want := "5 projects · 5 failing"; row.Subtext != want {
 		t.Fatalf("subtext = %q, want %q", row.Subtext, want)
 	}
 }
@@ -269,8 +346,8 @@ func TestProjectTree_FoldersWithoutComponentsStillShowTheTree(t *testing.T) {
 	if vm.Empty {
 		t.Fatal("Empty = true for an org that has folders")
 	}
-	if got := rowNames(vm); len(got) != 2 {
-		t.Fatalf("rows = %v, want the folder and its project", got)
+	if got := rowNames(vm); len(got) != 1 || got[0] != "Product" {
+		t.Fatalf("rows = %v, want the folder", got)
 	}
 }
 
@@ -286,11 +363,14 @@ func TestProjectTree_RowCountCountsProjectsNotFolderRows(t *testing.T) {
 	f.project("AlurKerja", &it, "pass", intPtr(84))
 	vm := f.build()
 
-	if len(vm.Rows) != 5 {
-		t.Fatalf("rows = %d, want 5 (2 folders + 3 projects)", len(vm.Rows))
+	if len(vm.Rows) != 2 {
+		t.Fatalf("rows = %d, want 2 (IT Services + Unfiled)", len(vm.Rows))
 	}
 	if vm.RowCount != 3 {
-		t.Fatalf("RowCount = %d, want 3 (projects only, folders excluded)", vm.RowCount)
+		t.Fatalf("RowCount = %d, want 3 (projects at any depth, folders excluded)", vm.RowCount)
+	}
+	if in := f.buildIn(it); in.RowCount != 2 {
+		t.Fatalf("RowCount inside IT Services = %d, want 2 (the projects beneath it)", in.RowCount)
 	}
 }
 
@@ -390,7 +470,64 @@ func TestProjectTree_MoveOptionsExcludeTheFolderItsSubtreeAndTooDeepTargets(t *t
 	if offered["D1 / D2 / D3 / D4 / D5 / D6 / D7"] {
 		t.Fatal("D7 would nest past the cap and should not be offered")
 	}
-	if got := rowNamed(t, vm, "Tribe lead A").MoveValue; got != it.ID.String() {
+	if got := rowNamed(t, f.buildIn(it), "Tribe lead A").MoveValue; got != it.ID.String() {
 		t.Fatalf("Tribe lead A MoveValue = %q, want its parent %q", got, it.ID)
+	}
+}
+
+func TestFolderTrail_JoinsThePageBreadcrumbOnlyInsideAFolder(t *testing.T) {
+	f := newTreeFixture(t)
+	it := f.folder("IT Services", nil)
+	tribeA := f.folder("Tribe lead A", &it)
+	f.project("Linknet", &tribeA, "pass", intPtr(90))
+
+	if trail := folderTrail(f.build().Crumbs, true); trail != nil {
+		t.Fatalf("top-level trail = %+v, want none (the organization is already the last crumb)", trail)
+	}
+	// No "Projects" crumb: the organization's name before the trail is the
+	// link to the top level.
+	assertTrail(t, "Tribe lead A", folderTrail(f.buildIn(tribeA).Crumbs, true), []httpx.NavCrumb{
+		{Label: "IT Services", Href: "/projects?folder=" + it.ID.String(), Drop: true, DropFolder: it.ID.String()},
+		{Label: "Tribe lead A"},
+	})
+	if viewer := folderTrail(f.buildIn(tribeA).Crumbs, false); viewer[0].Drop {
+		t.Fatal("a viewer's breadcrumb accepts drops")
+	}
+}
+
+// A project's pages carry the same breadcrumb as the folder view: every
+// folder down to the project, all links back up (the organization's name,
+// rendered before the trail, links to the top level).
+func TestProjectTrail_IncludesTheFolderPath(t *testing.T) {
+	f := newTreeFixture(t)
+	it := f.folder("IT Services", nil)
+	tribeA := f.folder("Tribe lead A", &it)
+	fid := tribeA.ID
+	filed := &repo.Project{ID: uuid.New(), Name: "Linknet", FolderID: &fid}
+	loose := &repo.Project{ID: uuid.New(), Name: "SyarQ"}
+	comp := &repo.Component{ID: uuid.New(), Name: "linknet-api"}
+
+	want := []httpx.NavCrumb{
+		{Label: "IT Services", Href: "/projects?folder=" + it.ID.String()},
+		{Label: "Tribe lead A", Href: "/projects?folder=" + tribeA.ID.String()},
+		{Label: "Linknet"},
+	}
+	assertTrail(t, "filed project", projectTrail(f.folders, filed), want)
+	assertTrail(t, "top-level project", projectTrail(f.folders, loose), []httpx.NavCrumb{{Label: "SyarQ"}})
+
+	want[2] = httpx.NavCrumb{Label: "Linknet", Href: "/projects/" + filed.ID.String()}
+	assertTrail(t, "component", componentTrail(f.folders, filed, comp),
+		append(want, httpx.NavCrumb{Label: "linknet-api"}))
+}
+
+func assertTrail(t *testing.T, name string, got, want []httpx.NavCrumb) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s trail = %+v, want %+v", name, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("%s crumb %d = %+v, want %+v", name, i, got[i], want[i])
+		}
 	}
 }

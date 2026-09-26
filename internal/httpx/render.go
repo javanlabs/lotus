@@ -70,6 +70,11 @@ type User struct {
 type NavCrumb struct {
 	Label string
 	Href  string
+	// Drop makes the crumb a drag-and-drop target on the folder view:
+	// dropping a project or folder on it moves it into DropFolder (a folder
+	// id, or "" for the top level).
+	Drop       bool
+	DropFolder string
 }
 
 type Nav struct {
@@ -87,6 +92,10 @@ type Nav struct {
 	// page and stays plain. A single-element Trail is the common case
 	// (Settings), a project page adds one level, a component two.
 	Trail []NavCrumb
+	// Below the top level (whenever Trail is set) the organization's name
+	// is the first link, back to its projects. OrgDrop also makes it a
+	// drag-and-drop target on the folder view, meaning "the top level".
+	OrgDrop bool
 }
 
 // NavItem is one sidebar link. Href empty means "not built yet" — the

@@ -29,7 +29,10 @@ func newProjectPage(d Deps) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		return renderNewProjectFormWithCount(c, d, s, org, user, newProjectFormData{}, fiber.StatusOK)
+		// Opened from inside a folder (?folder=<id>), the new project is
+		// filed there unless another folder is chosen.
+		form := newProjectFormData{FolderID: c.Query("folder")}
+		return renderNewProjectFormWithCount(c, d, s, org, user, form, fiber.StatusOK)
 	}
 }
 

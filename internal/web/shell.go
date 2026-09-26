@@ -105,26 +105,39 @@ func navWithTrail(active string, projectCount int, trail []httpx.NavCrumb) *http
 	return nav
 }
 
-// projectTrail is the breadcrumb path for a project page: the project
-// itself, as the current page.
-func projectTrail(project *repo.Project) []httpx.NavCrumb {
-	return []httpx.NavCrumb{{Label: project.Name}}
+// projectTrail is the breadcrumb path for a project page — the same path
+// the folder view shows: every folder down to the project, then the
+// project itself as the current page.
+func projectTrail(folders []repo.Folder, project *repo.Project) []httpx.NavCrumb {
+	return append(projectFolderPath(folders, project), httpx.NavCrumb{Label: project.Name})
 }
 
 // componentTrail is the path for anything at or below a component —
-// project → component → whatever the caller adds. Callers pass the deeper
-// segments rather than each rebuilding the first two, so a change to how
-// projects are linked lands in one place.
-func componentTrail(project *repo.Project, component *repo.Component, deeper ...httpx.NavCrumb) []httpx.NavCrumb {
-	trail := []httpx.NavCrumb{
-		{Label: project.Name, Href: "/projects/" + project.ID.String()},
-	}
+// the project's folder path, then project → component → whatever the
+// caller adds. Callers pass the deeper segments rather than each
+// rebuilding the first ones, so a change to how projects are linked lands
+// in one place.
+func componentTrail(folders []repo.Folder, project *repo.Project, component *repo.Component, deeper ...httpx.NavCrumb) []httpx.NavCrumb {
+	trail := append(projectFolderPath(folders, project),
+		httpx.NavCrumb{Label: project.Name, Href: "/projects/" + project.ID.String()})
 	if len(deeper) == 0 {
 		trail = append(trail, httpx.NavCrumb{Label: component.Name})
 		return trail
 	}
 	trail = append(trail, httpx.NavCrumb{Label: component.Name, Href: "/components/" + component.ID.String()})
 	return append(trail, deeper...)
+}
+
+// projectFolderPath is every folder the project sits in, outermost first,
+// each linking to that folder in the folder view. The top level needs no
+// crumb of its own: the organization's name before the trail links there.
+func projectFolderPath(folders []repo.Folder, project *repo.Project) []httpx.NavCrumb {
+	crumbs := newFolderView(nil, folders, nil, parentKey(project.FolderID)).crumbs()
+	out := make([]httpx.NavCrumb, 0, len(crumbs)-1)
+	for _, c := range crumbs[1:] {
+		out = append(out, httpx.NavCrumb{Label: c.Name, Href: c.Href})
+	}
+	return out
 }
 
 // iconQATools: a clipboard with a check — test plans and runs.

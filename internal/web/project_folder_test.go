@@ -104,3 +104,36 @@ func TestProjectPage_MoveToFolderIsANormalButton(t *testing.T) {
 		t.Fatalf("Move to folder trigger = %s, want a secondary button", trigger)
 	}
 }
+
+func TestProjectPage_BreadcrumbShowsTheFolderPath(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-pf-crumb", "viewer")
+	raw := seedSession(t, db, orgID, userID)
+	seedFiledProject(t, db, orgID, "IT Services", "Linknet", "pass", 90)
+	var projectID, folderID uuid.UUID
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.QueryRow(`SELECT id, folder_id FROM projects WHERE name = 'Linknet'`).Scan(&projectID, &folderID); err != nil {
+			t.Fatalf("find project: %v", err)
+		}
+	})
+	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-pf-crumb."+dashboardTestDomain, "/projects/"+projectID.String(), raw))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET project = %v, %v", resp, err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	body := string(b)
+	if strings.Contains(body, `>Projects</a>`) {
+		t.Fatal("breadcrumb still has a separate Projects crumb")
+	}
+	for _, want := range []string{
+		// The organization's name is the link to the top level; there is
+		// no separate "Projects" crumb.
+		`<a href="/projects" style="color:#6B7280">acme-pf-crumb</a>`,
+		`<a href="/projects?folder=` + folderID.String() + `" style="color:#6B7280">IT Services</a>`,
+		`aria-current="page" style="color:#43284E;font-weight:600">Linknet</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("breadcrumb missing %q", want)
+		}
+	}
+}

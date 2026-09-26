@@ -21,7 +21,7 @@ decided the rollup rule (§4) more than anything else.
 |---|---|---|
 | Concept | **Folders**: arrangement only | Workspaces, meaning a partition with its own members, connections and settings. Javan needs no separation between divisions, and the organization is already that boundary. |
 | Tree ownership | **One shared tree per organization**; a project is in exactly one folder | Personal per-user views; tags |
-| "Monitoring" a folder | **The `/projects` page becomes a collapsible tree with a rollup on every folder row** | A personal watchlist; alerts. Both remain possible later. |
+| "Monitoring" a folder | **The `/projects` page is a flat folder view — one level at a time, folders open on click — with a rollup on every folder row** (revised 2026-09-26, see §5) | A collapsible tree (the first build; dropped as heavier to read and use than opening folders); a personal watchlist; alerts. |
 | Storage | **A separate `folders` table plus a nullable `projects.folder_id`** | Nestable projects (blurs folder and project, and every project query must learn to skip folders); `ltree` materialized paths (costly moves, and the speed isn't needed at tens of folders) |
 | Folder rollup | **Share of projects passing** | Average score (lets a healthy project hide a failing one, and is the easiest number to game); worst project (never rewards partial progress) |
 
@@ -76,7 +76,7 @@ at the root exactly as today.
 - **Archived projects keep their `folder_id`.** Unarchiving returns a
   project to where it was.
 - **Folders hold folders and projects only.** Components stay inside projects.
-- **No folder page or slug in v1.** Folders exist to structure `/projects`.
+- **No folder slug.** A folder opens at `/projects?folder=<id>` (§5).
 
 ## 4. Rollup: share of projects passing
 
@@ -94,8 +94,9 @@ A folder answers one question: **how many of my projects pass?**
   cards.
 - **Status dot:** red if any project beneath is failing, so a folder at 80%
   never looks all-clear.
-- **Failing projects are named** in the row's subtext ("failing: Linknet 42,
-  ANRI 55"), up to 3, then "+N more". The row says what to fix next.
+- **Failing projects are counted** in the row's subtext ("3 projects · 2
+  failing"), not named — the "Failing" filter lists them, worst first
+  (revised 2026-09-27; the first build named up to 3).
 - **Unmeasured projects** (unknown status) are left out of M but shown
   separately ("2 not measured"), so never binding a project can't be used to
   look better.
@@ -130,50 +131,60 @@ aggregates bottom-up, with no extra query per folder.
 
 ## 5. The `/projects` page
 
-The flat project list becomes a tree. The score card and KPI cards above it
-are untouched.
+*Revised 2026-09-26: the first build rendered a collapsible tree; it was
+replaced by the flat folder view below, with selection hidden behind
+"Select" and drag-and-drop added.*
 
-```
-                               SCORE            SONARQUBE  TRIVY  SENTRY  GITLAB
-▾ Product                      ● 3 / 3 passing   3/3        2/2    –       3/3
-     3 projects · 22 components
-     AlurKerja                   84             (project rows as today)
-▾ IT Services                  ● 1 / 3 passing   2/3        1/3    …
-     3 projects · failing: Linknet 42, ANRI 55
-  ▾ Tribe lead A               ● 1 / 2 passing
-       Linknet                   42 ●
-       Dignas                    95
-  ▸ Tribe lead B               ● 0 / 1 passing
-  Unfiled project                …
-```
+The page shows **one level of the tree at a time**, like a file browser.
 
-- **Folder rows:** a chevron, the name, "N / M passing" plus a bar in the score
-  column, the status dot, and subtext giving the size and the failing
-  projects.
-- **Column order** comes from `bindableKinds`, as everywhere (see AGENTS.md).
-- **Order:** within each folder, subfolders first, then projects, each by
-  `sort_order` then name. Root-level projects come after the top-level
-  folders. Column sorting reorders siblings within their parent and never
-  flattens the tree.
-- **Collapse and expand** in Alpine. Each viewer's choice is kept in
-  `localStorage`, every access wrapped in try/catch, so the page works
-  without it. The default is fully expanded.
-- **The "Failing" filter** shows failing projects plus the parent folders
-  that contain them.
-- **Alpine `:style` uses the object form** (AGENTS.md).
+- `/projects` is the top level: folder rows first, then projects filed at
+  the top level. Clicking a folder row opens `/projects?folder=<id>`, which
+  shows that folder's subfolders and the projects filed directly in it. A
+  malformed, unknown or other-organization folder id is a 404.
+- Inside a folder, the folder path joins the page's **breadcrumb** at the
+  top ("<org> / IT Services / Tribe lead A"). The organization's name is
+  the link to the top level — there is no separate "Projects" crumb — and
+  every segment links back up and accepts drops. The browser's Back button
+  works. A project's own pages (project, component, metric) show the same
+  path before the project ("<org> / IT Services / Linknet / …").
+- **Folder rows** carry the rollup of §4 for everything beneath them at any
+  depth: "N / M passing" with its bar, the red status dot, "N failing",
+  "N not measured". Project rows are unchanged.
+- **Filters.** *All* shows the current level. *Failing* lists every failing
+  project beneath the current folder at any depth, flat, worst score first,
+  each row prefixed with where it lives ("IT Services / Tribe lead A", or
+  "Top level"). The counts beside them are the projects, and the failing
+  projects, beneath the current folder.
+- **Rows** are `<div>`s whose name is a link stretched over the row, so a
+  row opens its folder or project anywhere it is clicked (middle-click
+  included), while still holding a checkbox and the folder actions button.
+- **Order**: folders first, then projects, each by `sort_order` then name;
+  column sorting reorders within those two groups.
+- **Column order** comes from `bindableKinds` (AGENTS.md).
 
-### Managing the tree (no drag-and-drop in v1)
+### Managing folders
 
-- A **"New folder"** button next to "New project" opens a name field and a
-  parent picker.
-- The **folder row menu** has Rename, Move to…, and Delete. Delete is disabled
-  with the reason shown when the folder isn't empty.
-- **Projects** get "Move to…" in their row menu, and a folder picker on the
-  New project form and in project settings.
-- **The "Move to…" picker** lists full paths ("IT Services / Tribe lead A") and
-  leaves out targets that would create a cycle or exceed the depth cap. The
-  server enforces both regardless.
-- **Viewers** see the tree with no management controls.
+- **New folder** (a secondary button) creates inside the open folder unless
+  another parent is chosen; **New project** from inside a folder files the
+  project there by default.
+- The **folder row menu** (···) has Rename, Move into…, and Delete; Delete
+  is disabled with the reason when the folder isn't empty.
+- **Select** (for anyone with `project.update`) shows a checkbox on each
+  project row and a select-all for the visible ones, and turns into
+  **Cancel**; the bar then shows "N selected · Move to folder", which opens
+  a dialog moving every ticked project at once (`POST /projects/move`, all
+  or nothing).
+- **Drag and drop**: a project or a folder row can be dragged onto a folder
+  row, or onto a breadcrumb segment — the way to move something up and out.
+  Dragging a ticked project carries the whole selection. The drop posts to
+  the same routes as the dialogs, so the server's rules and messages apply;
+  a refusal shows as an error toast. Only those who may move the thing can
+  drag it (`project.update` for projects, `folder.update` for folders).
+- The **project page** keeps a "Move to folder" dialog (a secondary
+  button). Every folder picker lists folders as an indented tree, shows the
+  full path once chosen, and "Top level" when nothing else is.
+- **Viewers** see the folder view, the breadcrumb and the filters, with no
+  selection, dragging or folder controls.
 
 ## 6. Permissions and routes
 
@@ -244,8 +255,8 @@ shows who reorganized what.
 
 ## 10. Out of scope (v1)
 
-- Drag-and-drop reordering and moving
-- Folder pages or URLs (`/folders/:id`)
+- Manual reordering of folders or projects (`sort_order` is never written;
+  name order applies)
 - Per-folder access control
 - A personal watchlist and alerts on folder changes
 - `lotus seed-services` filing imported projects into folders by their

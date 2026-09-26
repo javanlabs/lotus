@@ -92,37 +92,13 @@ function lotusSort(headingLabel) {
         return av.localeCompare(bv, undefined, { sensitivity: 'base' }) * this.dir;
       };
 
-      // On the folder tree a row sorts among its siblings only, and each
-      // folder's rows stay directly beneath it — a flat sort by score
-      // would scatter projects away from the folders that hold them.
-      // Folders stay ahead of projects at every level.
-      let ordered;
-      if (rows.some((r) => r.dataset.node)) {
-        const byParent = new Map();
-        rows.forEach((r) => {
-          const p = r.dataset.parent || '';
-          if (!byParent.has(p)) byParent.set(p, []);
-          byParent.get(p).push(r);
-        });
-        ordered = [];
-        const seen = new Set();
-        const walk = (parent) => {
-          const kids = (byParent.get(parent) || []).slice().sort((a, b) => {
-            const af = a.dataset.folder === '1', bf = b.dataset.folder === '1';
-            if (af !== bf) return af ? -1 : 1;
-            return compare(a, b);
-          });
-          kids.forEach((k) => {
-            if (seen.has(k)) return;
-            seen.add(k);
-            ordered.push(k);
-            if (k.dataset.folder === '1') walk(k.dataset.node);
-          });
-        };
-        walk('');
-      } else {
-        ordered = rows.sort(compare);
-      }
+      // On the folder view, folders stay ahead of projects whatever the
+      // column; within each group the chosen column decides.
+      const ordered = rows.sort((a, b) => {
+        const af = a.dataset.folder === '1', bf = b.dataset.folder === '1';
+        if (af !== bf) return af ? -1 : 1;
+        return compare(a, b);
+      });
 
       ordered.forEach((r) => box.appendChild(r));
       this.retitle();
@@ -145,48 +121,121 @@ function lotusSort(headingLabel) {
   };
 }
 
-// lotusTree is the organization dashboard's page state: the Failing filter
-// (read by dashboard_block's rows) and which folders are collapsed.
-//
-// Collapsed folders are remembered per browser. Storage can be missing or
-// throw — a private window, blocked site data — so every access is guarded:
-// the tree then starts expanded and collapsing still works, it just is not
-// remembered.
-const LOTUS_TREE_KEY = 'lotus.tree.collapsed';
-
+// lotusTree is the organization dashboard's page state: the All/Failing
+// filter (read by dashboard_block's rows), selection for the bulk move, and
+// drag and drop of projects and folders onto folders.
 function lotusTree() {
   return {
     filter: 'all',
-    collapsed: {},
 
+    // Checkboxes stay hidden until "Select" turns selection on; turning it
+    // off (Cancel) also clears what was ticked.
+    selecting: false,
+
+    toggleSelecting() {
+      this.selecting = !this.selecting;
+      if (!this.selecting) this.clearSelection();
+    },
+
+    // Drag and drop. `dragging` is what is in flight — a project (with the
+    // rest of the selection, when the dragged row is ticked) or one folder —
+    // and `dropTarget` the folder id under the pointer ('' = top level,
+    // the breadcrumb's first segment), which the target highlights.
+    dragging: null,
+    dropTarget: null,
+
+    dragStart(event, row) {
+      const kind = row.dataset.kind;
+      const id = row.dataset.node;
+      const ids = kind === 'project' && this.selected[id] ? this.selectedIds() : [id];
+      this.dragging = { kind, ids };
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', ids.join(','));
+    },
+
+    dragEnd() {
+      this.dragging = null;
+      this.dropTarget = null;
+      document.querySelectorAll('[data-drop-folder].lotus-drop-target')
+        .forEach((el) => el.classList.remove('lotus-drop-target'));
+    },
+
+    // The folder path lives in the shell's breadcrumb, outside this
+    // component's element, so its segments are wired up by hand rather than
+    // through Alpine attributes.
     init() {
-      try {
-        const saved = JSON.parse(window.localStorage.getItem(LOTUS_TREE_KEY) || '{}');
-        if (saved && typeof saved === 'object') this.collapsed = saved;
-      } catch (e) {
-        this.collapsed = {};
+      document.querySelectorAll('[data-drop-folder]').forEach((el) => {
+        const target = el.dataset.dropFolder;
+        el.addEventListener('dragover', (e) => {
+          this.dragOver(e, target);
+          el.classList.toggle('lotus-drop-target', this.dropTarget === target);
+        });
+        el.addEventListener('dragleave', (e) => {
+          this.dragLeave(e, target);
+          if (this.dropTarget !== target) el.classList.remove('lotus-drop-target');
+        });
+        el.addEventListener('drop', (e) => this.drop(e, target));
+      });
+    },
+
+    // A folder cannot be dropped on itself; everything else is for the
+    // server to judge (a folder into its own subfolder, the depth cap).
+    canDrop(target) {
+      if (!this.dragging) return false;
+      return !(this.dragging.kind === 'folder' && this.dragging.ids.includes(target));
+    },
+
+    dragOver(event, target) {
+      if (!this.canDrop(target)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      this.dropTarget = target;
+    },
+
+    dragLeave(event, target) {
+      // Moving between a target's own children fires dragleave on it too.
+      if (event.currentTarget.contains(event.relatedTarget)) return;
+      if (this.dropTarget === target) this.dropTarget = null;
+    },
+
+    // drop posts the move the way the dialogs do (as an htmx request, so a
+    // refusal comes back as the dialog's error fragment) and reloads on
+    // success, which shows the flash. A refusal becomes an error toast.
+    async drop(event, target) {
+      event.preventDefault();
+      const moving = this.dragging;
+      this.dragEnd();
+      if (!moving || (moving.kind === 'folder' && moving.ids.includes(target))) return;
+
+      const body = new URLSearchParams();
+      let url;
+      if (moving.kind === 'project') {
+        url = '/projects/move';
+        moving.ids.forEach((id) => body.append('project_id', id));
+        body.append('folder_id', target);
+      } else {
+        url = '/folders/' + encodeURIComponent(moving.ids[0]) + '/move';
+        body.append('parent_id', target);
       }
-    },
 
-    isCollapsed(id) {
-      return !!this.collapsed[id];
-    },
-
-    toggle(id) {
-      const next = { ...this.collapsed };
-      if (next[id]) delete next[id];
-      else next[id] = true;
-      this.collapsed = next;
+      let res;
       try {
-        window.localStorage.setItem(LOTUS_TREE_KEY, JSON.stringify(next));
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'HX-Request': 'true', 'Content-Type': 'application/x-www-form-urlencoded' },
+          body,
+        });
       } catch (e) {
-        // Not remembered; the collapse itself still happened.
+        window.lotusToast({ tone: 'fail', text: 'The move could not be sent. Check your connection and try again.' });
+        return;
       }
-    },
-
-    // hiddenBy: is any of these space-separated folder ids collapsed?
-    hiddenBy(ancestors) {
-      return (ancestors || '').split(' ').some((id) => id && this.collapsed[id]);
+      if (res.ok && res.headers.get('HX-Refresh')) {
+        window.location.reload();
+        return;
+      }
+      const html = await res.text();
+      const text = new DOMParser().parseFromString(html, 'text/html').body.textContent.trim();
+      window.lotusToast({ tone: 'fail', text: text || 'That move could not be made.' });
     },
 
     // Multi-select for the bulk move. `selected` is a set of project ids,
@@ -219,7 +268,7 @@ function lotusTree() {
     },
 
     // The header checkbox acts on the project rows currently on screen —
-    // not ones hidden by a collapsed folder or the Failing filter.
+    // not ones hidden by the other filter's list.
     visibleProjectIds(box) {
       if (!box) return [];
       return Array.from(box.querySelectorAll('[data-project-select]'))

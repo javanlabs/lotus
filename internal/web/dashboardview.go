@@ -41,15 +41,11 @@ type dashboardRow struct {
 	// empty on the organization dashboard, which has no trend column).
 	TrendURL string
 
-	// The folder tree (organization dashboard only). NodeID is the row's
-	// folder or project id; ParentID its enclosing folder ("" at the top);
-	// Ancestors every enclosing folder id, outermost first, space-separated
-	// — what a collapsed folder hides its descendants by.
-	IsFolder  bool
-	NodeID    string
-	ParentID  string
-	Ancestors string
-	IndentPx  int
+	// The folder view (organization dashboard only). NodeID is the row's
+	// folder or project id — what a drag carries and a drop targets. A
+	// folder row's Href opens the folder.
+	IsFolder bool
+	NodeID   string
 
 	// BarTone colours the score text and bar. On a project row it is the
 	// status. On a folder row it is the share passing against the 80% bar,
@@ -173,9 +169,18 @@ type dashboardViewModel struct {
 	RowCount     int
 	Subtitle     string
 
-	// Tree turns on the folder tree: folder rows, collapse, tree-aware
-	// sorting and the folder dialogs. Organization dashboard only.
+	// Tree turns on the folder view: folder rows that open on click, the
+	// breadcrumb, selection, drag and drop and the folder dialogs.
+	// Organization dashboard only.
 	Tree bool
+	// The folder view shows one level at a time. CurrentFolderID is the
+	// open folder ("" at the top level) and Crumbs the path back up.
+	// FailingRows is the "Failing" filter's list — every failing project
+	// beneath the current folder at any depth — and FailingCount its size.
+	CurrentFolderID string
+	Crumbs          []crumb
+	FailingRows     []dashboardRow
+	FailingCount    int
 	// FolderOptions is every folder depth-first with its full path;
 	// FolderSelect is the new-folder parent picker built from it, and
 	// ProjectFolderSelect the bulk-move picker (every folder: a project may
@@ -456,14 +461,16 @@ func rateTone(pct int) string {
 //
 // Every active project gets a row, even one with no components yet: a
 // project filed in a folder must be visible, or the folder would look empty
-// and still refuse to be deleted. Rows are arranged in the organization's
-// folder tree, with a row per folder (arrangeProjectTree, foldertree.go).
-func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, folders []repo.Folder, components []componentInfo, metrics map[uuid.UUID]repo.ComponentMetric) dashboardViewModel {
+// and still refuse to be deleted. The rows are one level of the
+// organization's folder tree — current (nil = the top level): its
+// subfolders, then the projects filed directly in it (folderView,
+// foldertree.go). The caller has already checked current exists.
+func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, folders []repo.Folder, components []componentInfo, metrics map[uuid.UUID]repo.ComponentMetric, current *uuid.UUID) dashboardViewModel {
 	// Empty (the "No repositories yet" / "No projects yet" states) only
-	// when there is nothing to put in the tree at all — no project and no
-	// folder. A componentless project, or an empty folder waiting for its
-	// first project, must still show the tree: every active project gets
-	// a row (deviation 4), and a folder needs somewhere to be created from.
+	// when there is nothing to show at all — no project and no folder. A
+	// componentless project, or an empty folder waiting for its first
+	// project, must still show the list: every active project gets a row
+	// (deviation 4), and a folder needs somewhere to be created from.
 	if len(projects) == 0 && len(folders) == 0 {
 		return dashboardViewModel{Empty: true, NoProjects: len(projects) == 0, ProjectCount: len(projects), Subtitle: subtitle}
 	}
@@ -508,30 +515,35 @@ func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, fo
 	}
 
 	options := folderOptionsFor(folders)
-	rows := arrangeProjectTree(projects, folders, options, projectRows, repo.RollupFolders(folders, treeProjects))
+	view := newFolderView(projects, folders, options, parentKey(current))
+	rows := view.levelRows(projectRows, repo.RollupFolders(folders, treeProjects))
+	failing := view.failingRows(projectRows)
 
 	return dashboardViewModel{
-		TableTitle:     "Projects",
-		RowHeading:     "PROJECT",
-		Columns:        projectColumns,
-		FirstMetricCol: firstMetricCol(false),
-		GridTemplate:   gridTemplateFor(projectColumns, false),
-		Tree:           true,
-		FolderOptions:  options,
+		TableTitle:      "Projects",
+		RowHeading:      "PROJECT",
+		Columns:         projectColumns,
+		FirstMetricCol:  firstMetricCol(false),
+		GridTemplate:    gridTemplateFor(projectColumns, false),
+		Tree:            true,
+		CurrentFolderID: view.currentID(),
+		Crumbs:          view.crumbs(),
+		FailingRows:     failing,
+		FailingCount:    len(failing),
+		FolderOptions:   options,
 		FolderSelect: folderSelect(options, func(o folderOption) bool {
 			return o.Depth >= repo.MaxFolderDepth
 		}),
 		ProjectFolderSelect: folderSelect(options, nil),
 		ProjectCount:        len(projects),
 		// The org-wide numbers are over projects and components, never
-		// folders: filing a project must not move them. RowCount in
-		// particular must count projects, not tree rows — len(rows)
-		// includes folder rows, which would inflate "All", the footer and
-		// the subtitle whenever a folder exists.
-		Score:    buildScoreCard(statuses, repo.RollupScore(scores)),
-		KPIs:     buildKPIs(kindStatuses, kindMeasured, len(components)),
-		Rows:     rows,
-		RowCount: len(projects),
+		// folders: filing a project must not move them.
+		Score: buildScoreCard(statuses, repo.RollupScore(scores)),
+		KPIs:  buildKPIs(kindStatuses, kindMeasured, len(components)),
+		Rows:  rows,
+		// RowCount ("All" and the footer) counts the projects beneath the
+		// current folder at any depth — never folder rows.
+		RowCount: view.projectsBeneath(),
 		Subtitle: subtitle,
 	}
 }

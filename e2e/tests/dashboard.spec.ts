@@ -120,16 +120,20 @@ test('the projects list renders one row per project, with its rolled-up metrics'
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
   await page.goto(`${origin}/projects`);
 
+  // A failing project is rendered twice — in the level's "All" list and in
+  // the "Failing" list — and only the active filter's copy is visible, so
+  // every lookup below is scoped to visible elements.
+
   // Rows are projects, not components: the project is the outermost unit
   // and the thing that owns a Lotus score. Its one component is behind
   // the row, on the project's own page.
-  await expect(page.getByText('Payments', { exact: true })).toBeVisible();
+  await expect(page.getByText('Payments', { exact: true }).filter({ visible: true })).toBeVisible();
   await expect(page.getByText('billing-api')).not.toBeVisible();
   // Scoped to the row: there are two single-component projects now.
-  await expect(page.locator('.lotus-repo-row', { hasText: 'Payments' })
+  await expect(page.locator('.lotus-repo-row:visible', { hasText: 'Payments' })
     .getByText('1 component', { exact: true })).toBeVisible();
 
-  await page.getByText('Payments', { exact: true }).click();
+  await page.getByText('Payments', { exact: true }).filter({ visible: true }).click();
   await expect(page.getByText('billing-api')).toBeVisible();
   // A kind with a status but no score keeps the collector's own phrasing
   // in the cell — the score-only column would otherwise render an empty
@@ -146,10 +150,10 @@ test('the projects list renders one row per project, with its rolled-up metrics'
   // summary further down the page — the segmented-control button is the
   // first match in DOM order.
   await page.getByText('Failing', { exact: false }).first().click();
-  await expect(page.getByText('Payments', { exact: true })).toBeVisible();
-  await expect(page.getByText('Identity', { exact: true })).not.toBeVisible();
+  await expect(page.getByText('Payments', { exact: true }).filter({ visible: true })).toBeVisible();
+  await expect(page.getByText('Identity', { exact: true }).filter({ visible: true })).not.toBeVisible();
   await page.getByText('All', { exact: false }).first().click();
-  await expect(page.getByText('Payments', { exact: true })).toBeVisible();
-  await expect(page.getByText('Identity', { exact: true })).toBeVisible();
-  await expect(page.locator('.lotus-repo-row', { hasText: 'Payments' })).toHaveCSS('display', 'grid');
+  await expect(page.getByText('Payments', { exact: true }).filter({ visible: true })).toBeVisible();
+  await expect(page.getByText('Identity', { exact: true }).filter({ visible: true })).toBeVisible();
+  await expect(page.locator('.lotus-repo-row:visible', { hasText: 'Payments' })).toHaveCSS('display', 'grid');
 });

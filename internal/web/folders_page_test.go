@@ -38,6 +38,7 @@ func getProjectsPage(t *testing.T, subdomain, role string) (string, *sqlx.DB, uu
 	orgID, userID := seedMember(t, db, subdomain, role)
 	raw := seedSession(t, db, orgID, userID)
 	seedFiledProject(t, db, orgID, `Ops <b>"R&D"</b>'s`, "Linknet", "pass", 88)
+	seedTopLevelProject(t, db, orgID, "Unfiled")
 
 	resp, err := app.Test(reqWithSession(http.MethodGet, subdomain+"."+dashboardTestDomain, "/projects", raw))
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -47,41 +48,89 @@ func getProjectsPage(t *testing.T, subdomain, role string) (string, *sqlx.DB, uu
 	return string(body), db, orgID
 }
 
-func TestProjectsPage_RendersTheFolderTree(t *testing.T) {
+func seedTopLevelProject(t *testing.T, db *sqlx.DB, orgID uuid.UUID, name string) {
+	t.Helper()
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if _, err := tx.Exec(`INSERT INTO projects (org_id, slug, name) VALUES ($1, $2, $2)`, orgID, name); err != nil {
+			t.Fatalf("insert project: %v", err)
+		}
+	})
+}
+
+func TestProjectsPage_RendersTheFolderView(t *testing.T) {
 	body, _, _ := getProjectsPage(t, "acme-tree", "owner")
-	for _, want := range []string{`x-data="lotusTree()"`, `data-folder="1"`, "1 / 1 passing", "Linknet", "New folder", "folder-edit-"} {
+	for _, want := range []string{`x-data="lotusTree()"`, `data-folder="1"`, "1 / 1 passing", `href="/projects?folder=`, "Unfiled", "New folder", "folder-edit-", "failing of"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("page missing %q", want)
 		}
 	}
 }
 
-// Review focus: Enter on the nested "Folder actions" button must not also
-// toggle the row's collapse state — see the fix-round-1 report. The row's
-// keydown handler must be scoped to itself with .self, not just .prevent.
-func TestProjectsPage_FolderRowEnterKeyDoesNotFireOnActionsButton(t *testing.T) {
-	body, _, _ := getProjectsPage(t, "acme-tree-kbd", "owner")
-	if !strings.Contains(body, `@keydown.enter.self.prevent="toggle($el.dataset.node)"`) {
-		t.Fatal("folder row keydown handler is missing .self — a nested button's bubbled Enter would incorrectly toggle the folder")
+// Clicking a folder opens /projects?folder=<id>: that folder's contents,
+// with a breadcrumb back up. A folder id that is malformed, unknown, or
+// another organization's is a 404.
+func TestProjectsPage_OpensAFolderFromTheQuery(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-open", "owner")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-open." + dashboardTestDomain
+	seedFiledProject(t, db, orgID, "IT Services", "Linknet", "pass", 88)
+	var folderID uuid.UUID
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&folderID, `SELECT id FROM folders WHERE name = 'IT Services'`); err != nil {
+			t.Fatalf("find folder: %v", err)
+		}
+	})
+	otherOrg, otherUser := seedMember(t, db, "acme-open-other", "owner")
+	_ = otherUser
+	var otherFolder uuid.UUID
+	withOrgTx(t, db, otherOrg, func(tx *sqlx.Tx) {
+		if err := tx.Get(&otherFolder, `INSERT INTO folders (org_id, name) VALUES ($1, 'Theirs') RETURNING id`, otherOrg); err != nil {
+			t.Fatalf("insert other folder: %v", err)
+		}
+	})
+
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects?folder="+folderID.String(), raw))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("open folder = %v, %v; want 200", resp, err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	body := string(b)
+	// The folder path joins the page's one breadcrumb, after the
+	// organization; its links back up are drop targets for a mover.
+	for _, want := range []string{"Linknet", `aria-label="Breadcrumb"`, `data-drop-folder=""`, `<a href="/projects" style="color:#6B7280" class="lotus-crumb-drop" data-drop-folder="">acme-open</a>`, `aria-current="page" style="color:#43284E;font-weight:600">IT Services</span>`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("folder page missing %q", want)
+		}
+	}
+
+	for name, q := range map[string]string{"malformed": "nope", "unknown": uuid.NewString(), "another org's": otherFolder.String()} {
+		resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects?folder="+q, raw))
+		if err != nil || resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s folder = %v, %v; want 404", name, resp, err)
+		}
 	}
 }
 
-// Review focus (final review, item 7): a folder row is a collapse toggle,
-// so it needs aria-expanded to say which state it's in — bound as a
-// boolean expression, per AGENTS.md's rule that :style (and, by the same
-// logic, any :attr) must not be a plain string when it needs to react to
-// state.
-func TestProjectsPage_FolderRowHasAriaExpanded(t *testing.T) {
-	body, _, _ := getProjectsPage(t, "acme-tree-aria", "owner")
-	if !strings.Contains(body, `:aria-expanded="!isCollapsed($el.dataset.node)"`) {
-		t.Fatal("folder row is missing :aria-expanded bound to its collapsed state")
+// Rows can be dragged onto a folder only by someone allowed to move them.
+func TestProjectsPage_RowsAreDraggableOnlyForMovers(t *testing.T) {
+	owner, _, _ := getProjectsPage(t, "acme-drag", "owner")
+	if strings.Contains(owner, `aria-label="Folder path"`) {
+		t.Fatal("a second, in-page folder breadcrumb is still rendered")
+	}
+	if n := strings.Count(owner, `draggable="true"`); n < 2 {
+		t.Fatalf("owner page has %d draggable rows, want the folder and the project", n)
+	}
+	viewer, _, _ := getProjectsPage(t, "acme-drag-v", "viewer")
+	if strings.Contains(viewer, `draggable="true"`) {
+		t.Fatal("viewer page has draggable rows")
 	}
 }
 
 func TestProjectsPage_ViewerSeesNoFolderControls(t *testing.T) {
 	body, _, _ := getProjectsPage(t, "acme-tree-v", "viewer")
 	if !strings.Contains(body, `data-folder="1"`) {
-		t.Fatal("viewer does not see the folder tree")
+		t.Fatal("viewer does not see the folder rows")
 	}
 	for _, unwanted := range []string{"New folder", "folder-edit-", "Folder actions"} {
 		if strings.Contains(body, unwanted) {
@@ -90,7 +139,7 @@ func TestProjectsPage_ViewerSeesNoFolderControls(t *testing.T) {
 	}
 }
 
-// Review focus: a folder row's subtext ("N projects · failing: X 42") is a
+// Review focus: a folder row's subtext ("N projects · N failing · N not measured") is a
 // full sentence, much longer than a project row's ("1 component"). Giving
 // it `flex:none` let it claim its full width unconditionally, which forced
 // the flexbox shrink algorithm to take the room back from the *name* span
@@ -133,6 +182,9 @@ func TestProjectsPage_MembersCanSelectProjectsForABulkMove(t *testing.T) {
 		`aria-label="Select all visible projects"`,
 		`id="move-projects"`,
 		`hx-post="/projects/move"`,
+		// Checkboxes stay hidden until "Select" turns selection on.
+		`@click="toggleSelecting()"`,
+		`x-show="selecting"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("page missing %q", want)
@@ -142,7 +194,7 @@ func TestProjectsPage_MembersCanSelectProjectsForABulkMove(t *testing.T) {
 
 func TestProjectsPage_ViewerCannotSelectProjects(t *testing.T) {
 	body, _, _ := getProjectsPage(t, "acme-sel-v", "viewer")
-	for _, unwanted := range []string{`data-project-select`, `id="move-projects"`, "Select all visible projects"} {
+	for _, unwanted := range []string{`data-project-select`, `id="move-projects"`, "Select all visible projects", `toggleSelecting()`} {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("viewer page contains %q", unwanted)
 		}

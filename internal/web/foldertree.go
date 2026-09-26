@@ -11,13 +11,6 @@ import (
 	"github.com/uyab/lotus/internal/repo"
 )
 
-// treeIndentPx is how far each folder level indents the rows inside it.
-const treeIndentPx = 18
-
-// maxFailingNamed caps how many failing projects a folder row names before
-// "+N more".
-const maxFailingNamed = 3
-
 // folderOption is one folder as a picker lists it.
 type folderOption struct {
 	ID    uuid.UUID
@@ -180,24 +173,13 @@ func folderBadge(ps repo.PassShare) badgeCell {
 	}
 }
 
-// folderSubtext names what a team should fix next rather than restating
-// the number: the failing projects, worst first, when there are any.
+// folderSubtext sizes a folder: how many projects it holds, how many of
+// them fail and how many are not measured yet. The failing projects are
+// counted, not named — the "Failing" filter lists them.
 func folderSubtext(r repo.FolderRollup) string {
 	parts := []string{fmt.Sprintf("%d project%s", r.Projects, plural(r.Projects, "", "s"))}
 	if n := len(r.Failing); n > 0 {
-		names := make([]string, 0, maxFailingNamed)
-		for _, p := range r.Failing[:min(n, maxFailingNamed)] {
-			if p.Score != nil {
-				names = append(names, fmt.Sprintf("%s %d", p.Name, *p.Score))
-			} else {
-				names = append(names, p.Name)
-			}
-		}
-		s := "failing: " + strings.Join(names, ", ")
-		if n > maxFailingNamed {
-			s += fmt.Sprintf(" +%d more", n-maxFailingNamed)
-		}
-		parts = append(parts, s)
+		parts = append(parts, fmt.Sprintf("%d failing", n))
 	} else {
 		parts = append(parts, fmt.Sprintf("%d component%s", r.Components, plural(r.Components, "", "s")))
 	}
@@ -221,75 +203,192 @@ func folderDeleteBlocked(projects, subfolders int) string {
 	return "Still holds " + strings.Join(parts, " and ") + " · move them out first"
 }
 
-// arrangeProjectTree lays the rows out depth-first: in each folder, its
-// subfolders (each followed by its own contents), then its projects. Root
-// projects come after the top-level folders.
-func arrangeProjectTree(projects []repo.Project, folders []repo.Folder, options []folderOption,
-	projectRows map[uuid.UUID]dashboardRow, rollups map[uuid.UUID]repo.FolderRollup) []dashboardRow {
+// crumb is one step of the folder view's breadcrumb. FolderID is "" for
+// the top level; it is also what a drop on the crumb moves things into.
+type crumb struct {
+	Name     string
+	Href     string
+	FolderID string
+	Current  bool
+}
 
-	children := childFolders(folders)
-	known := make(map[uuid.UUID]bool, len(folders))
-	for _, f := range folders {
-		known[f.ID] = true
+// folderTrail puts the folder path into the page's breadcrumb (the shell's
+// trail, after the organization) — nothing at the top level, where the
+// organization is already the last crumb. The top level itself is the
+// organization's name, so the view's own "Projects" crumb is left out.
+// Every crumb but the open folder links back up and, when canDrop, accepts
+// drag-and-drop moves.
+func folderTrail(crumbs []crumb, canDrop bool) []httpx.NavCrumb {
+	if len(crumbs) < 2 {
+		return nil
 	}
-	filed := make(map[uuid.UUID][]repo.Project, len(folders)+1)
+	out := make([]httpx.NavCrumb, 0, len(crumbs)-1)
+	for _, c := range crumbs[1:] {
+		if c.Current {
+			out = append(out, httpx.NavCrumb{Label: c.Name})
+			continue
+		}
+		out = append(out, httpx.NavCrumb{Label: c.Name, Href: c.Href, Drop: canDrop, DropFolder: c.FolderID})
+	}
+	return out
+}
+
+// folderHref opens a folder in the folder view.
+func folderHref(id uuid.UUID) string { return "/projects?folder=" + id.String() }
+
+// folderView is the organization's folder tree seen from one folder
+// (uuid.Nil = the top level).
+type folderView struct {
+	current  uuid.UUID
+	folders  map[uuid.UUID]repo.Folder
+	children map[uuid.UUID][]repo.Folder
+	filed    map[uuid.UUID][]repo.Project // by folder; uuid.Nil = top level
+	paths    map[uuid.UUID]string
+	options  []folderOption
+}
+
+func newFolderView(projects []repo.Project, folders []repo.Folder, options []folderOption, current uuid.UUID) folderView {
+	v := folderView{
+		current:  current,
+		folders:  make(map[uuid.UUID]repo.Folder, len(folders)),
+		children: childFolders(folders),
+		filed:    make(map[uuid.UUID][]repo.Project, len(folders)+1),
+		paths:    make(map[uuid.UUID]string, len(options)),
+		options:  options,
+	}
+	for _, f := range folders {
+		v.folders[f.ID] = f
+	}
+	for _, o := range options {
+		v.paths[o.ID] = o.Path
+	}
 	for _, p := range projects {
 		k := parentKey(p.FolderID)
-		if !known[k] {
-			// Filed in a folder this page did not load: show it at the root
-			// rather than let it vanish.
+		if _, known := v.folders[k]; !known {
+			// Filed in a folder this page did not load: show it at the top
+			// level rather than let it vanish.
 			k = uuid.Nil
 		}
-		filed[k] = append(filed[k], p)
+		v.filed[k] = append(v.filed[k], p)
 	}
-	for k := range filed {
-		sortProjects(filed[k])
+	for k := range v.filed {
+		sortProjects(v.filed[k])
 	}
+	return v
+}
 
-	rows := make([]dashboardRow, 0, len(projects)+len(folders))
-	seen := make(map[uuid.UUID]bool, len(folders))
-	var walk func(parent uuid.UUID, depth int, ancestors []string)
-	walk = func(parent uuid.UUID, depth int, ancestors []string) {
-		parentID := ""
-		if parent != uuid.Nil {
-			parentID = parent.String()
-		}
-		place := func(row dashboardRow) dashboardRow {
-			row.ParentID = parentID
-			row.Ancestors = strings.Join(ancestors, " ")
-			row.IndentPx = depth * treeIndentPx
-			return row
-		}
-		for _, f := range children[parent] {
-			if seen[f.ID] {
-				continue
-			}
-			seen[f.ID] = true
-			r := rollups[f.ID]
-			row := place(folderRow(f, r))
-			members, height := folderSubtree(children, f.ID)
-			row.MoveValue = parentID
-			row.MoveOptions = folderSelect(options, func(o folderOption) bool {
-				return members[o.ID] || o.Depth+height > repo.MaxFolderDepth
-			})
-			// The server's FolderNotEmptyError only counts what is filed
-			// DIRECTLY in the folder — direct subfolders and direct
-			// projects — not everything at any depth, so the hint must
-			// match: r.Projects (the rollup) counts active projects at
-			// any depth and would overstate what actually blocks the
-			// delete.
-			row.DeleteBlocked = folderDeleteBlocked(len(filed[f.ID]), len(children[f.ID]))
-			rows = append(rows, row)
-			walk(f.ID, depth+1, append(append([]string(nil), ancestors...), f.ID.String()))
-		}
-		for _, p := range filed[parent] {
-			rows = append(rows, place(projectRows[p.ID]))
-		}
+func (v folderView) currentID() string {
+	if v.current == uuid.Nil {
+		return ""
 	}
-	walk(uuid.Nil, 0, nil)
+	return v.current.String()
+}
 
+// levelRows is what the "All" filter shows: the current folder's
+// subfolders, then the projects filed directly in it.
+func (v folderView) levelRows(projectRows map[uuid.UUID]dashboardRow, rollups map[uuid.UUID]repo.FolderRollup) []dashboardRow {
+	rows := make([]dashboardRow, 0, len(v.children[v.current])+len(v.filed[v.current]))
+	for _, f := range v.children[v.current] {
+		r := rollups[f.ID]
+		row := folderRow(f, r)
+		row.Href = folderHref(f.ID)
+		members, height := folderSubtree(v.children, f.ID)
+		row.MoveValue = v.currentID()
+		row.MoveOptions = folderSelect(v.options, func(o folderOption) bool {
+			return members[o.ID] || o.Depth+height > repo.MaxFolderDepth
+		})
+		// The server's FolderNotEmptyError only counts what is filed
+		// DIRECTLY in the folder — direct subfolders and direct projects —
+		// so the hint counts the same, not the rollup's any-depth total.
+		row.DeleteBlocked = folderDeleteBlocked(len(v.filed[f.ID]), len(v.children[f.ID]))
+		rows = append(rows, row)
+	}
+	for _, p := range v.filed[v.current] {
+		rows = append(rows, projectRows[p.ID])
+	}
 	for i := range rows {
 		rows[i].N = i + 1
 	}
 	return rows
+}
+
+// beneath reports whether a project filed in folderID sits under the
+// current folder, at any depth.
+func (v folderView) beneath(folderID uuid.UUID) bool {
+	if v.current == uuid.Nil {
+		return true
+	}
+	for id, steps := folderID, 0; id != uuid.Nil && steps <= len(v.folders); steps++ {
+		if id == v.current {
+			return true
+		}
+		id = parentKey(v.folders[id].ParentID)
+	}
+	return false
+}
+
+func (v folderView) projectsBeneath() int {
+	n := 0
+	for k, ps := range v.filed {
+		if v.beneath(k) {
+			n += len(ps)
+		}
+	}
+	return n
+}
+
+// failingRows is what the "Failing" filter shows: every failing project
+// beneath the current folder at any depth, worst score first, each row
+// saying where the project lives.
+func (v folderView) failingRows(projectRows map[uuid.UUID]dashboardRow) []dashboardRow {
+	var rows []dashboardRow
+	for k, ps := range v.filed {
+		if !v.beneath(k) {
+			continue
+		}
+		where := "Top level"
+		if k != uuid.Nil {
+			where = v.paths[k]
+		}
+		for _, p := range ps {
+			row := projectRows[p.ID]
+			if row.Tone != "fail" {
+				continue
+			}
+			row.Subtext = where + " · " + row.Subtext
+			rows = append(rows, row)
+		}
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := rows[i].ScoreValue, rows[j].ScoreValue
+		if (a == nil) != (b == nil) {
+			return b == nil
+		}
+		if a != nil && *a != *b {
+			return *a < *b
+		}
+		return strings.ToLower(rows[i].Name) < strings.ToLower(rows[j].Name)
+	})
+	for i := range rows {
+		rows[i].N = i + 1
+	}
+	return rows
+}
+
+// crumbs is the path from the top level down to the current folder.
+func (v folderView) crumbs() []crumb {
+	var path []repo.Folder
+	for id, steps := v.current, 0; id != uuid.Nil && steps <= len(v.folders); steps++ {
+		f, ok := v.folders[id]
+		if !ok {
+			break
+		}
+		path = append([]repo.Folder{f}, path...)
+		id = parentKey(f.ParentID)
+	}
+	out := []crumb{{Name: "Projects", Href: "/projects", Current: len(path) == 0}}
+	for i, f := range path {
+		out = append(out, crumb{Name: f.Name, Href: folderHref(f.ID), FolderID: f.ID.String(), Current: i == len(path)-1})
+	}
+	return out
 }

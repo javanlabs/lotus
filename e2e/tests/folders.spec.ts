@@ -31,13 +31,16 @@ async function chooseInOpenDialog(page: Page, label: string) {
 }
 
 const folderRow = (page: Page, name: string) =>
-  page.locator('[data-folder="1"]').filter({ has: page.getByText(name, { exact: true }) });
-// A project row is a link for viewers and a selectable row (checkbox plus a
-// stretched name link) for anyone who can move projects — match either.
+  page.locator('[data-folder="1"]:visible').filter({ has: page.getByText(name, { exact: true }) });
+const crumbs = (page: Page) => page.getByRole('navigation', { name: 'Breadcrumb' });
+// The organization's name in the breadcrumb is the way back to the top level.
+const topLevelCrumb = (page: Page) => crumbs(page).locator('[data-drop-folder=""]');
+// Folder-view rows: a <div> whose name is a link stretched over the row.
+// Only the rows of the active filter's list are visible.
 const projectRow = (page: Page, name: string) =>
-  page.locator('.lotus-repo-row[data-node]:not([data-folder])').filter({ has: page.getByText(name, { exact: true }) });
+  page.locator('.lotus-repo-row[data-kind="project"]:visible').filter({ has: page.getByText(name, { exact: true }) });
 
-test('folders roll up passing projects and remember being collapsed', async ({ page, context }) => {
+test('folders roll up passing projects and open to show what is inside', async ({ page, context }) => {
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('folders-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
@@ -51,9 +54,12 @@ test('folders roll up passing projects and remember being collapsed', async ({ p
   await page.getByRole('button', { name: 'Create folder' }).click();
   await expect(folderRow(page, 'IT Services')).toBeVisible();
 
+  // Open IT Services: New folder there creates inside it by default.
+  await folderRow(page, 'IT Services').click();
+  await expect(page).toHaveURL(/\/projects\?folder=[0-9a-f-]{36}$/);
+  const itURL = page.url();
   await page.getByRole('button', { name: 'New folder' }).click();
   await page.locator('dialog[open] input[name="name"]').fill('Tribe lead A');
-  await chooseInOpenDialog(page, 'IT Services');
   await page.getByRole('button', { name: 'Create folder' }).click();
   await expect(folderRow(page, 'Tribe lead A')).toBeVisible();
 
@@ -67,20 +73,28 @@ test('folders roll up passing projects and remember being collapsed', async ({ p
     await expect(page.getByText('Project moved')).toBeVisible();
   }
 
+  // The top level is flat: the folder, not the projects inside it.
   await page.goto(`${origin}/projects`);
-  await expect(folderRow(page, 'Tribe lead A')).toContainText('1 / 2 passing');
-  await expect(folderRow(page, 'Tribe lead A')).toContainText('failing: Linknet 42');
   await expect(folderRow(page, 'IT Services')).toContainText('1 / 2 passing');
+  await expect(folderRow(page, 'IT Services')).toContainText('2 projects · 1 failing');
+  await expect(projectRow(page, 'Linknet')).toHaveCount(0);
 
-  // Collapse Tribe lead A: its projects hide, and stay hidden after a reload.
-  await folderRow(page, 'Tribe lead A').getByText('Tribe lead A', { exact: true }).click();
-  await expect(projectRow(page, 'Linknet')).toBeHidden();
-  await page.reload();
-  await expect(projectRow(page, 'Linknet')).toBeHidden();
-  await expect(folderRow(page, 'Tribe lead A')).toBeVisible();
+  // "Failing" lists failing projects at any depth, with where they live.
+  await page.getByText('Failing', { exact: false }).first().click();
+  await expect(projectRow(page, 'Linknet')).toContainText('IT Services / Tribe lead A');
+  await expect(projectRow(page, 'Dignas')).toHaveCount(0);
+  await page.getByText('All', { exact: false }).first().click();
 
-  // Expanding again brings them back.
-  await folderRow(page, 'Tribe lead A').getByText('Tribe lead A', { exact: true }).click();
+  // Click through, then back up with the breadcrumb.
+  await folderRow(page, 'IT Services').click();
+  await folderRow(page, 'Tribe lead A').click();
+  await expect(projectRow(page, 'Linknet')).toBeVisible();
+  await expect(projectRow(page, 'Dignas')).toBeVisible();
+  await expect(crumbs(page)).toContainText(`${subdomain} / IT Services / Tribe lead A`);
+  await expect(crumbs(page)).not.toContainText('Projects');
+  await crumbs(page).getByRole('link', { name: 'IT Services' }).click();
+  await expect(page).toHaveURL(itURL);
+  await page.goBack();
   await expect(projectRow(page, 'Linknet')).toBeVisible();
 
   await retireOrg(orgId);
@@ -103,11 +117,14 @@ test('several projects move into a folder at once from the tree', async ({ page,
   // The New folder trigger is a normal button, not the primary one.
   await expect(page.getByRole('button', { name: 'New folder' })).toHaveClass(/btn-lotus-secondary/);
 
-  // A selectable row still opens its project when the row is clicked.
+  // A row opens its project when clicked anywhere on it.
   await projectRow(page, 'Linknet').click({ position: { x: 400, y: 10 } });
   await expect(page).toHaveURL(`${origin}/projects/${linknet}`);
   await page.goBack();
 
+  // Checkboxes are hidden until "Select" turns selection on.
+  await expect(page.getByRole('checkbox', { name: 'Select Linknet' })).toBeHidden();
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Select Linknet' }).check();
   await page.getByRole('checkbox', { name: 'Select Dignas' }).check();
   await expect(page.getByText('2 selected')).toBeVisible();
@@ -119,10 +136,11 @@ test('several projects move into a folder at once from the tree', async ({ page,
   await page.locator('dialog[open]').getByRole('button', { name: 'Move', exact: true }).click();
 
   await expect(page.getByText('2 projects moved')).toBeVisible();
-  await expect(folderRow(page, 'Tribe lead A')).toContainText('2 projects');
-  await expect(folderRow(page, 'Tribe lead A')).toContainText('1 / 2 passing');
-  // ANRI was not ticked, so it stays at the top level.
-  await expect(projectRow(page, 'ANRI')).toHaveAttribute('data-parent', '');
+  await expect(folderRow(page, 'IT Services')).toContainText('2 projects');
+  await expect(folderRow(page, 'IT Services')).toContainText('1 / 2 passing');
+  // ANRI was not ticked, so it stays at the top level; the moved two left it.
+  await expect(projectRow(page, 'ANRI')).toBeVisible();
+  await expect(projectRow(page, 'Dignas')).toHaveCount(0);
 
   await retireOrg(orgId);
 });
@@ -158,32 +176,37 @@ test('a folder name cannot run script through the success toast (stored XSS)', a
   await retireOrg(orgId);
 });
 
-// Review focus: with storage blocked the tree still renders and collapses;
-// it only forgets on reload.
-test('the tree still collapses when localStorage is unavailable', async ({ page, context }) => {
-  const { sessionToken, subdomain, orgId } = await seedOwnerSession('folders-nostore-e2e', 'placeholder');
+test('projects and folders can be dragged into a folder and back out', async ({ page, context }) => {
+  const { sessionToken, subdomain, orgId } = await seedOwnerSession('folders-dnd-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  const pid = await seedProject(orgId, 'ANRI', 'pass', 90);
+  await seedProject(orgId, 'Linknet', 'fail', 42);
   await withDB(async (c) => {
-    const f = await c.query(`INSERT INTO folders (org_id, name) VALUES ($1, 'Tribe lead B') RETURNING id`, [orgId]);
-    await c.query(`UPDATE projects SET folder_id = $1 WHERE id = $2`, [f.rows[0].id, pid]);
+    await c.query(`INSERT INTO folders (org_id, name) VALUES ($1, 'IT Services')`, [orgId]);
+    await c.query(`INSERT INTO folders (org_id, name) VALUES ($1, 'Tribe lead A')`, [orgId]);
   });
-
-  await page.addInitScript(() => {
-    Object.defineProperty(window, 'localStorage', {
-      configurable: true,
-      get() { throw new Error('storage blocked'); },
-    });
-  });
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
 
   await page.goto(`${origin}/projects`);
-  await expect(projectRow(page, 'ANRI')).toBeVisible();
-  await folderRow(page, 'Tribe lead B').getByText('Tribe lead B', { exact: true }).click();
-  await expect(projectRow(page, 'ANRI')).toBeHidden();
-  expect(errors).toEqual([]);
+
+  // A project onto a folder row.
+  await projectRow(page, 'Linknet').dragTo(folderRow(page, 'IT Services'));
+  await expect(page.getByText('Project moved')).toBeVisible();
+  await expect(projectRow(page, 'Linknet')).toHaveCount(0);
+  await expect(folderRow(page, 'IT Services')).toContainText('1 project');
+
+  // A folder onto a folder row.
+  await folderRow(page, 'Tribe lead A').dragTo(folderRow(page, 'IT Services'));
+  await expect(page.getByText('Folder Tribe lead A moved')).toBeVisible();
+  await expect(folderRow(page, 'Tribe lead A')).toHaveCount(0);
+
+  // Inside the folder, drag the project up to the top level via the breadcrumb.
+  await folderRow(page, 'IT Services').click();
+  await expect(projectRow(page, 'Linknet')).toBeVisible();
+  await projectRow(page, 'Linknet').dragTo(topLevelCrumb(page));
+  await expect(page.getByText('Project moved')).toBeVisible();
+  await expect(projectRow(page, 'Linknet')).toHaveCount(0);
+  await page.goto(`${origin}/projects`);
+  await expect(projectRow(page, 'Linknet')).toBeVisible();
 
   await retireOrg(orgId);
 });
