@@ -78,6 +78,30 @@ func TestProjectsPage_ViewerSeesNoFolderControls(t *testing.T) {
 	}
 }
 
+// Review focus: a folder row's subtext ("N projects · failing: X 42") is a
+// full sentence, much longer than a project row's ("1 component"). Giving
+// it `flex:none` let it claim its full width unconditionally, which forced
+// the flexbox shrink algorithm to take the room back from the *name* span
+// instead — squeezing a folder's own name to zero width whenever the
+// subtext was long enough (worse the deeper a folder is nested, since
+// IndentPx eats further into the same column). See task-9-report.md for
+// the reproduction. The fix: the name span keeps its content size
+// (flex:0 1 auto, min-width:0) and only shrinks if truly out of room,
+// while the subtext span (flex:1 1 0, min-width:0) is the one that yields
+// space — and truncates itself via its own ellipsis — first.
+func TestProjectsPage_FolderNameSpanIsProtectedFromSubtextSqueeze(t *testing.T) {
+	body, _, _ := getProjectsPage(t, "acme-tree-flex", "owner")
+	if strings.Contains(body, `color:#9CA3AF;flex:none;overflow:hidden;text-overflow:ellipsis">`) {
+		t.Fatal("a row's subtext span still has flex:none — it will claim its full width and squeeze the name span to zero")
+	}
+	if !strings.Contains(body, `font-weight:700;color:#43284E;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">`) {
+		t.Fatal("folder row's name span is missing flex:0 1 auto;min-width:0 — it can be squeezed to zero width by its own subtext")
+	}
+	if !strings.Contains(body, `color:#9CA3AF;flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">`) {
+		t.Fatal("a row's subtext span is missing flex:1 1 0;min-width:0 — it should yield space (and self-truncate) before the name does")
+	}
+}
+
 // Review focus: a folder name with markup and quotes is escaped everywhere
 // it lands — row, dialog title, data attributes.
 func TestProjectsPage_EscapesFolderNames(t *testing.T) {
