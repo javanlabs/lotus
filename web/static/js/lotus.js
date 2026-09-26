@@ -267,12 +267,21 @@ function lotusInfo() {
   // than being dropped.
   let pending = [];
 
+  // Basecoat inserts the toast's title with innerHTML rather than as text,
+  // so anything reaching deliver() is escaped here — the single boundary
+  // both callers (the seeded flash cookie and an htmx HX-Trigger event)
+  // pass through — before it is handed over. Without this, a folder (or
+  // anything else) named with markup runs script in whoever's browser
+  // shows the resulting "Folder %s moved/deleted/created/renamed" toast.
+  const ESCAPE_HTML = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (ch) => ESCAPE_HTML[ch]);
+
   const deliver = (msg) => {
     const toaster = document.getElementById("toaster");
     if (!toaster || typeof toaster.toast !== "function") return false;
     toaster.toast({
       category: CATEGORY[msg.tone] || "info",
-      title: msg.text,
+      title: escapeHtml(msg.text),
       // A failure stays until dismissed: a message saying something went
       // wrong should not vanish while the reader is still working out what
       // to do about it.

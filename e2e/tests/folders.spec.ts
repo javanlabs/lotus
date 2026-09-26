@@ -82,6 +82,37 @@ test('folders roll up passing projects and remember being collapsed', async ({ p
   await retireOrg(orgId);
 });
 
+// Review focus (final review, item 1): lotus.js's deliver() hands the
+// success toast's text straight to Basecoat, which inserts it with
+// innerHTML — so a folder named with markup used to run script in
+// whoever's browser saw the "Folder ... deleted" toast (member -> owner
+// escalation). deliver() now HTML-escapes at that boundary.
+test('a folder name cannot run script through the success toast (stored XSS)', async ({ page, context }) => {
+  const { sessionToken, subdomain, orgId } = await seedOwnerSession('folders-xss-e2e', 'placeholder');
+  const origin = tenantOrigin(subdomain);
+  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+  const payload = '<img src=x onerror="window.__x=1">';
+  await seedProject(orgId, 'Placeholder', 'pass', 90);
+
+  // hx-confirm on the delete form pops a native confirm() dialog;
+  // Playwright dismisses dialogs by default, which would cancel the delete.
+  page.on('dialog', (d) => d.accept());
+
+  await page.goto(`${origin}/projects`);
+  await page.getByRole('button', { name: 'New folder' }).click();
+  await page.locator('dialog[open] input[name="name"]').fill(payload);
+  await page.getByRole('button', { name: 'Create folder' }).click();
+  await expect(folderRow(page, payload)).toBeVisible();
+
+  await folderRow(page, payload).getByRole('button').click();
+  await page.locator('dialog[open]').getByRole('button', { name: 'Delete folder' }).click();
+
+  await expect(page.getByText(`Folder ${payload} deleted`)).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __x?: number }).__x)).toBeUndefined();
+
+  await retireOrg(orgId);
+});
+
 // Review focus: with storage blocked the tree still renders and collapses;
 // it only forgets on reload.
 test('the tree still collapses when localStorage is unavailable', async ({ page, context }) => {
