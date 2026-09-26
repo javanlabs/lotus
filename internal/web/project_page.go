@@ -60,13 +60,30 @@ func projectPage(d Deps) fiber.Handler {
 		subtitle := fmt.Sprintf("%d component%s in this project", len(components), plural(len(components), "", "s"))
 		vm := buildDashboardViewModel(subtitle, len(projects), components, metrics)
 
+		folders, err := repo.ListFolders(c.Context(), s)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+		folderValue := ""
+		if project.FolderID != nil {
+			folderValue = project.FolderID.String()
+		}
+
 		c.Type("html")
 		return renderPage(c, d, "pages/project.html", httpx.ViewData{
 			Title: project.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), projectTrail(project)),
 			Data: struct {
-				Project   repo.Project
-				Dashboard dashboardViewModel
-			}{Project: *project, Dashboard: vm},
+				Project      repo.Project
+				Dashboard    dashboardViewModel
+				CanMove      bool
+				FolderSelect []httpx.SelectOption
+				FolderValue  string
+			}{
+				Project: *project, Dashboard: vm,
+				CanMove:      mustPrincipal(c).Can("project.update"),
+				FolderSelect: folderSelect(folderOptionsFor(folders), nil),
+				FolderValue:  folderValue,
+			},
 		})
 	}
 }
