@@ -96,6 +96,53 @@ func TestFolders_ViewerCannotCreate_MemberCannotDelete(t *testing.T) {
 	}
 }
 
+// Review focus (final review, item 6): spec §9 wants "a viewer refused on
+// every write" — the existing test only covered create. This adds rename,
+// move, delete and project move.
+func TestFolders_ViewerRefusedOnEveryWrite(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, ownerID := seedMember(t, db, "acme-viewer-w", "owner")
+	ownerRaw := seedSession(t, db, orgID, ownerID)
+	host := "acme-viewer-w." + dashboardTestDomain
+
+	app.Test(folderFormReq(host, "/folders", ownerRaw, url.Values{"name": {"Product"}}, false))
+	product := folderIDNamed(t, db, orgID, "Product")
+	app.Test(folderFormReq(host, "/folders", ownerRaw, url.Values{"name": {"Other"}}, false))
+	other := folderIDNamed(t, db, orgID, "Other")
+	var projectID uuid.UUID
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&projectID, `INSERT INTO projects (org_id, slug, name) VALUES ($1,'v','V') RETURNING id`, orgID); err != nil {
+			t.Fatalf("insert project: %v", err)
+		}
+	})
+
+	var viewerID uuid.UUID
+	if err := db.Get(&viewerID, `INSERT INTO users (email, email_verified_at) VALUES ('viewer@acme-viewer-w.test', now()) RETURNING id`); err != nil {
+		t.Fatalf("insert viewer: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO memberships (org_id, user_id, role_id) SELECT $1, $2, id FROM roles WHERE key = 'viewer' AND org_id IS NULL`, orgID, viewerID); err != nil {
+		t.Fatalf("membership: %v", err)
+	}
+	viewerRaw := seedSession(t, db, orgID, viewerID)
+
+	for _, step := range []struct {
+		name, path string
+		form       url.Values
+	}{
+		{"rename", "/folders/" + product.String() + "/rename", url.Values{"name": {"Renamed"}}},
+		{"move", "/folders/" + product.String() + "/move", url.Values{"parent_id": {other.String()}}},
+		{"delete", "/folders/" + product.String() + "/delete", nil},
+		{"project move", "/projects/" + projectID.String() + "/move", url.Values{"folder_id": {product.String()}}},
+	} {
+		t.Run(step.name, func(t *testing.T) {
+			resp, err := app.Test(folderFormReq(host, step.path, viewerRaw, step.form, false))
+			if err != nil || resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("viewer %s status = %v, %v; want 403", step.name, resp, err)
+			}
+		})
+	}
+}
+
 func TestFolders_RejectionsComeBackIntoTheDialogForHtmx(t *testing.T) {
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-rej", "owner")
@@ -136,6 +183,33 @@ func TestFolders_RejectionsComeBackIntoTheDialogForHtmx(t *testing.T) {
 				t.Fatalf("plain status = %d, want %d", resp.StatusCode, c.wantStatus)
 			}
 		})
+	}
+}
+
+// Review focus (final review, item 3): the pre-fetch repo.FolderByID in
+// rename/move used to return writeRepoErr's plain JSON 404, which htmx does
+// not swap into the dialog — the button just did nothing. It now goes
+// through folderFormError like every other rejection, so the dialog shows
+// "That folder no longer exists."
+func TestFolders_RenameMoveOfAMissingFolderShowsInTheDialog(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-gone", "owner")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-gone." + dashboardTestDomain
+	missing := uuid.New()
+
+	for _, path := range []string{
+		"/folders/" + missing.String() + "/rename",
+		"/folders/" + missing.String() + "/move",
+	} {
+		resp, err := app.Test(folderFormReq(host, path, raw, url.Values{"name": {"X"}}, true))
+		if err != nil || resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s htmx status = %v, %v; want 200", path, resp, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		if !strings.Contains(string(body), "That folder no longer exists.") {
+			t.Fatalf("%s htmx body = %s, want it to contain the not-found message", path, body)
+		}
 	}
 }
 

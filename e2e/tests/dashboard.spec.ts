@@ -56,11 +56,12 @@ test('creating a project through the real form lands on the new project\'s own p
   await expect(page.getByRole('heading', { name: 'E2E Payments' })).toBeVisible();
   await expect(page.getByText('No components yet')).toBeVisible();
 
-  // The dashboard, in turn, shows the distinct "has a project but no
-  // repositories" empty state, not the "no projects at all" one — a real
-  // bug caught during manual QA of this feature.
+  // Final review, item 4: a componentless project must still get a row in
+  // the tree (deviation 4), not the "No repositories yet" empty state —
+  // that state only makes sense with no way to see the project at all.
   await page.goto(`${origin}/dashboard`);
-  await expect(page.getByText('No repositories yet')).toBeVisible();
+  await expect(page.getByText('E2E Payments', { exact: true })).toBeVisible();
+  await expect(page.getByText('No repositories yet')).not.toBeVisible();
   await expect(page.getByText('No projects yet')).not.toBeVisible();
 
   await withDB(async (client) => {

@@ -66,6 +66,18 @@ func TestProjectsPage_FolderRowEnterKeyDoesNotFireOnActionsButton(t *testing.T) 
 	}
 }
 
+// Review focus (final review, item 7): a folder row is a collapse toggle,
+// so it needs aria-expanded to say which state it's in — bound as a
+// boolean expression, per AGENTS.md's rule that :style (and, by the same
+// logic, any :attr) must not be a plain string when it needs to react to
+// state.
+func TestProjectsPage_FolderRowHasAriaExpanded(t *testing.T) {
+	body, _, _ := getProjectsPage(t, "acme-tree-aria", "owner")
+	if !strings.Contains(body, `:aria-expanded="!isCollapsed($el.dataset.node)"`) {
+		t.Fatal("folder row is missing :aria-expanded bound to its collapsed state")
+	}
+}
+
 func TestProjectsPage_ViewerSeesNoFolderControls(t *testing.T) {
 	body, _, _ := getProjectsPage(t, "acme-tree-v", "viewer")
 	if !strings.Contains(body, `data-folder="1"`) {

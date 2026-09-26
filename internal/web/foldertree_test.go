@@ -274,6 +274,62 @@ func TestProjectTree_FoldersWithoutComponentsStillShowTheTree(t *testing.T) {
 	}
 }
 
+// Review focus (final review, item 2): RowCount used to be len(vm.Rows),
+// which on the tree includes folder rows — 5 projects in 2 folders reads
+// "All 7". "All", the footer and the subtitle must all count PROJECTS.
+func TestProjectTree_RowCountCountsProjectsNotFolderRows(t *testing.T) {
+	f := newTreeFixture(t)
+	it := f.folder("IT Services", nil)
+	tribeA := f.folder("Tribe lead A", &it)
+	f.project("Unfiled", nil, "pass", intPtr(90))
+	f.project("Linknet", &tribeA, "fail", intPtr(42))
+	f.project("AlurKerja", &it, "pass", intPtr(84))
+	vm := f.build()
+
+	if len(vm.Rows) != 5 {
+		t.Fatalf("rows = %d, want 5 (2 folders + 3 projects)", len(vm.Rows))
+	}
+	if vm.RowCount != 3 {
+		t.Fatalf("RowCount = %d, want 3 (projects only, folders excluded)", vm.RowCount)
+	}
+}
+
+// Review focus (final review, item 4): projects exist, none has a
+// component and no folder exists either — the page must still show the
+// tree (deviation 4: every active project gets a row), not the
+// "No repositories yet" empty state, or there is no way to create the
+// first folder.
+func TestProjectTree_ComponentlessProjectWithNoFoldersShowsTheTreeNotEmptyState(t *testing.T) {
+	f := newTreeFixture(t)
+	f.project("Fresh", nil, "", nil)
+	vm := f.build()
+	if vm.Empty {
+		t.Fatal("Empty = true for an org with a project and no components or folders")
+	}
+	if got := rowNames(vm); len(got) != 1 || got[0] != "Fresh" {
+		t.Fatalf("rows = %v, want just the project", got)
+	}
+}
+
+// Review focus (final review, item 5): folderDeleteBlocked's hint must
+// agree with the server, which refuses to delete a folder only over its
+// DIRECT subfolders and projects. r.Projects (the rollup) counts active
+// projects at ANY depth, so a folder holding only a subfolder — which
+// itself holds projects — used to claim it held those projects too.
+func TestProjectTree_DeleteHintCountsOnlyDirectlyFiledProjects(t *testing.T) {
+	f := newTreeFixture(t)
+	outer := f.folder("Outer", nil)
+	inner := f.folder("Inner", &outer)
+	f.project("A", &inner, "pass", intPtr(90))
+	f.project("B", &inner, "fail", intPtr(40))
+	vm := f.build()
+
+	row := rowNamed(t, vm, "Outer")
+	if want := "Still holds 1 folder · move them out first"; row.DeleteBlocked != want {
+		t.Fatalf("DeleteBlocked = %q, want %q (no project count — those are in Inner, not Outer)", row.DeleteBlocked, want)
+	}
+}
+
 func TestFolderOptions_PathsAndCreateTargetsSkipMaxDepth(t *testing.T) {
 	f := newTreeFixture(t)
 	it := f.folder("IT Services", nil)

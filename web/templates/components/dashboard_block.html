@@ -7,8 +7,11 @@
      (passed as "."), differing only in scope (every component in the org
      vs. one project's components) and in what wraps it (title, empty
      state, action button), which stay page-specific. Caller must wrap
-     this in a `x-data="{filter:'all'}"` element — the filter buttons and
-     row visibility both reference it. */}}
+     this in an element carrying `filter` and, when Tree is set, the rest
+     of lotusTree()'s state — the filter buttons and row visibility both
+     reference it. A project's own page wraps it in `x-data="{filter:'all'}"`;
+     the organization dashboard (Tree) wraps it in `x-data="lotusTree()"`,
+     which also carries collapse state the filter-only object does not. */}}
 {{define "dashboard_block"}}
   {{if .ShowSummary}}
   <div x-data="lotusInfo()" @keydown.escape.window="close()">
@@ -84,6 +87,7 @@
          data-node="{{.NodeID}}" data-parent="{{.ParentID}}" data-ancestors="{{.Ancestors}}" data-folder="1"
          style="cursor:pointer"
          @click="toggle($el.dataset.node)" @keydown.enter.self.prevent="toggle($el.dataset.node)"
+         :aria-expanded="!isCollapsed($el.dataset.node)"
          x-show="(filter==='all' || filter==='{{.Tone}}') && !hiddenBy($el.dataset.ancestors)">
       <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.N}}</div>
       <div data-sort="{{.Name}}" style="display:flex;align-items:center;gap:8px;min-width:0;padding-left:{{.IndentPx}}px">

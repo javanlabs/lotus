@@ -269,7 +269,13 @@ func arrangeProjectTree(projects []repo.Project, folders []repo.Folder, options 
 			row.MoveOptions = folderSelect(options, func(o folderOption) bool {
 				return members[o.ID] || o.Depth+height > repo.MaxFolderDepth
 			})
-			row.DeleteBlocked = folderDeleteBlocked(r.Projects, len(children[f.ID]))
+			// The server's FolderNotEmptyError only counts what is filed
+			// DIRECTLY in the folder — direct subfolders and direct
+			// projects — not everything at any depth, so the hint must
+			// match: r.Projects (the rollup) counts active projects at
+			// any depth and would overstate what actually blocks the
+			// delete.
+			row.DeleteBlocked = folderDeleteBlocked(len(filed[f.ID]), len(children[f.ID]))
 			rows = append(rows, row)
 			walk(f.ID, depth+1, append(append([]string(nil), ancestors...), f.ID.String()))
 		}

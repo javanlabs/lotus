@@ -455,7 +455,12 @@ func rateTone(pct int) string {
 // and still refuse to be deleted. Rows are arranged in the organization's
 // folder tree, with a row per folder (arrangeProjectTree, foldertree.go).
 func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, folders []repo.Folder, components []componentInfo, metrics map[uuid.UUID]repo.ComponentMetric) dashboardViewModel {
-	if len(components) == 0 && len(folders) == 0 {
+	// Empty (the "No repositories yet" / "No projects yet" states) only
+	// when there is nothing to put in the tree at all — no project and no
+	// folder. A componentless project, or an empty folder waiting for its
+	// first project, must still show the tree: every active project gets
+	// a row (deviation 4), and a folder needs somewhere to be created from.
+	if len(projects) == 0 && len(folders) == 0 {
 		return dashboardViewModel{Empty: true, NoProjects: len(projects) == 0, ProjectCount: len(projects), Subtitle: subtitle}
 	}
 
@@ -514,11 +519,14 @@ func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, fo
 		}),
 		ProjectCount: len(projects),
 		// The org-wide numbers are over projects and components, never
-		// folders: filing a project must not move them.
+		// folders: filing a project must not move them. RowCount in
+		// particular must count projects, not tree rows — len(rows)
+		// includes folder rows, which would inflate "All", the footer and
+		// the subtitle whenever a folder exists.
 		Score:    buildScoreCard(statuses, repo.RollupScore(scores)),
 		KPIs:     buildKPIs(kindStatuses, kindMeasured, len(components)),
 		Rows:     rows,
-		RowCount: len(rows),
+		RowCount: len(projects),
 		Subtitle: subtitle,
 	}
 }

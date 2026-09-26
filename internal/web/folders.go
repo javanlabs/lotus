@@ -122,7 +122,10 @@ func renameFolderUI(d Deps) fiber.Handler {
 		}
 		before, err := repo.FolderByID(c.Context(), s, id)
 		if err != nil {
-			return writeRepoErr(c, err)
+			if status, msg, ok := folderErr(err, ""); ok {
+				return folderFormError(c, d, status, msg)
+			}
+			return err
 		}
 		name := c.FormValue("name")
 		f, err := repo.RenameFolder(c.Context(), s, id, name)
@@ -152,7 +155,10 @@ func moveFolderUI(d Deps) fiber.Handler {
 		}
 		before, err := repo.FolderByID(c.Context(), s, id)
 		if err != nil {
-			return writeRepoErr(c, err)
+			if status, msg, ok := folderErr(err, ""); ok {
+				return folderFormError(c, d, status, msg)
+			}
+			return err
 		}
 		parentID, err := optionalUUID(c.FormValue("parent_id"))
 		if err != nil {
