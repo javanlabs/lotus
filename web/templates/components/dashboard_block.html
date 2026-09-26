@@ -83,7 +83,7 @@
     <div class="lotus-repo-row" role="button" tabindex="0" aria-label="Folder {{.Name}}"
          data-node="{{.NodeID}}" data-parent="{{.ParentID}}" data-ancestors="{{.Ancestors}}" data-folder="1"
          style="cursor:pointer"
-         @click="toggle($el.dataset.node)" @keydown.enter.prevent="toggle($el.dataset.node)"
+         @click="toggle($el.dataset.node)" @keydown.enter.self.prevent="toggle($el.dataset.node)"
          x-show="(filter==='all' || filter==='{{.Tone}}') && !hiddenBy($el.dataset.ancestors)">
       <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.N}}</div>
       <div data-sort="{{.Name}}" style="display:flex;align-items:center;gap:8px;min-width:0;padding-left:{{.IndentPx}}px">

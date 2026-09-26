@@ -56,6 +56,16 @@ func TestProjectsPage_RendersTheFolderTree(t *testing.T) {
 	}
 }
 
+// Review focus: Enter on the nested "Folder actions" button must not also
+// toggle the row's collapse state — see the fix-round-1 report. The row's
+// keydown handler must be scoped to itself with .self, not just .prevent.
+func TestProjectsPage_FolderRowEnterKeyDoesNotFireOnActionsButton(t *testing.T) {
+	body, _, _ := getProjectsPage(t, "acme-tree-kbd", "owner")
+	if !strings.Contains(body, `@keydown.enter.self.prevent="toggle($el.dataset.node)"`) {
+		t.Fatal("folder row keydown handler is missing .self — a nested button's bubbled Enter would incorrectly toggle the folder")
+	}
+}
+
 func TestProjectsPage_ViewerSeesNoFolderControls(t *testing.T) {
 	body, _, _ := getProjectsPage(t, "acme-tree-v", "viewer")
 	if !strings.Contains(body, `data-folder="1"`) {
