@@ -25,6 +25,8 @@
                                                replacing onchange="this.form.submit()"
        "Label"      accessible name for screen readers, when the visible
                     label is a sibling <span> rather than a wrapping <label>
+       "ID"         element id suffix, when two dropdowns on one page
+                    submit the same field name — default: Name
 
      The options are rendered as real DOM rather than passed as JSON: the
      markup then still says what the choices are with scripting off or
@@ -35,7 +37,7 @@
      what a native select would have submitted. */}}
 {{define "lotus_select"}}
 {{$size := ternary (eq (printf "%v" .Size) "sm") "lotus-combobox-sm" ""}}
-{{$id := printf "lotus-combobox-%s" .Name}}
+{{$id := printf "lotus-combobox-%s" (or .ID .Name)}}
 {{$value := .Value}}
 <div id="{{$id}}" class="combobox lotus-combobox {{$size}}" data-auto-highlight="true"
      {{if .AutoSubmit}}onchange="this.closest('form') && this.closest('form').requestSubmit()"{{end}}>

@@ -61,7 +61,7 @@
 
   {{template "lotus_card_section_open" (dict "Padding" "4px"
     "Style" (printf "overflow:hidden;--lotus-row-grid:%s" .GridTemplate)
-    "Attrs" (printf `x-data="lotusSort('%s')" x-effect="filter; $nextTick(() => renumber())"` .RowHeading))}}
+    "Attrs" (printf `x-data="lotusSort('%s')" x-effect="%s $nextTick(() => renumber())"` .RowHeading (ternary .Tree "filter; collapsed;" "filter;")))}}
     <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
       <div style="font-size:13px;font-weight:600;color:#43284E">{{.TableTitle}}</div>
       <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF" x-text="label"></div>
@@ -79,9 +79,41 @@
 
     <div x-ref="rows" style="display:contents">
     {{range .Rows}}
-    <a href="{{.Href}}" class="lotus-repo-row" style="text-decoration:none;color:inherit" x-show="filter==='all' || filter==='{{.Tone}}'">
+    {{if .IsFolder}}
+    <div class="lotus-repo-row" role="button" tabindex="0" aria-label="Folder {{.Name}}"
+         data-node="{{.NodeID}}" data-parent="{{.ParentID}}" data-ancestors="{{.Ancestors}}" data-folder="1"
+         style="cursor:pointer"
+         @click="toggle($el.dataset.node)" @keydown.enter.prevent="toggle($el.dataset.node)"
+         x-show="(filter==='all' || filter==='{{.Tone}}') && !hiddenBy($el.dataset.ancestors)">
       <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.N}}</div>
-      <div data-sort="{{.Name}}" style="display:flex;align-items:center;gap:8px;min-width:0">
+      <div data-sort="{{.Name}}" style="display:flex;align-items:center;gap:8px;min-width:0;padding-left:{{.IndentPx}}px">
+        <svg data-node="{{.NodeID}}" width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+             style="flex:none;color:#9CA3AF;transition:transform .12s"
+             :style="{ transform: isCollapsed($el.dataset.node) ? 'rotate(-90deg)' : 'rotate(0deg)' }"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6"></path></svg>
+        {{template "status_dot" .Tone}}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none;color:#43284E"><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.5" d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"></path></svg>
+        <span style="font-size:12.5px;font-weight:700;color:#43284E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
+        {{if .Subtext}}<span style="font:400 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF;flex:none;overflow:hidden;text-overflow:ellipsis">{{.Subtext}}</span>{{end}}
+        {{if $.CanEditFolder}}
+        <button type="button" aria-label="Folder actions for {{.Name}}"
+                onclick="event.stopPropagation(); document.getElementById('folder-edit-{{.NodeID}}').showModal()"
+                style="margin-left:auto;flex:none;border:none;background:none;padding:2px 6px;cursor:pointer;color:#9CA3AF;font-size:14px;line-height:1">&middot;&middot;&middot;</button>
+        {{end}}
+      </div>
+      <div data-sort="{{if .ScoreValue}}{{.ScoreValue}}{{end}}" style="display:flex;align-items:center;gap:7px;min-width:0">
+        <span class="lotus-text-{{.BarTone}}" style="font:600 11px 'IBM Plex Mono',monospace;white-space:nowrap">{{.Score}}</span>
+        <span style="flex:1;height:4px;border-radius:2px;background:#F3F4F6;overflow:hidden;display:block">
+          <span class="lotus-bar-{{.BarTone}}" style="display:block;height:100%;width:{{.ScorePct}}"></span>
+        </span>
+      </div>
+      {{range .Cells}}<div data-sort="{{if .Sort}}{{.Sort}}{{end}}" style="display:flex;justify-content:center;min-width:0">{{template "status_badge" .}}</div>{{end}}
+    </div>
+    {{else}}
+    <a href="{{.Href}}" class="lotus-repo-row" style="text-decoration:none;color:inherit"
+       {{if $.Tree}}data-node="{{.NodeID}}" data-parent="{{.ParentID}}" data-ancestors="{{.Ancestors}}"
+       x-show="(filter==='all' || filter==='{{.Tone}}') && !hiddenBy($el.dataset.ancestors)"{{else}}x-show="filter==='all' || filter==='{{.Tone}}'"{{end}}>
+      <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.N}}</div>
+      <div data-sort="{{.Name}}" style="display:flex;align-items:center;gap:8px;min-width:0;padding-left:{{.IndentPx}}px">
         {{template "status_dot" .Tone}}
         <span style="font-size:12.5px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
         {{if .Subtext}}<span style="font:400 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF;flex:none;overflow:hidden;text-overflow:ellipsis">{{.Subtext}}</span>{{end}}
@@ -99,6 +131,7 @@
       {{end}}
       {{range .Cells}}<div data-sort="{{if .Sort}}{{.Sort}}{{end}}" style="display:flex;justify-content:center;min-width:0">{{template "status_badge" .}}</div>{{end}}
     </a>
+    {{end}}
     {{end}}
     </div>
     </div>

@@ -79,8 +79,7 @@ function lotusSort(headingLabel) {
         const cell = row.children[this.col];
         return cell ? (cell.dataset.sort || '') : '';
       };
-
-      rows.sort((a, b) => {
+      const compare = (a, b) => {
         const av = keyOf(a), bv = keyOf(b);
         // A cell with no value ("no data", or a status-only kind) sorts
         // last in BOTH directions. Treating it as zero would rank
@@ -91,9 +90,41 @@ function lotusSort(headingLabel) {
         if (aEmpty) return 0;
         if (this.kind === 'num') return (parseFloat(av) - parseFloat(bv)) * this.dir;
         return av.localeCompare(bv, undefined, { sensitivity: 'base' }) * this.dir;
-      });
+      };
 
-      rows.forEach((r) => box.appendChild(r));
+      // On the folder tree a row sorts among its siblings only, and each
+      // folder's rows stay directly beneath it — a flat sort by score
+      // would scatter projects away from the folders that hold them.
+      // Folders stay ahead of projects at every level.
+      let ordered;
+      if (rows.some((r) => r.dataset.node)) {
+        const byParent = new Map();
+        rows.forEach((r) => {
+          const p = r.dataset.parent || '';
+          if (!byParent.has(p)) byParent.set(p, []);
+          byParent.get(p).push(r);
+        });
+        ordered = [];
+        const seen = new Set();
+        const walk = (parent) => {
+          const kids = (byParent.get(parent) || []).slice().sort((a, b) => {
+            const af = a.dataset.folder === '1', bf = b.dataset.folder === '1';
+            if (af !== bf) return af ? -1 : 1;
+            return compare(a, b);
+          });
+          kids.forEach((k) => {
+            if (seen.has(k)) return;
+            seen.add(k);
+            ordered.push(k);
+            if (k.dataset.folder === '1') walk(k.dataset.node);
+          });
+        };
+        walk('');
+      } else {
+        ordered = rows.sort(compare);
+      }
+
+      ordered.forEach((r) => box.appendChild(r));
       this.retitle();
       this.renumber();
     },
@@ -109,6 +140,52 @@ function lotusSort(headingLabel) {
         const cell = row.children[0];
         if (cell) cell.textContent = ++n;
       });
+    },
+  };
+}
+
+// lotusTree is the organization dashboard's page state: the Failing filter
+// (read by dashboard_block's rows) and which folders are collapsed.
+//
+// Collapsed folders are remembered per browser. Storage can be missing or
+// throw — a private window, blocked site data — so every access is guarded:
+// the tree then starts expanded and collapsing still works, it just is not
+// remembered.
+const LOTUS_TREE_KEY = 'lotus.tree.collapsed';
+
+function lotusTree() {
+  return {
+    filter: 'all',
+    collapsed: {},
+
+    init() {
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(LOTUS_TREE_KEY) || '{}');
+        if (saved && typeof saved === 'object') this.collapsed = saved;
+      } catch (e) {
+        this.collapsed = {};
+      }
+    },
+
+    isCollapsed(id) {
+      return !!this.collapsed[id];
+    },
+
+    toggle(id) {
+      const next = { ...this.collapsed };
+      if (next[id]) delete next[id];
+      else next[id] = true;
+      this.collapsed = next;
+      try {
+        window.localStorage.setItem(LOTUS_TREE_KEY, JSON.stringify(next));
+      } catch (e) {
+        // Not remembered; the collapse itself still happened.
+      }
+    },
+
+    // hiddenBy: is any of these space-separated folder ids collapsed?
+    hiddenBy(ancestors) {
+      return (ancestors || '').split(' ').some((id) => id && this.collapsed[id]);
     },
   };
 }
