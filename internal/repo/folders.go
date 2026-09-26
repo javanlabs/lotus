@@ -244,3 +244,134 @@ func MoveProject(ctx context.Context, s tenant.Scope, projectID uuid.UUID, folde
 	}
 	return from, nil
 }
+
+// isFolderWithin reports whether candidate is root or sits anywhere
+// beneath it — the cycle test for moving root under candidate.
+func isFolderWithin(parents map[uuid.UUID]*uuid.UUID, candidate, root uuid.UUID) bool {
+	cur := &candidate
+	for steps := 0; cur != nil && steps <= len(parents); steps++ {
+		if *cur == root {
+			return true
+		}
+		cur = parents[*cur]
+	}
+	return false
+}
+
+// folderSubtreeHeight is how many levels id's subtree spans: 1 for a
+// folder with no subfolders.
+func folderSubtreeHeight(parents map[uuid.UUID]*uuid.UUID, id uuid.UUID) int {
+	children := make(map[uuid.UUID][]uuid.UUID, len(parents))
+	for child, parent := range parents {
+		if parent != nil {
+			children[*parent] = append(children[*parent], child)
+		}
+	}
+	var height func(n uuid.UUID, steps int) int
+	height = func(n uuid.UUID, steps int) int {
+		if steps > len(parents) {
+			return steps
+		}
+		deepest := 0
+		for _, c := range children[n] {
+			if h := height(c, steps+1); h > deepest {
+				deepest = h
+			}
+		}
+		return deepest + 1
+	}
+	return height(id, 0)
+}
+
+// MoveFolder moves a folder, and everything in it, under parentID, or to
+// the top level when parentID is nil. It refuses a move into the folder
+// itself or anything beneath it, and one that would nest any part of the
+// subtree past MaxFolderDepth.
+func MoveFolder(ctx context.Context, s tenant.Scope, id uuid.UUID, parentID *uuid.UUID) (*Folder, error) {
+	var out Folder
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		if err := lockFolderTree(ctx, tx, s.OrgID()); err != nil {
+			return err
+		}
+		parents, err := loadFolderParents(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if _, ok := parents[id]; !ok {
+			return ErrNotFound
+		}
+		parentDepth := 0
+		if parentID != nil {
+			if _, ok := parents[*parentID]; !ok {
+				return ErrNotFound
+			}
+			if isFolderWithin(parents, *parentID, id) {
+				return ErrFolderCycle
+			}
+			parentDepth = folderDepth(parents, *parentID)
+		}
+		if parentDepth+folderSubtreeHeight(parents, id) > MaxFolderDepth {
+			return ErrFolderTooDeep
+		}
+		return tx.GetContext(ctx, &out,
+			`UPDATE folders SET parent_id = $2 WHERE id = $1 RETURNING `+folderCols, id, parentID)
+	})
+	if err != nil {
+		return nil, folderWriteErr(err)
+	}
+	return &out, nil
+}
+
+// DeleteFolder removes an empty folder and returns it. Anything inside —
+// a subfolder, or a project, archived or not — refuses with a
+// *FolderNotEmptyError naming what is left. There is no cascade: projects
+// are never deleted or silently moved as a side effect of tidying folders.
+func DeleteFolder(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Folder, error) {
+	var out Folder
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		if err := lockFolderTree(ctx, tx, s.OrgID()); err != nil {
+			return err
+		}
+		if err := tx.GetContext(ctx, &out, `SELECT `+folderCols+` FROM folders WHERE id = $1`, id); err != nil {
+			return err
+		}
+		notEmpty := &FolderNotEmptyError{Name: out.Name}
+		if err := tx.GetContext(ctx, &notEmpty.Subfolders,
+			`SELECT count(*) FROM folders WHERE parent_id = $1`, id); err != nil {
+			return err
+		}
+		var filed []struct {
+			Name     string `db:"name"`
+			Archived bool   `db:"archived"`
+		}
+		if err := tx.SelectContext(ctx, &filed, `
+			SELECT name, archived_at IS NOT NULL AS archived
+			FROM projects WHERE folder_id = $1 ORDER BY lower(name)`, id); err != nil {
+			return err
+		}
+		for _, p := range filed {
+			notEmpty.Projects = append(notEmpty.Projects, p.Name)
+			if p.Archived {
+				notEmpty.Archived++
+			}
+		}
+		if notEmpty.Subfolders > 0 || len(notEmpty.Projects) > 0 {
+			return notEmpty
+		}
+		_, err := tx.ExecContext(ctx, `DELETE FROM folders WHERE id = $1`, id)
+		return err
+	})
+	if err != nil {
+		var notEmpty *FolderNotEmptyError
+		if errors.As(err, &notEmpty) {
+			return nil, notEmpty
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			// A project was filed here between the check and the delete.
+			return nil, &FolderNotEmptyError{Name: out.Name}
+		}
+		return nil, folderWriteErr(err)
+	}
+	return &out, nil
+}

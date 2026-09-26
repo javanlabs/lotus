@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -236,5 +237,194 @@ func TestDeletingAnOrganizationCascadesThroughNestedFolders(t *testing.T) {
 
 	if _, err := db.Exec(`DELETE FROM organizations WHERE id = $1`, orgID); err != nil {
 		t.Fatalf("delete organization: %v", err)
+	}
+}
+
+func TestMoveFolder_RefusesCycles(t *testing.T) {
+	db := dbtest.Open(t)
+	_, s := folderTestOrg(t, db, "acme")
+	ctx := context.Background()
+	it := mustFolder(t, s, "IT Services", nil)
+	tribe := mustFolder(t, s, "Tribe lead A", it)
+	squad := mustFolder(t, s, "Squad 1", tribe)
+
+	for _, target := range []*repo.Folder{it, tribe, squad} {
+		if _, err := repo.MoveFolder(ctx, s, it.ID, &target.ID); !errors.Is(err, repo.ErrFolderCycle) {
+			t.Fatalf("moving IT Services into %q err = %v, want ErrFolderCycle", target.Name, err)
+		}
+	}
+}
+
+func TestMoveFolder_ToAnotherParentAndBackToTheTop(t *testing.T) {
+	db := dbtest.Open(t)
+	_, s := folderTestOrg(t, db, "acme")
+	ctx := context.Background()
+	it := mustFolder(t, s, "IT Services", nil)
+	tribe := mustFolder(t, s, "Tribe lead A", nil)
+
+	moved, err := repo.MoveFolder(ctx, s, tribe.ID, &it.ID)
+	if err != nil || moved.ParentID == nil || *moved.ParentID != it.ID {
+		t.Fatalf("move under IT = %v, %v", moved, err)
+	}
+	moved, err = repo.MoveFolder(ctx, s, tribe.ID, nil)
+	if err != nil || moved.ParentID != nil {
+		t.Fatalf("move to top = %v, %v", moved, err)
+	}
+}
+
+func TestMoveFolder_DepthCountsTheWholeSubtree(t *testing.T) {
+	db := dbtest.Open(t)
+	_, s := folderTestOrg(t, db, "acme")
+	ctx := context.Background()
+
+	// A chain six deep, and a separate folder that has one child
+	// (a subtree two levels tall).
+	chain := make([]*repo.Folder, 0, 7)
+	var parent *repo.Folder
+	for i := 1; i <= 7; i++ {
+		parent = mustFolder(t, s, "level", parent)
+		chain = append(chain, parent)
+	}
+	mover := mustFolder(t, s, "Mover", nil)
+	mustFolder(t, s, "Child", mover)
+
+	// Under level 7: 7 + 2 = 9 > 8.
+	if _, err := repo.MoveFolder(ctx, s, mover.ID, &chain[6].ID); !errors.Is(err, repo.ErrFolderTooDeep) {
+		t.Fatalf("move under level 7 err = %v, want ErrFolderTooDeep", err)
+	}
+	// Under level 6: 6 + 2 = 8, allowed.
+	if _, err := repo.MoveFolder(ctx, s, mover.ID, &chain[5].ID); err != nil {
+		t.Fatalf("move under level 6 err = %v, want nil", err)
+	}
+}
+
+func TestMoveFolder_NameClashAtTheDestination(t *testing.T) {
+	db := dbtest.Open(t)
+	_, s := folderTestOrg(t, db, "acme")
+	it := mustFolder(t, s, "IT Services", nil)
+	mustFolder(t, s, "Archive", it)
+	archive := mustFolder(t, s, "archive", nil)
+
+	if _, err := repo.MoveFolder(context.Background(), s, archive.ID, &it.ID); !errors.Is(err, repo.ErrFolderNameTaken) {
+		t.Fatalf("err = %v, want ErrFolderNameTaken", err)
+	}
+}
+
+func TestMoveFolder_AcrossOrganizationsIsNotFound(t *testing.T) {
+	db := dbtest.Open(t)
+	_, acme := folderTestOrg(t, db, "acme")
+	_, other := folderTestOrg(t, db, "other")
+	ctx := context.Background()
+	acmeFolder := mustFolder(t, acme, "Product", nil)
+	otherFolder := mustFolder(t, other, "Mine", nil)
+
+	if _, err := repo.MoveFolder(ctx, other, acmeFolder.ID, nil); !errors.Is(err, repo.ErrNotFound) {
+		t.Fatalf("moving another org's folder err = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.MoveFolder(ctx, other, otherFolder.ID, &acmeFolder.ID); !errors.Is(err, repo.ErrNotFound) {
+		t.Fatalf("moving under another org's folder err = %v, want ErrNotFound", err)
+	}
+}
+
+// Review focus: two people moving folders at the same moment so that each
+// move is valid alone but together they form a loop. The advisory lock
+// makes the second one see the first: exactly one must fail.
+func TestMoveFolder_ConcurrentOppositeMovesCannotFormALoop(t *testing.T) {
+	db := dbtest.Open(t)
+	_, s := folderTestOrg(t, db, "acme")
+	ctx := context.Background()
+
+	for i := 0; i < 20; i++ {
+		a := mustFolder(t, s, "A"+uuid.NewString()[:8], nil)
+		b := mustFolder(t, s, "B"+uuid.NewString()[:8], nil)
+
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		errs := make([]error, 2)
+		wg.Add(2)
+		go func() { defer wg.Done(); <-start; _, errs[0] = repo.MoveFolder(ctx, s, a.ID, &b.ID) }()
+		go func() { defer wg.Done(); <-start; _, errs[1] = repo.MoveFolder(ctx, s, b.ID, &a.ID) }()
+		close(start)
+		wg.Wait()
+
+		failed := 0
+		for _, err := range errs {
+			if err != nil {
+				if !errors.Is(err, repo.ErrFolderCycle) {
+					t.Fatalf("round %d: unexpected error %v", i, err)
+				}
+				failed++
+			}
+		}
+		if failed != 1 {
+			t.Fatalf("round %d: %d moves failed, want exactly 1 (errs %v)", i, failed, errs)
+		}
+	}
+}
+
+func TestDeleteFolder_EmptyFolderIsDeleted(t *testing.T) {
+	db := dbtest.Open(t)
+	_, s := folderTestOrg(t, db, "acme")
+	ctx := context.Background()
+	f := mustFolder(t, s, "Old", nil)
+
+	deleted, err := repo.DeleteFolder(ctx, s, f.ID)
+	if err != nil || deleted.Name != "Old" {
+		t.Fatalf("delete = %v, %v", deleted, err)
+	}
+	if _, err := repo.FolderByID(ctx, s, f.ID); !errors.Is(err, repo.ErrNotFound) {
+		t.Fatalf("lookup after delete err = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.DeleteFolder(ctx, s, f.ID); !errors.Is(err, repo.ErrNotFound) {
+		t.Fatalf("second delete err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestDeleteFolder_RefusesAFolderWithSubfolders(t *testing.T) {
+	db := dbtest.Open(t)
+	_, s := folderTestOrg(t, db, "acme")
+	it := mustFolder(t, s, "IT Services", nil)
+	mustFolder(t, s, "Tribe lead A", it)
+
+	_, err := repo.DeleteFolder(context.Background(), s, it.ID)
+	var notEmpty *repo.FolderNotEmptyError
+	if !errors.As(err, &notEmpty) {
+		t.Fatalf("err = %v, want *FolderNotEmptyError", err)
+	}
+	if want := "'IT Services' still contains 1 folder."; notEmpty.Error() != want {
+		t.Fatalf("message = %q, want %q", notEmpty.Error(), want)
+	}
+}
+
+// Review focus: a folder whose only project is archived looks empty on the
+// page but must still refuse deletion, naming the archived project.
+func TestDeleteFolder_RefusesAFolderHoldingOnlyAnArchivedProject(t *testing.T) {
+	db := dbtest.Open(t)
+	_, s := folderTestOrg(t, db, "acme")
+	ctx := context.Background()
+	tribe := mustFolder(t, s, "Tribe lead A", nil)
+	p := mustProject(t, s, "Linknet", tribe)
+	if err := repo.SetProjectArchived(ctx, s, p.ID, true); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+
+	_, err := repo.DeleteFolder(ctx, s, tribe.ID)
+	var notEmpty *repo.FolderNotEmptyError
+	if !errors.As(err, &notEmpty) {
+		t.Fatalf("err = %v, want *FolderNotEmptyError", err)
+	}
+	if want := "'Tribe lead A' still contains 1 project (Linknet — 1 archived)."; notEmpty.Error() != want {
+		t.Fatalf("message = %q, want %q", notEmpty.Error(), want)
+	}
+}
+
+func TestFolderNotEmptyError_CapsTheNamedProjects(t *testing.T) {
+	e := &repo.FolderNotEmptyError{
+		Name: "Big", Subfolders: 2,
+		Projects: []string{"a", "b", "c", "d", "e", "f", "g"},
+	}
+	want := "'Big' still contains 2 folders and 7 projects (a, b, c, d, e +2 more)."
+	if e.Error() != want {
+		t.Fatalf("message = %q, want %q", e.Error(), want)
 	}
 }
