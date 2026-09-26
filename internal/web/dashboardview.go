@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/uyab/lotus/internal/collector"
+	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/repo"
 )
 
@@ -39,6 +40,29 @@ type dashboardRow struct {
 	// TrendURL lazily loads the row's 14-day sparkline (project page only;
 	// empty on the organization dashboard, which has no trend column).
 	TrendURL string
+
+	// The folder tree (organization dashboard only). NodeID is the row's
+	// folder or project id; ParentID its enclosing folder ("" at the top);
+	// Ancestors every enclosing folder id, outermost first, space-separated
+	// — what a collapsed folder hides its descendants by.
+	IsFolder  bool
+	NodeID    string
+	ParentID  string
+	Ancestors string
+	IndentPx  int
+
+	// BarTone colours the score text and bar. On a project row it is the
+	// status. On a folder row it is the share passing against the 80% bar,
+	// while Tone stays the status dot — red whenever anything inside fails,
+	// so a folder at 80% never looks all-clear.
+	BarTone string
+
+	// Folder rows only: the actions dialog's move picker, its current value
+	// (the parent's id, "" at the top), and why Delete is unavailable
+	// ("" when the folder is empty).
+	MoveOptions   []httpx.SelectOption
+	MoveValue     string
+	DeleteBlocked string
 }
 
 // dashboardColumn is one integration column in the rows table. Making the
@@ -148,6 +172,17 @@ type dashboardViewModel struct {
 	Rows         []dashboardRow
 	RowCount     int
 	Subtitle     string
+
+	// Tree turns on the folder tree: folder rows, collapse, tree-aware
+	// sorting and the folder dialogs. Organization dashboard only.
+	Tree bool
+	// FolderOptions is every folder depth-first with its full path;
+	// FolderSelect is the new-folder parent picker built from it.
+	FolderOptions []folderOption
+	FolderSelect  []httpx.SelectOption
+	// The page handler sets these from the principal. The routes enforce
+	// the same permissions regardless; these only decide what is drawn.
+	CanCreateFolder, CanEditFolder, CanDeleteFolder bool
 }
 
 func toneOf(s collector.Status) string {
@@ -414,37 +449,28 @@ func rateTone(pct int) string {
 // components doing" — and the project page still needs the per-component
 // view, so collapsing them into one parameterised builder would make both
 // harder to read for no saving.
-func buildProjectDashboardViewModel(subtitle string, projectCount int, components []componentInfo, metrics map[uuid.UUID]repo.ComponentMetric) dashboardViewModel {
-	if len(components) == 0 {
-		return dashboardViewModel{Empty: true, NoProjects: projectCount == 0, ProjectCount: projectCount, Subtitle: subtitle}
+//
+// Every active project gets a row, even one with no components yet: a
+// project filed in a folder must be visible, or the folder would look empty
+// and still refuse to be deleted. Rows are arranged in the organization's
+// folder tree, with a row per folder (arrangeProjectTree, foldertree.go).
+func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, folders []repo.Folder, components []componentInfo, metrics map[uuid.UUID]repo.ComponentMetric) dashboardViewModel {
+	if len(components) == 0 && len(folders) == 0 {
+		return dashboardViewModel{Empty: true, NoProjects: len(projects) == 0, ProjectCount: len(projects), Subtitle: subtitle}
 	}
 
-	type projectAcc struct {
-		id      uuid.UUID
-		name    string
-		total   int
-		metrics []repo.ComponentMetric
-	}
-	order := make([]uuid.UUID, 0, len(components))
-	accs := make(map[uuid.UUID]*projectAcc, len(components))
-
+	componentCount := make(map[uuid.UUID]int, len(projects))
+	projectMetrics := make(map[uuid.UUID][]repo.ComponentMetric, len(projects))
 	kindStatuses := map[string][]collector.Status{"gitlab": nil, "sonarqube": nil, "trivy": nil, "sentry": nil}
 	kindMeasured := map[string]int{}
 
 	for _, comp := range components {
-		acc, seen := accs[comp.ProjectID]
-		if !seen {
-			acc = &projectAcc{id: comp.ProjectID, name: comp.ProjectName}
-			accs[comp.ProjectID] = acc
-			order = append(order, comp.ProjectID)
-		}
-		acc.total++
-
+		componentCount[comp.ProjectID]++
 		cm, has := metrics[comp.ID]
 		if !has {
 			continue
 		}
-		acc.metrics = append(acc.metrics, cm)
+		projectMetrics[comp.ProjectID] = append(projectMetrics[comp.ProjectID], cm)
 
 		// The KPI cards stay component-scoped: they answer "how much of the
 		// fleet reports this integration at all", which is a coverage
@@ -457,39 +483,23 @@ func buildProjectDashboardViewModel(subtitle string, projectCount int, component
 		}
 	}
 
-	rows := make([]dashboardRow, 0, len(order))
+	projectRows := make(map[uuid.UUID]dashboardRow, len(projects))
+	treeProjects := make([]repo.TreeProject, 0, len(projects))
 	var statuses []collector.Status
 	var scores []*int
-
-	for _, id := range order {
-		acc := accs[id]
-		roll := repo.RollupProject(acc.metrics)
+	for _, p := range projects {
+		roll := repo.RollupProject(projectMetrics[p.ID])
 		statuses = append(statuses, roll.Status)
 		scores = append(scores, roll.Score)
-
-		scoreStr, scorePct := "–", "0%"
-		if roll.Score != nil {
-			scoreStr = fmt.Sprintf("%d", *roll.Score)
-			scorePct = fmt.Sprintf("%d%%", clamp(*roll.Score, 0, 100))
-		}
-		rows = append(rows, dashboardRow{
-			Name:    acc.name,
-			Subtext: fmt.Sprintf("%d component%s", acc.total, plural(acc.total, "", "s")),
-			Href:    "/projects/" + acc.id.String(),
-			Score:   scoreStr, ScorePct: scorePct, Tone: toneOf(roll.Status),
-			Cells: cellsFor(projectColumns, func(k string) badgeCell { return projectBadge(roll, k) }),
+		projectRows[p.ID] = projectRow(p, componentCount[p.ID], roll)
+		treeProjects = append(treeProjects, repo.TreeProject{
+			ID: p.ID, Name: p.Name, FolderID: p.FolderID,
+			Components: componentCount[p.ID], Rollup: roll,
 		})
 	}
 
-	// Alphabetical by name: the one order that does not move when the
-	// numbers do, so a row stays where the reader last saw it. Sorting by
-	// any numeric column is a click away, client-side.
-	sort.SliceStable(rows, func(i, j int) bool {
-		return strings.ToLower(rows[i].Name) < strings.ToLower(rows[j].Name)
-	})
-	for i := range rows {
-		rows[i].N = i + 1
-	}
+	options := folderOptionsFor(folders)
+	rows := arrangeProjectTree(projects, folders, options, projectRows, repo.RollupFolders(folders, treeProjects))
 
 	return dashboardViewModel{
 		TableTitle:     "Projects",
@@ -497,12 +507,19 @@ func buildProjectDashboardViewModel(subtitle string, projectCount int, component
 		Columns:        projectColumns,
 		FirstMetricCol: firstMetricCol(false),
 		GridTemplate:   gridTemplateFor(projectColumns, false),
-		ProjectCount:   projectCount,
-		Score:          buildScoreCard(statuses, repo.RollupScore(scores)),
-		KPIs:           buildKPIs(kindStatuses, kindMeasured, len(components)),
-		Rows:           rows,
-		RowCount:       len(rows),
-		Subtitle:       subtitle,
+		Tree:           true,
+		FolderOptions:  options,
+		FolderSelect: folderSelect(options, func(o folderOption) bool {
+			return o.Depth >= repo.MaxFolderDepth
+		}),
+		ProjectCount: len(projects),
+		// The org-wide numbers are over projects and components, never
+		// folders: filing a project must not move them.
+		Score:    buildScoreCard(statuses, repo.RollupScore(scores)),
+		KPIs:     buildKPIs(kindStatuses, kindMeasured, len(components)),
+		Rows:     rows,
+		RowCount: len(rows),
+		Subtitle: subtitle,
 	}
 }
 

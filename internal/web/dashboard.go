@@ -55,8 +55,17 @@ func dashboardPage(d Deps) fiber.Handler {
 			metrics[m.ComponentID] = m
 		}
 
+		folders, err := repo.ListFolders(c.Context(), s)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+
 		subtitle := fmt.Sprintf("%d project%s · %d component%s across %s", len(projects), plural(len(projects), "", "s"), len(components), plural(len(components), "", "s"), org.Name)
-		vm := buildProjectDashboardViewModel(subtitle, len(projects), components, metrics)
+		vm := buildProjectDashboardViewModel(subtitle, projects, folders, components, metrics)
+		p := mustPrincipal(c)
+		vm.CanCreateFolder = p.Can("folder.create")
+		vm.CanEditFolder = p.Can("folder.update")
+		vm.CanDeleteFolder = p.Can("folder.delete")
 
 		c.Type("html")
 		return renderPage(c, d, "pages/projects.html", httpx.ViewData{

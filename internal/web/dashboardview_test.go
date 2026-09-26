@@ -234,7 +234,7 @@ func TestProjectScore_IsIdenticalOnBothPages(t *testing.T) {
 	}
 
 	onProjectPage := buildDashboardViewModel("", 1, comps, metrics)
-	onDashboard := buildProjectDashboardViewModel("", 1, comps, metrics)
+	onDashboard := buildProjectDashboardViewModel("", projectsOf(comps), nil, comps, metrics)
 
 	if !onProjectPage.Score.HasScore || len(onDashboard.Rows) != 1 {
 		t.Fatalf("fixture did not produce a scored project: card=%+v rows=%d",
