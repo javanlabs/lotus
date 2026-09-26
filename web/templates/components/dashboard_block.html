@@ -68,12 +68,25 @@
     <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
       <div style="font-size:13px;font-weight:600;color:#43284E">{{.TableTitle}}</div>
       <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF" x-text="label"></div>
+      {{if .CanMoveProjects}}
+      <div x-show="selectedCount() > 0" x-cloak style="margin-left:auto">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:#43284E"><strong x-text="selectedCount()"></strong> selected</span>
+          <button type="button" class="btn-lotus btn-lotus-secondary"
+                  onclick="document.getElementById('move-projects').showModal()">Move to folder</button>
+          <button type="button" class="btn-lotus btn-lotus-secondary" @click="clearSelection()">Clear</button>
+        </div>
+      </div>
+      <div x-show="selectedCount() === 0" style="margin-left:auto">{{template "status_legend" .}}</div>
+      {{else}}
       <div style="margin-left:auto">{{template "status_legend" .}}</div>
+      {{end}}
     </div>
 
     <div style="overflow-x:auto">
     <div class="lotus-inset-4-top lotus-table-head" style="min-width:700px;grid-template-columns:{{.GridTemplate}}">
-      <div>#</div>
+      {{if .CanMoveProjects}}<div class="lotus-row-select"><input type="checkbox" aria-label="Select all visible projects"
+           :checked="allVisibleSelected($refs.rows)" @change="$event.target.checked ? selectVisible($refs.rows) : clearSelection()"></div>{{else}}<div>#</div>{{end}}
       <div @click="sortBy(1,'text','{{.RowHeading}}')" :title="hint(1)" style="cursor:pointer;user-select:none">{{.RowHeading}}<span x-text="arrow(1)" style="opacity:.75"></span></div>
       <div @click="sortBy(2,'num','score')" :title="hint(2)" style="cursor:pointer;user-select:none">SCORE<span x-text="arrow(2)" style="opacity:.75"></span></div>
       {{if .ShowTrend}}<div>TREND · 14D</div>{{end}}
@@ -89,7 +102,7 @@
          @click="toggle($el.dataset.node)" @keydown.enter.self.prevent="toggle($el.dataset.node)"
          :aria-expanded="!isCollapsed($el.dataset.node)"
          x-show="(filter==='all' || filter==='{{.Tone}}') && !hiddenBy($el.dataset.ancestors)">
-      <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.N}}</div>
+      {{if $.CanMoveProjects}}<div data-no-number></div>{{else}}<div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.N}}</div>{{end}}
       <div data-sort="{{.Name}}" style="display:flex;align-items:center;gap:8px;min-width:0;padding-left:{{.IndentPx}}px">
         <svg data-node="{{.NodeID}}" width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"
              style="flex:none;color:#9CA3AF;transition:transform .12s"
@@ -112,6 +125,19 @@
       </div>
       {{range .Cells}}<div data-sort="{{if .Sort}}{{.Sort}}{{end}}" style="display:flex;justify-content:center;min-width:0">{{template "status_badge" .}}</div>{{end}}
     </div>
+    {{else if and $.Tree $.CanMoveProjects}}
+    <div class="lotus-repo-row lotus-repo-row-selectable"
+         data-node="{{.NodeID}}" data-parent="{{.ParentID}}" data-ancestors="{{.Ancestors}}"
+         x-show="(filter==='all' || filter==='{{.Tone}}') && !hiddenBy($el.dataset.ancestors)">
+      <div class="lotus-row-select" data-no-number><input type="checkbox" data-project-select data-id="{{.NodeID}}" aria-label="Select {{.Name}}"
+           :checked="isSelected($el.dataset.id)" @change="toggleSelect($el.dataset.id)"></div>
+      <div data-sort="{{.Name}}" style="display:flex;align-items:center;gap:8px;min-width:0;padding-left:{{.IndentPx}}px">
+        {{template "status_dot" .Tone}}
+        <a href="{{.Href}}" class="lotus-row-link" style="font-size:12.5px;font-weight:600;color:#111827;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</a>
+        {{if .Subtext}}<span style="font:400 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF;flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Subtext}}</span>{{end}}
+      </div>
+      {{template "project_row_metrics" .}}
+    </div>
     {{else}}
     <a href="{{.Href}}" class="lotus-repo-row" style="text-decoration:none;color:inherit"
        {{if $.Tree}}data-node="{{.NodeID}}" data-parent="{{.ParentID}}" data-ancestors="{{.Ancestors}}"
@@ -122,6 +148,24 @@
         <span style="font-size:12.5px;font-weight:600;color:#111827;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
         {{if .Subtext}}<span style="font:400 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF;flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Subtext}}</span>{{end}}
       </div>
+      {{template "project_row_metrics" .}}
+    </a>
+    {{end}}
+    {{end}}
+    </div>
+    </div>
+
+    <div style="display:flex;align-items:center;padding:9px 14px;font-size:11px;color:#6B7280">
+      <span>Showing {{.RowCount}} of {{.RowCount}}</span>
+    </div>
+  {{template "lotus_card_section_close" .}}
+{{end}}
+
+{{/* project_row_metrics is a project or component row's cells after its
+     name: the score with its bar, the optional trend, and one badge per
+     integration column. Shared by the link row and the selectable row so
+     the two can never drift apart. Takes "." = a dashboardRow. */}}
+{{define "project_row_metrics"}}
       <div data-sort="{{if .ScoreValue}}{{.ScoreValue}}{{end}}" style="display:flex;align-items:center;gap:7px">
         <span class="lotus-text-{{.Tone}}" style="font:600 12px 'IBM Plex Mono',monospace;width:20px">{{.Score}}</span>
         <span style="flex:1;height:4px;border-radius:2px;background:#F3F4F6;overflow:hidden;display:block">
@@ -134,14 +178,4 @@
       </div>
       {{end}}
       {{range .Cells}}<div data-sort="{{if .Sort}}{{.Sort}}{{end}}" style="display:flex;justify-content:center;min-width:0">{{template "status_badge" .}}</div>{{end}}
-    </a>
-    {{end}}
-    {{end}}
-    </div>
-    </div>
-
-    <div style="display:flex;align-items:center;padding:9px 14px;font-size:11px;color:#6B7280">
-      <span>Showing {{.RowCount}} of {{.RowCount}}</span>
-    </div>
-  {{template "lotus_card_section_close" .}}
 {{end}}

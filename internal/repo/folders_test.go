@@ -428,3 +428,53 @@ func TestFolderNotEmptyError_CapsTheNamedProjects(t *testing.T) {
 		t.Fatalf("message = %q, want %q", e.Error(), want)
 	}
 }
+
+func TestMoveProjects_MovesEveryProjectAndReportsWhereEachCameFrom(t *testing.T) {
+	db := dbtest.Open(t)
+	_, s := folderTestOrg(t, db, "acme")
+	ctx := context.Background()
+	product := mustFolder(t, s, "Product", nil)
+	it := mustFolder(t, s, "IT Services", nil)
+	a := mustProject(t, s, "a", nil)
+	b := mustProject(t, s, "b", product)
+
+	from, err := repo.MoveProjects(ctx, s, []uuid.UUID{a.ID, b.ID, a.ID}, &it.ID)
+	if err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if len(from) != 2 || from[a.ID] != nil || from[b.ID] == nil || *from[b.ID] != product.ID {
+		t.Fatalf("from = %v, want a at the root and b from Product", from)
+	}
+	for _, id := range []uuid.UUID{a.ID, b.ID} {
+		got, _ := repo.ProjectByID(ctx, s, id)
+		if got.FolderID == nil || *got.FolderID != it.ID {
+			t.Fatalf("project %s FolderID = %v, want %v", id, got.FolderID, it.ID)
+		}
+	}
+}
+
+func TestMoveProjects_IsAllOrNothing(t *testing.T) {
+	db := dbtest.Open(t)
+	_, s := folderTestOrg(t, db, "acme")
+	_, other := folderTestOrg(t, db, "other")
+	ctx := context.Background()
+	it := mustFolder(t, s, "IT Services", nil)
+	a := mustProject(t, s, "a", nil)
+	theirs := mustProject(t, other, "theirs", nil)
+
+	for name, ids := range map[string][]uuid.UUID{
+		"unknown id":        {a.ID, uuid.New()},
+		"another org's one": {a.ID, theirs.ID},
+	} {
+		if _, err := repo.MoveProjects(ctx, s, ids, &it.ID); !errors.Is(err, repo.ErrNotFound) {
+			t.Fatalf("%s: err = %v, want ErrNotFound", name, err)
+		}
+		got, _ := repo.ProjectByID(ctx, s, a.ID)
+		if got.FolderID != nil {
+			t.Fatalf("%s: a was moved although the batch failed", name)
+		}
+	}
+	if _, err := repo.MoveProjects(ctx, s, nil, &it.ID); !errors.Is(err, repo.ErrInvalidInput) {
+		t.Fatalf("empty batch err = %v, want ErrInvalidInput", err)
+	}
+}

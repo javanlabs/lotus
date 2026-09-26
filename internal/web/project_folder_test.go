@@ -83,3 +83,24 @@ func TestNewProject_CanBeFiledInAFolder(t *testing.T) {
 		t.Fatalf("folder_id = %v, want %v", got, folderID)
 	}
 }
+
+func TestProjectPage_MoveToFolderIsANormalButton(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-pf-btn", "member")
+	raw := seedSession(t, db, orgID, userID)
+	ids := seedProjectsNamed(t, db, orgID, "aos")
+	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-pf-btn."+dashboardTestDomain, "/projects/"+ids[0].String(), raw))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET project = %v, %v", resp, err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	body := string(b)
+	i := strings.Index(body, "Move to folder\n")
+	if i < 0 {
+		t.Fatal("Move to folder trigger not found")
+	}
+	trigger := body[strings.LastIndex(body[:i], "<button"):i]
+	if !strings.Contains(trigger, "btn-lotus-secondary") {
+		t.Fatalf("Move to folder trigger = %s, want a secondary button", trigger)
+	}
+}

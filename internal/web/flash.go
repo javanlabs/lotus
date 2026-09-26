@@ -50,6 +50,7 @@ var flashMessages = map[string]struct {
 	"folder.moved":       {"pass", "Folder %s moved"},
 	"folder.deleted":     {"pass", "Folder %s deleted"},
 	"project.moved":      {"pass", "Project moved"},
+	"projects.moved":     {"pass", "%s projects moved"},
 }
 
 // setFlash records a message for the next render. Call it immediately

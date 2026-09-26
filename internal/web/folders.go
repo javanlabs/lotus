@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -236,6 +237,55 @@ func moveProjectUI(d Deps) fiber.Handler {
 	}
 }
 
+// moveProjectsUI files every selected project (form field project_id,
+// repeated) in one folder at once — the /projects page's multi-select.
+// The repo moves the batch in one transaction, so it lands whole or not at
+// all; each project still gets its own project.move audit event.
+func moveProjectsUI(d Deps) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		s, err := mustScope(c)
+		if err != nil {
+			return err
+		}
+		const gone = "That project or folder no longer exists."
+		raw := c.Context().PostArgs().PeekMulti("project_id")
+		if len(raw) == 0 {
+			return folderFormError(c, d, fiber.StatusUnprocessableEntity, "Select at least one project.")
+		}
+		ids := make([]uuid.UUID, 0, len(raw))
+		for _, r := range raw {
+			id, err := uuid.Parse(string(r))
+			if err != nil {
+				return folderFormError(c, d, fiber.StatusNotFound, gone)
+			}
+			ids = append(ids, id)
+		}
+		folderID, err := optionalUUID(c.FormValue("folder_id"))
+		if err != nil {
+			return folderFormError(c, d, fiber.StatusNotFound, gone)
+		}
+		from, err := repo.MoveProjects(c.Context(), s, ids, folderID)
+		if err != nil {
+			if errors.Is(err, repo.ErrNotFound) {
+				return folderFormError(c, d, fiber.StatusNotFound, gone)
+			}
+			return err
+		}
+		for id, was := range from {
+			meta, _ := json.Marshal(fiber.Map{"from_folder": uuidString(was), "to_folder": uuidString(folderID)})
+			if err := repo.RecordAuditEvent(c.Context(), s, folderAuditActor(c), "project.move", "project", &id, meta); err != nil {
+				return writeRepoErr(c, err)
+			}
+		}
+		if len(from) == 1 {
+			setFlash(c, "project.moved")
+		} else {
+			setFlash(c, "projects.moved", strconv.Itoa(len(from)))
+		}
+		return redirectAfterMutation(c, "/projects")
+	}
+}
+
 func registerFolderRoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
 	app.Post("/folders", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("folder.create"), createFolderUI(d))
@@ -245,6 +295,8 @@ func registerFolderRoutes(app *fiber.App, d Deps, requireSession, loadPrincipal 
 		authz.Require("folder.update"), moveFolderUI(d))
 	app.Post("/folders/:id/delete", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("folder.delete"), deleteFolderUI(d))
+	app.Post("/projects/move", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("project.update"), moveProjectsUI(d))
 	app.Post("/projects/:id/move", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("project.update"), moveProjectUI(d))
 }

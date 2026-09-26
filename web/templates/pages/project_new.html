@@ -28,7 +28,7 @@
     </label>
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">FOLDER</span>
-      {{template "lotus_select" (dict "Name" "folder_id" "Value" .Data.FolderID "Label" "Folder" "Options" (selectOptions .Data.FolderSelect))}}
+      {{template "lotus_select" (dict "Placeholder" "Top level" "Name" "folder_id" "Value" .Data.FolderID "Label" "Folder" "Options" (selectOptions .Data.FolderSelect))}}
     </label>
 
     <div style="display:flex;align-items:center;gap:9px;padding:11px 13px;background:rgba(67,40,78,.035);border-radius:12px 4px 12px 4px">

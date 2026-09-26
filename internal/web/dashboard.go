@@ -66,6 +66,7 @@ func dashboardPage(d Deps) fiber.Handler {
 		vm.CanCreateFolder = p.Can("folder.create")
 		vm.CanEditFolder = p.Can("folder.update")
 		vm.CanDeleteFolder = p.Can("folder.delete")
+		vm.CanMoveProjects = p.Can("project.update")
 
 		c.Type("html")
 		return renderPage(c, d, "pages/projects.html", httpx.ViewData{

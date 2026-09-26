@@ -21,6 +21,7 @@ const maxFailingNamed = 3
 // folderOption is one folder as a picker lists it.
 type folderOption struct {
 	ID    uuid.UUID
+	Name  string // the folder's own name
 	Path  string // "IT Services / Tribe lead A"
 	Depth int    // 1 at the top level
 }
@@ -78,7 +79,7 @@ func folderOptionsFor(folders []repo.Folder) []folderOption {
 			if path != "" {
 				p = path + " / " + f.Name
 			}
-			out = append(out, folderOption{ID: f.ID, Path: p, Depth: depth})
+			out = append(out, folderOption{ID: f.ID, Name: f.Name, Path: p, Depth: depth})
 			walk(f.ID, p, depth+1)
 		}
 	}
@@ -87,7 +88,9 @@ func folderOptionsFor(folders []repo.Folder) []folderOption {
 }
 
 // folderSelect turns folder options into a picker: "Top level" first, then
-// every folder by path, minus any the caller excludes.
+// every folder as an indented tree (depth-first, so each folder sits under
+// its parent), minus any the caller excludes. Each option's Label is the
+// full path, which the box shows once chosen.
 func folderSelect(opts []folderOption, exclude func(folderOption) bool) []httpx.SelectOption {
 	out := make([]httpx.SelectOption, 0, len(opts)+1)
 	out = append(out, httpx.SelectOption{Value: "", Label: "Top level"})
@@ -95,7 +98,7 @@ func folderSelect(opts []folderOption, exclude func(folderOption) bool) []httpx.
 		if exclude != nil && exclude(o) {
 			continue
 		}
-		out = append(out, httpx.SelectOption{Value: o.ID.String(), Label: o.Path})
+		out = append(out, httpx.SelectOption{Value: o.ID.String(), Label: o.Path, Name: o.Name, Depth: o.Depth - 1})
 	}
 	return out
 }

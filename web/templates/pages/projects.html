@@ -42,7 +42,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#43284E"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>New project
       </a>
       {{if .Data.CanCreateFolder}}
-      {{template "lotus_modal_open" (dict "Name" "new-folder" "Title" "New folder" "Trigger" "New folder")}}
+      {{template "lotus_modal_open" (dict "Name" "new-folder" "Title" "New folder" "Trigger" "New folder" "Variant" "secondary")}}
         {{template "folder_create_form" .Data}}
       {{template "lotus_modal_close" .}}
       {{end}}
@@ -50,6 +50,9 @@
   </header>
 
   {{template "dashboard_block" .Data}}
+  {{if .Data.CanMoveProjects}}
+  {{template "move_projects_dialog" .Data}}
+  {{end}}
   {{if .Data.CanEditFolder}}
   {{range .Data.Rows}}{{if .IsFolder}}
   {{template "folder_edit_dialog" (dict "Row" . "CanDelete" $.Data.CanDeleteFolder)}}

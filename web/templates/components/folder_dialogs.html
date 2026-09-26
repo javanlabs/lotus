@@ -11,7 +11,7 @@
       </label>
       <label style="display:flex;flex-direction:column;gap:6px">
         <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">INSIDE</span>
-        {{template "lotus_select" (dict "Name" "parent_id" "ID" "new-folder-parent" "Value" "" "Label" "Inside" "Options" (selectOptions .FolderSelect))}}
+        {{template "lotus_select" (dict "Placeholder" "Top level" "Name" "parent_id" "ID" "new-folder-parent" "Value" "" "Label" "Inside" "Options" (selectOptions .FolderSelect))}}
       </label>
     </div>
     <div class="lotus-modal-foot">
@@ -54,7 +54,7 @@
         <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">MOVE INTO</span>
         <div style="display:flex;gap:8px;align-items:center">
           <div style="flex:1;min-width:0">
-            {{template "lotus_select" (dict "Name" "parent_id" "ID" (printf "move-%s" $r.NodeID) "Value" $r.MoveValue "Label" "Move into" "Options" (selectOptions $r.MoveOptions))}}
+            {{template "lotus_select" (dict "Placeholder" "Top level" "Name" "parent_id" "ID" (printf "move-%s" $r.NodeID) "Value" $r.MoveValue "Label" "Move into" "Options" (selectOptions $r.MoveOptions))}}
           </div>
           <button type="submit" class="btn-lotus btn-lotus-secondary">Move</button>
         </div>
@@ -68,6 +68,40 @@
         {{if $r.DeleteBlocked}}<span style="font-size:11.5px;color:#6B7280">{{$r.DeleteBlocked}}</span>{{end}}
       </form>
       {{end}}
+    </div>
+  </dialog>
+</div>
+{{end}}
+
+{{/* move_projects_dialog files every project selected on the folder tree in
+     one folder. The selection lives in the page's lotusTree() state; each
+     selected id becomes a hidden project_id input, so the form posts
+     exactly what is ticked. Opened by the bulk bar's "Move to folder".
+     Takes "." = the organization dashboard's view model. */}}
+{{define "move_projects_dialog"}}
+<div x-data="lotusModal('move-projects')" style="display:contents">
+  <dialog class="lotus-modal lotus-shape" x-ref="dialog" id="move-projects" aria-labelledby="move-projects-title">
+    <div class="lotus-modal-head">
+      <div class="lotus-modal-title" id="move-projects-title">Move <span x-text="selectedCount()"></span> <span x-text="selectedCount() === 1 ? 'project' : 'projects'"></span></div>
+      <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+      </button>
+    </div>
+    <div class="lotus-modal-form">
+      <form method="post" action="/projects/move" hx-post="/projects/move" hx-target="#move-projects-error" hx-swap="innerHTML">
+        <template x-for="id in selectedIds()" :key="id"><input type="hidden" name="project_id" :value="id"></template>
+        <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
+          <div id="move-projects-error"></div>
+          <label style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">FOLDER</span>
+            {{template "lotus_select" (dict "Placeholder" "Top level" "Name" "folder_id" "ID" "move-projects-folder" "Value" "" "Label" "Folder" "Options" (selectOptions .ProjectFolderSelect))}}
+          </label>
+        </div>
+        <div class="lotus-modal-foot">
+          <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+          <button type="submit" class="btn-lotus btn-lotus-primary">Move</button>
+        </div>
+      </form>
     </div>
   </dialog>
 </div>

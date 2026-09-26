@@ -125,3 +125,79 @@ func TestProjectsPage_EscapesFolderNames(t *testing.T) {
 		t.Fatal("escaped folder name not found")
 	}
 }
+
+func TestProjectsPage_MembersCanSelectProjectsForABulkMove(t *testing.T) {
+	body, _, _ := getProjectsPage(t, "acme-sel", "owner")
+	for _, want := range []string{
+		`data-project-select`,
+		`aria-label="Select all visible projects"`,
+		`id="move-projects"`,
+		`hx-post="/projects/move"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("page missing %q", want)
+		}
+	}
+}
+
+func TestProjectsPage_ViewerCannotSelectProjects(t *testing.T) {
+	body, _, _ := getProjectsPage(t, "acme-sel-v", "viewer")
+	for _, unwanted := range []string{`data-project-select`, `id="move-projects"`, "Select all visible projects"} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("viewer page contains %q", unwanted)
+		}
+	}
+}
+
+func TestProjectsPage_NewFolderIsANormalButton(t *testing.T) {
+	body, _, _ := getProjectsPage(t, "acme-btn", "owner")
+	i := strings.Index(body, "New folder\n")
+	if i < 0 {
+		t.Fatal("New folder trigger not found")
+	}
+	trigger := body[strings.LastIndex(body[:i], "<button"):i]
+	if !strings.Contains(trigger, "btn-lotus-secondary") || strings.Contains(trigger, "btn-lotus-primary") {
+		t.Fatalf("New folder trigger = %s, want a secondary button", trigger)
+	}
+}
+
+// The folder pickers list folders as an indented tree: each option shows
+// the folder's own name, and carries its full path as the label the box
+// displays once chosen and as the text typing filters on.
+func TestProjectsPage_FolderPickerIsANestedTree(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-nest", "owner")
+	raw := seedSession(t, db, orgID, userID)
+	seedFiledProject(t, db, orgID, "IT Services", "Linknet", "pass", 90)
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if _, err := tx.Exec(`INSERT INTO folders (org_id, parent_id, name) SELECT $1, id, 'Tribe lead A' FROM folders WHERE name = 'IT Services'`, orgID); err != nil {
+			t.Fatalf("insert nested folder: %v", err)
+		}
+	})
+
+	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-nest."+dashboardTestDomain, "/projects", raw))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /projects = %v, %v", resp, err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	body := string(b)
+	if !strings.Contains(body, `data-label="IT Services / Tribe lead A"`) {
+		t.Fatal("nested option does not carry its full path as data-label")
+	}
+	if !strings.Contains(body, `padding-left:calc(1 * 16px)`) {
+		t.Fatal("nested option is not indented one level")
+	}
+	if strings.Contains(body, `>IT Services / Tribe lead A</`) {
+		t.Fatal("nested option still shows the full path as its list text")
+	}
+}
+
+// A folder picker's empty value means "Top level"; the combobox leaves its
+// box blank for it, so the picker says so with a placeholder rather than
+// looking like nothing is chosen.
+func TestProjectsPage_FolderPickersShowTopLevelWhenEmpty(t *testing.T) {
+	body, _, _ := getProjectsPage(t, "acme-ph", "owner")
+	if n := strings.Count(body, `placeholder="Top level"`); n < 3 {
+		t.Fatalf("placeholder=\"Top level\" appears %d times, want every folder picker (new folder, bulk move, the folder's own move)", n)
+	}
+}

@@ -133,6 +133,7 @@ func TestFolders_ViewerRefusedOnEveryWrite(t *testing.T) {
 		{"move", "/folders/" + product.String() + "/move", url.Values{"parent_id": {other.String()}}},
 		{"delete", "/folders/" + product.String() + "/delete", nil},
 		{"project move", "/projects/" + projectID.String() + "/move", url.Values{"folder_id": {product.String()}}},
+		{"bulk project move", "/projects/move", url.Values{"project_id": {projectID.String()}, "folder_id": {product.String()}}},
 	} {
 		t.Run(step.name, func(t *testing.T) {
 			resp, err := app.Test(folderFormReq(host, step.path, viewerRaw, step.form, false))
@@ -274,5 +275,75 @@ func TestProjects_MoveIntoAFolderIsAudited(t *testing.T) {
 	}
 	if n := auditCount(t, db, orgID, "project.move"); n != 1 {
 		t.Fatalf("project.move audit events = %d, want 1", n)
+	}
+}
+
+func seedProjectsNamed(t *testing.T, db *sqlx.DB, orgID uuid.UUID, names ...string) []uuid.UUID {
+	t.Helper()
+	ids := make([]uuid.UUID, len(names))
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		for i, n := range names {
+			if err := tx.Get(&ids[i], `INSERT INTO projects (org_id, slug, name) VALUES ($1, $2, $2) RETURNING id`, orgID, n); err != nil {
+				t.Fatalf("insert project %s: %v", n, err)
+			}
+		}
+	})
+	return ids
+}
+
+func TestProjects_BulkMoveFilesEveryProjectAndAuditsEach(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-bulk", "member")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-bulk." + dashboardTestDomain
+	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"IT Services"}}, false))
+	it := folderIDNamed(t, db, orgID, "IT Services")
+	ids := seedProjectsNamed(t, db, orgID, "linknet", "dignas", "anri")
+
+	resp, err := app.Test(folderFormReq(host, "/projects/move", raw,
+		url.Values{"project_id": {ids[0].String(), ids[1].String()}, "folder_id": {it.String()}}, true))
+	if err != nil || resp.StatusCode != http.StatusNoContent || resp.Header.Get("HX-Refresh") != "true" {
+		t.Fatalf("bulk move = %v, %v; want 204 with HX-Refresh", resp, err)
+	}
+	var filed int
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&filed, `SELECT count(*) FROM projects WHERE folder_id = $1`, it); err != nil {
+			t.Fatalf("count: %v", err)
+		}
+	})
+	if filed != 2 {
+		t.Fatalf("%d projects filed in IT Services, want 2 (anri must stay put)", filed)
+	}
+	if n := auditCount(t, db, orgID, "project.move"); n != 2 {
+		t.Fatalf("project.move audit events = %d, want 2", n)
+	}
+}
+
+func TestProjects_BulkMoveRejectionsComeBackIntoTheDialog(t *testing.T) {
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-bulk-rej", "member")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-bulk-rej." + dashboardTestDomain
+	ids := seedProjectsNamed(t, db, orgID, "linknet")
+
+	for name, c := range map[string]struct {
+		form url.Values
+		want string
+	}{
+		"nothing selected": {url.Values{"folder_id": {""}}, "Select at least one project."},
+		"unknown folder":   {url.Values{"project_id": {ids[0].String()}, "folder_id": {uuid.NewString()}}, "That project or folder no longer exists."},
+		"unknown project":  {url.Values{"project_id": {uuid.NewString()}, "folder_id": {""}}, "That project or folder no longer exists."},
+		"malformed id":     {url.Values{"project_id": {"nope"}, "folder_id": {""}}, "That project or folder no longer exists."},
+	} {
+		t.Run(name, func(t *testing.T) {
+			resp, err := app.Test(folderFormReq(host, "/projects/move", raw, c.form, true))
+			if err != nil || resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %v, %v; want 200 fragment", resp, err)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			if !strings.Contains(string(body), c.want) {
+				t.Fatalf("body = %s, want %q", body, c.want)
+			}
+		})
 	}
 }

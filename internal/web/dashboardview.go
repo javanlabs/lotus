@@ -177,12 +177,16 @@ type dashboardViewModel struct {
 	// sorting and the folder dialogs. Organization dashboard only.
 	Tree bool
 	// FolderOptions is every folder depth-first with its full path;
-	// FolderSelect is the new-folder parent picker built from it.
-	FolderOptions []folderOption
-	FolderSelect  []httpx.SelectOption
+	// FolderSelect is the new-folder parent picker built from it, and
+	// ProjectFolderSelect the bulk-move picker (every folder: a project may
+	// go at any depth, where a new folder may not).
+	FolderOptions       []folderOption
+	FolderSelect        []httpx.SelectOption
+	ProjectFolderSelect []httpx.SelectOption
 	// The page handler sets these from the principal. The routes enforce
 	// the same permissions regardless; these only decide what is drawn.
-	CanCreateFolder, CanEditFolder, CanDeleteFolder bool
+	// CanMoveProjects adds the row checkboxes and the bulk-move bar.
+	CanCreateFolder, CanEditFolder, CanDeleteFolder, CanMoveProjects bool
 }
 
 func toneOf(s collector.Status) string {
@@ -517,7 +521,8 @@ func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, fo
 		FolderSelect: folderSelect(options, func(o folderOption) bool {
 			return o.Depth >= repo.MaxFolderDepth
 		}),
-		ProjectCount: len(projects),
+		ProjectFolderSelect: folderSelect(options, nil),
+		ProjectCount:        len(projects),
 		// The org-wide numbers are over projects and components, never
 		// folders: filing a project must not move them. RowCount in
 		// particular must count projects, not tree rows — len(rows)

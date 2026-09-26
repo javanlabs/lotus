@@ -23,6 +23,12 @@
        "Size"       "sm" | "md"              — default "md"
        "AutoSubmit" true                     — submits the form on change,
                                                replacing onchange="this.form.submit()"
+       Options may be tree options (SelectOption.Name/Depth): the list then
+       shows the name indented under its parent while the box, once chosen,
+       shows the option's full Label (data-label), and typing filters on it.
+       "Placeholder" text shown in the box while the empty-value option is
+                    the choice — a folder picker's "Top level", which the
+                    combobox otherwise leaves blank
        "Label"      accessible name for screen readers, when the visible
                     label is a sibling <span> rather than a wrapping <label>
        "ID"         element id suffix, when two dropdowns on one page
@@ -43,7 +49,8 @@
      {{if .AutoSubmit}}onchange="this.closest('form') && this.closest('form').requestSubmit()"{{end}}>
   <input type="text" role="combobox" autocomplete="off" autocorrect="off" spellcheck="false"
          aria-autocomplete="list" aria-expanded="false" aria-controls="{{$id}}-listbox"
-         {{if .Label}}aria-label="{{.Label}}"{{end}}>
+         {{if .Label}}aria-label="{{.Label}}"{{end}}
+         {{if .Placeholder}}placeholder="{{.Placeholder}}"{{end}}>
   <svg class="combobox-trigger-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9s-4.419 6-6 6s-6-6-6-6"></path>
   </svg>
@@ -55,9 +62,15 @@
   <div id="{{$id}}-popover" data-popover popover="manual" aria-hidden="true">
     <div role="listbox" id="{{$id}}-listbox" aria-orientation="vertical">
       {{range .Options}}
+      {{if .Name}}
+      <div role="option" data-value="{{.Value}}" data-label="{{.Label}}" data-filter="{{.Label}}"
+           {{if eq .Value $value}}aria-selected="true"{{end}}
+           {{if .Disabled}}aria-disabled="true"{{end}}><span class="lotus-option-tree" style="padding-left:calc({{.Depth}} * 16px)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.5" d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"></path></svg>{{.Name}}</span></div>
+      {{else}}
       <div role="option" data-value="{{.Value}}"
            {{if eq .Value $value}}aria-selected="true"{{end}}
            {{if .Disabled}}aria-disabled="true"{{end}}>{{.Label}}</div>
+      {{end}}
       {{end}}
     </div>
   </div>

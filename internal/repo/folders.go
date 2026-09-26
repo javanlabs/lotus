@@ -230,14 +230,39 @@ func RenameFolder(ctx context.Context, s tenant.Scope, id uuid.UUID, name string
 // MoveProject files a project in folderID, or at the root when folderID is
 // nil, and returns the folder it was in before (nil for the root).
 func MoveProject(ctx context.Context, s tenant.Scope, projectID uuid.UUID, folderID *uuid.UUID) (*uuid.UUID, error) {
-	var from *uuid.UUID
+	from, err := MoveProjects(ctx, s, []uuid.UUID{projectID}, folderID)
+	if err != nil {
+		return nil, err
+	}
+	return from[projectID], nil
+}
+
+// MoveProjects files every listed project in folderID (nil = the root) in
+// one transaction and returns, per project, the folder it was in before.
+// It is all or nothing: one id this organization cannot see refuses the
+// whole batch with ErrNotFound, so a partial move never happens. Repeated
+// ids are moved once.
+func MoveProjects(ctx context.Context, s tenant.Scope, projectIDs []uuid.UUID, folderID *uuid.UUID) (map[uuid.UUID]*uuid.UUID, error) {
+	if len(projectIDs) == 0 {
+		return nil, ErrInvalidInput
+	}
+	from := make(map[uuid.UUID]*uuid.UUID, len(projectIDs))
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		if err := tx.GetContext(ctx, &from,
-			`SELECT folder_id FROM projects WHERE id = $1 FOR UPDATE`, projectID); err != nil {
-			return err
+		for _, id := range projectIDs {
+			if _, done := from[id]; done {
+				continue
+			}
+			var was *uuid.UUID
+			if err := tx.GetContext(ctx, &was,
+				`SELECT folder_id FROM projects WHERE id = $1 FOR UPDATE`, id); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE projects SET folder_id = $2 WHERE id = $1`, id, folderID); err != nil {
+				return err
+			}
+			from[id] = was
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE projects SET folder_id = $2 WHERE id = $1`, projectID, folderID)
-		return err
+		return nil
 	})
 	if err != nil {
 		return nil, folderWriteErr(err)

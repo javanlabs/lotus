@@ -138,7 +138,8 @@ function lotusSort(headingLabel) {
       Array.from(box.children).forEach((row) => {
         if (row.offsetParent === null) return;
         const cell = row.children[0];
-        if (cell) cell.textContent = ++n;
+        // A selectable row's first cell is its checkbox, not a number.
+        if (cell && !('noNumber' in cell.dataset)) cell.textContent = ++n;
       });
     },
   };
@@ -186,6 +187,55 @@ function lotusTree() {
     // hiddenBy: is any of these space-separated folder ids collapsed?
     hiddenBy(ancestors) {
       return (ancestors || '').split(' ').some((id) => id && this.collapsed[id]);
+    },
+
+    // Multi-select for the bulk move. `selected` is a set of project ids,
+    // replaced (not mutated) on every change so Alpine re-renders the
+    // checkboxes, the count and the move form's hidden inputs. It lives only
+    // for the page: a reload after a move clears it.
+    selected: {},
+
+    isSelected(id) {
+      return !!this.selected[id];
+    },
+
+    toggleSelect(id) {
+      const next = { ...this.selected };
+      if (next[id]) delete next[id];
+      else next[id] = true;
+      this.selected = next;
+    },
+
+    selectedIds() {
+      return Object.keys(this.selected);
+    },
+
+    selectedCount() {
+      return this.selectedIds().length;
+    },
+
+    clearSelection() {
+      this.selected = {};
+    },
+
+    // The header checkbox acts on the project rows currently on screen —
+    // not ones hidden by a collapsed folder or the Failing filter.
+    visibleProjectIds(box) {
+      if (!box) return [];
+      return Array.from(box.querySelectorAll('[data-project-select]'))
+        .filter((cb) => cb.offsetParent !== null)
+        .map((cb) => cb.dataset.id);
+    },
+
+    selectVisible(box) {
+      const next = { ...this.selected };
+      this.visibleProjectIds(box).forEach((id) => { next[id] = true; });
+      this.selected = next;
+    },
+
+    allVisibleSelected(box) {
+      const ids = this.visibleProjectIds(box);
+      return ids.length > 0 && ids.every((id) => this.selected[id]);
     },
   };
 }

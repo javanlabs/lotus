@@ -32,8 +32,10 @@ async function chooseInOpenDialog(page: Page, label: string) {
 
 const folderRow = (page: Page, name: string) =>
   page.locator('[data-folder="1"]').filter({ has: page.getByText(name, { exact: true }) });
+// A project row is a link for viewers and a selectable row (checkbox plus a
+// stretched name link) for anyone who can move projects — match either.
 const projectRow = (page: Page, name: string) =>
-  page.locator('a.lotus-repo-row').filter({ has: page.getByText(name, { exact: true }) });
+  page.locator('.lotus-repo-row[data-node]:not([data-folder])').filter({ has: page.getByText(name, { exact: true }) });
 
 test('folders roll up passing projects and remember being collapsed', async ({ page, context }) => {
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('folders-e2e', 'placeholder');
@@ -58,7 +60,9 @@ test('folders roll up passing projects and remember being collapsed', async ({ p
   for (const id of [linknet, dignas]) {
     await page.goto(`${origin}/projects/${id}`);
     await page.getByRole('button', { name: 'Move to folder' }).click();
-    await chooseInOpenDialog(page, 'IT Services / Tribe lead A');
+    // The picker lists folders as a tree: the option shows the folder's own
+    // name, indented under its parent.
+    await chooseInOpenDialog(page, 'Tribe lead A');
     await page.locator('dialog[open]').getByRole('button', { name: 'Move', exact: true }).click();
     await expect(page.getByText('Project moved')).toBeVisible();
   }
@@ -78,6 +82,47 @@ test('folders roll up passing projects and remember being collapsed', async ({ p
   // Expanding again brings them back.
   await folderRow(page, 'Tribe lead A').getByText('Tribe lead A', { exact: true }).click();
   await expect(projectRow(page, 'Linknet')).toBeVisible();
+
+  await retireOrg(orgId);
+});
+
+test('several projects move into a folder at once from the tree', async ({ page, context }) => {
+  const { sessionToken, subdomain, orgId } = await seedOwnerSession('folders-bulk-e2e', 'placeholder');
+  const origin = tenantOrigin(subdomain);
+  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+  const linknet = await seedProject(orgId, 'Linknet', 'fail', 42);
+  await seedProject(orgId, 'Dignas', 'pass', 95);
+  await seedProject(orgId, 'ANRI', 'pass', 88);
+  await withDB(async (c) => {
+    const it = await c.query(`INSERT INTO folders (org_id, name) VALUES ($1, 'IT Services') RETURNING id`, [orgId]);
+    await c.query(`INSERT INTO folders (org_id, parent_id, name) VALUES ($1, $2, 'Tribe lead A')`, [orgId, it.rows[0].id]);
+  });
+
+  await page.goto(`${origin}/projects`);
+
+  // The New folder trigger is a normal button, not the primary one.
+  await expect(page.getByRole('button', { name: 'New folder' })).toHaveClass(/btn-lotus-secondary/);
+
+  // A selectable row still opens its project when the row is clicked.
+  await projectRow(page, 'Linknet').click({ position: { x: 400, y: 10 } });
+  await expect(page).toHaveURL(`${origin}/projects/${linknet}`);
+  await page.goBack();
+
+  await page.getByRole('checkbox', { name: 'Select Linknet' }).check();
+  await page.getByRole('checkbox', { name: 'Select Dignas' }).check();
+  await expect(page.getByText('2 selected')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Move to folder' }).click();
+  await chooseInOpenDialog(page, 'Tribe lead A');
+  // Once chosen, the box shows the full path, so nested names stay unambiguous.
+  await expect(page.locator('dialog[open] .lotus-combobox').getByRole('combobox')).toHaveValue('IT Services / Tribe lead A');
+  await page.locator('dialog[open]').getByRole('button', { name: 'Move', exact: true }).click();
+
+  await expect(page.getByText('2 projects moved')).toBeVisible();
+  await expect(folderRow(page, 'Tribe lead A')).toContainText('2 projects');
+  await expect(folderRow(page, 'Tribe lead A')).toContainText('1 / 2 passing');
+  // ANRI was not ticked, so it stays at the top level.
+  await expect(projectRow(page, 'ANRI')).toHaveAttribute('data-parent', '');
 
   await retireOrg(orgId);
 });
