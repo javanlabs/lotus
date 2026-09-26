@@ -11,7 +11,9 @@
      Takes (dict
        "Name"    unique handle, also the x-data scope and close-event key
        "Title"   heading, sentence case
-       "Trigger" label for the button that opens it)
+       "Trigger" label for the button that opens it
+       "Variant" optional button style, "secondary" for a page's supporting
+                 actions — default "primary")
 
      <dialog>, not a positioned div: the browser gives the focus trap,
      Esc-to-close, ::backdrop, inert background and top-layer stacking.
@@ -25,7 +27,7 @@
      importing a foreign one. */}}
 {{define "lotus_modal_open"}}
 <div x-data="lotusModal('{{.Name}}')" style="display:contents">
-  <button type="button" class="btn-lotus btn-lotus-primary" @click="open()">
+  <button type="button" class="btn-lotus btn-lotus-{{or .Variant "primary"}}" @click="open()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
     {{.Trigger}}
   </button>

@@ -7,7 +7,7 @@
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{if .Data.Project.Description}}{{.Data.Project.Description}}{{else}}{{.Data.Dashboard.Subtitle}}{{end}}</p>
   </div>
   {{if .Data.CanMove}}
-  {{template "lotus_modal_open" (dict "Name" "move-project" "Title" "Move to folder" "Trigger" "Move to folder")}}
+  {{template "lotus_modal_open" (dict "Name" "move-project" "Title" "Move to folder" "Trigger" "Move to folder" "Variant" "secondary")}}
     <div class="lotus-modal-form">
       <form method="post" action="/projects/{{.Data.Project.ID}}/move" hx-post="/projects/{{.Data.Project.ID}}/move"
             hx-target="#move-project-error" hx-swap="innerHTML">
@@ -15,7 +15,7 @@
           <div id="move-project-error"></div>
           <label style="display:flex;flex-direction:column;gap:6px">
             <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">FOLDER</span>
-            {{template "lotus_select" (dict "Name" "folder_id" "Value" .Data.FolderValue "Label" "Folder" "Options" (selectOptions .Data.FolderSelect))}}
+            {{template "lotus_select" (dict "Placeholder" "Top level" "Name" "folder_id" "Value" .Data.FolderValue "Label" "Folder" "Options" (selectOptions .Data.FolderSelect))}}
           </label>
         </div>
         <div class="lotus-modal-foot">
