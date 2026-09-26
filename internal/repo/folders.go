@@ -322,6 +322,34 @@ func MoveFolder(ctx context.Context, s tenant.Scope, id uuid.UUID, parentID *uui
 	return &out, nil
 }
 
+// folderContents reads what a folder holds — its subfolder count and every
+// project filed in it, archived included — into a *FolderNotEmptyError for
+// name. It never itself decides whether the folder is empty; the caller
+// checks Subfolders and Projects.
+func folderContents(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, name string) (*FolderNotEmptyError, error) {
+	notEmpty := &FolderNotEmptyError{Name: name}
+	if err := tx.GetContext(ctx, &notEmpty.Subfolders,
+		`SELECT count(*) FROM folders WHERE parent_id = $1`, id); err != nil {
+		return nil, err
+	}
+	var filed []struct {
+		Name     string `db:"name"`
+		Archived bool   `db:"archived"`
+	}
+	if err := tx.SelectContext(ctx, &filed, `
+		SELECT name, archived_at IS NOT NULL AS archived
+		FROM projects WHERE folder_id = $1 ORDER BY lower(name)`, id); err != nil {
+		return nil, err
+	}
+	for _, p := range filed {
+		notEmpty.Projects = append(notEmpty.Projects, p.Name)
+		if p.Archived {
+			notEmpty.Archived++
+		}
+	}
+	return notEmpty, nil
+}
+
 // DeleteFolder removes an empty folder and returns it. Anything inside —
 // a subfolder, or a project, archived or not — refuses with a
 // *FolderNotEmptyError naming what is left. There is no cascade: projects
@@ -335,30 +363,14 @@ func DeleteFolder(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Folder, e
 		if err := tx.GetContext(ctx, &out, `SELECT `+folderCols+` FROM folders WHERE id = $1`, id); err != nil {
 			return err
 		}
-		notEmpty := &FolderNotEmptyError{Name: out.Name}
-		if err := tx.GetContext(ctx, &notEmpty.Subfolders,
-			`SELECT count(*) FROM folders WHERE parent_id = $1`, id); err != nil {
+		notEmpty, err := folderContents(ctx, tx, id, out.Name)
+		if err != nil {
 			return err
-		}
-		var filed []struct {
-			Name     string `db:"name"`
-			Archived bool   `db:"archived"`
-		}
-		if err := tx.SelectContext(ctx, &filed, `
-			SELECT name, archived_at IS NOT NULL AS archived
-			FROM projects WHERE folder_id = $1 ORDER BY lower(name)`, id); err != nil {
-			return err
-		}
-		for _, p := range filed {
-			notEmpty.Projects = append(notEmpty.Projects, p.Name)
-			if p.Archived {
-				notEmpty.Archived++
-			}
 		}
 		if notEmpty.Subfolders > 0 || len(notEmpty.Projects) > 0 {
 			return notEmpty
 		}
-		_, err := tx.ExecContext(ctx, `DELETE FROM folders WHERE id = $1`, id)
+		_, err = tx.ExecContext(ctx, `DELETE FROM folders WHERE id = $1`, id)
 		return err
 	})
 	if err != nil {
@@ -369,6 +381,19 @@ func DeleteFolder(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Folder, e
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
 			// A project was filed here between the check and the delete.
+			// That transaction is aborted, so re-read what is there now in
+			// a fresh one, naming it the same way the pre-check would have.
+			var reread *FolderNotEmptyError
+			rerr := s.Tx(ctx, func(tx *sqlx.Tx) error {
+				var err error
+				reread, err = folderContents(ctx, tx, id, out.Name)
+				return err
+			})
+			if rerr == nil && (reread.Subfolders > 0 || len(reread.Projects) > 0) {
+				return nil, reread
+			}
+			// A second race emptied it again between the failed delete and
+			// this re-read; nothing left to name.
 			return nil, &FolderNotEmptyError{Name: out.Name}
 		}
 		return nil, folderWriteErr(err)
