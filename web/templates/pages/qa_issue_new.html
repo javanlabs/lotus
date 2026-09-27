@@ -11,44 +11,7 @@
   {{if $d.Error}}{{template "form_error" $d.Error}}{{end}}
   {{with $d.ItemID}}<input type="hidden" name="item_id" value="{{.}}">{{end}}
   {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:14px")}}
-    <label style="display:flex;flex-direction:column;gap:6px">
-      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">TITLE</span>
-      <input type="text" name="title" required maxlength="500" value="{{$d.Title}}" placeholder="Submit returns 500 on the RFS form" class="lotus-input">
-    </label>
-    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
-      <label style="display:flex;flex-direction:column;gap:6px">
-        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">SEVERITY</span>
-        {{template "lotus_select" (dict "Name" "severity" "ID" "issue-severity" "Value" $d.Severity "Label" "Severity" "Options" (selectOptions $d.SeverityOptions))}}
-      </label>
-      <label style="display:flex;flex-direction:column;gap:6px">
-        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">ENVIRONMENT</span>
-        <input type="text" name="environment" maxlength="200" value="{{$d.Environment}}" placeholder="UAT" class="lotus-input">
-      </label>
-      <label style="display:flex;flex-direction:column;gap:6px">
-        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PLAN</span>
-        {{template "lotus_select" (dict "Name" "plan_id" "ID" "issue-plan" "Value" $d.PlanID "Label" "Plan" "Options" (selectOptions $d.PlanOptions))}}
-      </label>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
-      <label style="display:flex;flex-direction:column;gap:6px">
-        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">SECTION</span>
-        {{template "lotus_select" (dict "Name" "section_id" "ID" "issue-section" "Value" $d.SectionID "Label" "Section" "Options" (selectOptions $d.SectionOptions))}}
-      </label>
-      {{if $d.CanAssign}}
-      <label style="display:flex;flex-direction:column;gap:6px">
-        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">ASSIGNEE</span>
-        {{template "lotus_select" (dict "Name" "assignee_id" "ID" "issue-assignee" "Value" $d.AssigneeID "Label" "Assignee" "Options" (selectOptions $d.PeopleOptions))}}
-      </label>
-      {{end}}
-    </div>
-    <label style="display:flex;flex-direction:column;gap:6px">
-      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">STEPS TO REPRODUCE</span>
-      <textarea name="steps_to_reproduce" rows="5" class="lotus-textarea">{{$d.StepsToReproduce}}</textarea>
-    </label>
-    <label style="display:flex;flex-direction:column;gap:6px">
-      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">DESCRIPTION</span>
-      <textarea name="description" rows="4" class="lotus-textarea" placeholder="What happened, what was expected">{{$d.Description}}</textarea>
-    </label>
+    {{template "qa_issue_fields" $d}}
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">FILES</span>
       <input type="file" name="file" multiple class="lotus-input" aria-label="Attach files">

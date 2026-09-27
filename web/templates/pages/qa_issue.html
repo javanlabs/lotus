@@ -1,0 +1,108 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+{{$i := $d.Issue}}
+
+<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
+  <div style="flex:1;min-width:220px">
+    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E"><span style="font-family:'IBM Plex Mono',monospace;font-weight:600;color:#9E2B47">BUG-{{$i.Key}}</span> {{$i.Title}}</h1>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$i.Status}} · reported {{$i.CreatedAt.Format "02 Jan 2006"}}{{with $d.ReportedBy}} by {{.}}{{end}}{{if eq $i.Source "client"}} · <span class="lotus-badge lotus-badge-none" data-source="client">client</span>{{end}}</p>
+  </div>
+  {{if $d.CanWrite}}
+  <div x-data="lotusModal('edit-issue')" style="display:contents">
+    <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Edit issue…</button>
+    <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="edit-issue-title">
+      <div class="lotus-modal-head">
+        <div class="lotus-modal-title" id="edit-issue-title">Edit BUG-{{$i.Key}}</div>
+        <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+        </button>
+      </div>
+      <div class="lotus-modal-form">
+        <form method="post" action="{{$d.URL}}" hx-post="{{$d.URL}}" hx-target="#edit-issue-error" hx-swap="innerHTML">
+          <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px;min-width:min(640px,85vw)">
+            <div id="edit-issue-error"></div>
+            {{template "qa_issue_fields" $d.Form}}
+          </div>
+          <div class="lotus-modal-foot">
+            <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn-lotus btn-lotus-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+  </div>
+  {{end}}
+  {{template "qa_subnav" (dict "Base" $d.Base "Active" "issues")}}
+</header>
+
+<div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(240px,1fr);gap:14px;align-items:start">
+  <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+    {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:12px;font-size:12.5px;color:#374151")}}
+      {{if $i.Description}}<div><div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:4px">DESCRIPTION</div><div style="white-space:pre-wrap">{{$i.Description}}</div></div>{{end}}
+      {{if $i.StepsToReproduce}}<div><div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:4px">STEPS TO REPRODUCE</div><div style="white-space:pre-wrap">{{$i.StepsToReproduce}}</div></div>{{end}}
+      {{if $d.Files}}<div><div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:4px">FILES</div>
+        {{range $d.Files}}<div><a href="{{.Href}}" style="color:#43284E">{{.Name}}</a> <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.Size}}</span></div>{{end}}</div>{{end}}
+      {{if not (or $i.Description $i.StepsToReproduce $d.Files)}}<p style="margin:0;color:#9CA3AF">No description.</p>{{end}}
+    {{template "lotus_card_section_close" .}}
+
+    {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:12px")}}
+      <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">TIMELINE</div>
+      {{range $d.Events}}
+      <div style="display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:#374151;padding-bottom:10px;border-bottom:1px solid #F3F4F6">
+        <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.CreatedAt.Format "02 Jan 2006 15:04"}}{{with .By}} · {{.}}{{end}}</div>
+        {{if eq .Kind "status"}}<div><span style="font:500 11px 'IBM Plex Mono',monospace">{{.StatusFrom}} → {{.StatusTo}}</span></div>{{end}}
+        {{if .Body}}<div style="white-space:pre-wrap">{{.Body}}</div>{{end}}
+        {{range .Files}}<div><a href="{{.Href}}" style="font-size:11.5px;color:#43284E">{{.Name}}</a> <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.Size}}</span></div>{{end}}
+      </div>
+      {{else}}<p style="margin:0;font-size:12px;color:#9CA3AF">Nothing yet.</p>{{end}}
+      {{if $d.CanComment}}
+      <form method="post" action="{{$d.URL}}/comments" enctype="multipart/form-data" hx-post="{{$d.URL}}/comments" hx-encoding="multipart/form-data"
+            hx-target="#comment-error" hx-swap="innerHTML" data-max-file-bytes="{{$d.MaxFileBytes}}" style="display:flex;flex-direction:column;gap:8px">
+        <div id="comment-error"></div>
+        <div data-upload-error role="alert" hidden style="padding:9px 11px;border-radius:var(--radius-petal-sm);background:var(--status-fail-bg);color:var(--status-fail);font-size:12.5px"></div>
+        <textarea name="body" rows="3" class="lotus-textarea" placeholder="Add to the issue" aria-label="Comment"></textarea>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="file" name="file" multiple class="lotus-input" style="flex:1" aria-label="Attach files">
+          <button type="submit" class="btn-lotus btn-lotus-primary">Comment</button>
+        </div>
+      </form>
+      {{end}}
+    {{template "lotus_card_section_close" .}}
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+    {{template "lotus_card_section_open" (dict "Padding" "16px" "Style" "display:flex;flex-direction:column;gap:8px;font-size:12.5px;color:#374151")}}
+      {{template "qa_issue_fact" (dict "Label" "SEVERITY")}}<span class="lotus-badge lotus-badge-{{$d.SeverityTone}}" style="align-self:flex-start">{{$i.Severity}}</span>
+      {{template "qa_issue_fact" (dict "Label" "ASSIGNEE")}}<span>{{if $d.Assignee}}{{$d.Assignee}}{{else}}—{{end}}</span>
+      {{template "qa_issue_fact" (dict "Label" "ENVIRONMENT")}}<span>{{if $i.Environment}}{{$i.Environment}}{{else}}—{{end}}</span>
+      {{template "qa_issue_fact" (dict "Label" "PLAN")}}<span>{{if $d.PlanHref}}<a href="{{$d.PlanHref}}" style="color:#43284E">{{$d.PlanName}}</a>{{else}}—{{end}}</span>
+      {{template "qa_issue_fact" (dict "Label" "SECTION")}}<span>{{if $d.SectionPath}}{{$d.SectionPath}}{{else}}—{{end}}</span>
+      {{if $d.CanWrite}}
+      <form method="post" action="{{$d.URL}}/status" hx-post="{{$d.URL}}/status" hx-target="#status-error" hx-swap="innerHTML" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div id="status-error"></div>
+        {{template "qa_issue_fact" (dict "Label" "STATUS")}}
+        {{template "lotus_select" (dict "Name" "status" "ID" "issue-status" "Value" $i.Status "Label" "Status" "Size" "sm" "Options" (selectOptions $d.StatusOptions))}}
+        <input type="text" name="note" maxlength="2000" placeholder="Note, optional" aria-label="Note" class="lotus-input">
+        <button type="submit" class="btn-lotus btn-lotus-secondary" style="align-self:flex-start">Change status</button>
+      </form>
+      {{end}}
+    {{template "lotus_card_section_close" .}}
+    {{if $d.Items}}
+    {{template "lotus_card_section_open" (dict "Padding" "16px" "Style" "display:flex;flex-direction:column;gap:8px;font-size:12.5px")}}
+      <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">FOUND IN</div>
+      {{range $d.Items}}
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;align-items:center;gap:6px"><span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">TC-{{.Key}}</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Title}}</span></div>
+        <div style="display:flex;align-items:center;gap:6px"><a href="{{.RunHref}}" style="font-size:11.5px;color:#43284E">{{.RunName}}</a><span class="lotus-badge lotus-badge-{{.Tone}}">{{.Status}}</span></div>
+      </div>
+      {{end}}
+    {{template "lotus_card_section_close" .}}
+    {{end}}
+  </div>
+</div>
+
+{{template "shell_close" .}}
+{{end}}
+
+{{define "qa_issue_fact"}}<span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-top:4px">{{.Label}}</span>{{end}}

@@ -76,14 +76,17 @@ func qaIssueItem(c *fiber.Ctx, s tenant.Scope, project *repo.Project, raw string
 	return item, run, plan, err
 }
 
-func renderQAIssueForm(c *fiber.Ctx, d Deps, s tenant.Scope, f qaIssueFormData, status int) error {
+// fillQAIssueOptions fills the pickers of the report form and the edit
+// dialog: severities, the project's plans and live sections, and (with
+// qa.issue.write) the people an issue can be assigned to.
+func fillQAIssueOptions(c *fiber.Ctx, d Deps, s tenant.Scope, f *qaIssueFormData) error {
 	project := &f.Project
 	f.CanAssign = mustPrincipal(c).Can("qa.issue.write")
 	f.MaxFileBytes = repo.MaxQAAttachmentBytes
 	f.SeverityOptions = append([]httpx.SelectOption{{Value: "", Label: "Choose…"}}, qaSeverityOptions("")...)
 	plans, err := repo.ListQAPlans(c.Context(), s, project.ID)
 	if err != nil {
-		return writeRepoErr(c, err)
+		return err
 	}
 	f.PlanOptions = []httpx.SelectOption{{Value: "", Label: "No plan"}}
 	for _, p := range plans {
@@ -91,19 +94,27 @@ func renderQAIssueForm(c *fiber.Ctx, d Deps, s tenant.Scope, f qaIssueFormData, 
 	}
 	sections, err := repo.ListQASections(c.Context(), s, project.ID)
 	if err != nil {
-		return writeRepoErr(c, err)
+		return err
 	}
 	f.SectionOptions = append([]httpx.SelectOption{{Value: "", Label: "No section"}},
 		qaSectionOptions(qaSectionTree(sections, nil, false, nil), nil)...)
 	if f.CanAssign {
 		people, err := qaPeople(c, d, s, project)
 		if err != nil {
-			return writeRepoErr(c, err)
+			return err
 		}
 		f.PeopleOptions = []httpx.SelectOption{{Value: "", Label: "Nobody"}}
 		for _, p := range people {
 			f.PeopleOptions = append(f.PeopleOptions, httpx.SelectOption{Value: p.ID.String(), Label: p.Label})
 		}
+	}
+	return nil
+}
+
+func renderQAIssueForm(c *fiber.Ctx, d Deps, s tenant.Scope, f qaIssueFormData, status int) error {
+	project := &f.Project
+	if err := fillQAIssueOptions(c, d, s, &f); err != nil {
+		return writeRepoErr(c, err)
 	}
 	org, user, err := shellChrome(c, d.DB)
 	if err != nil {
@@ -178,10 +189,12 @@ func createQAIssueUI(d Deps) fiber.Handler {
 			Description: c.FormValue("description"), StepsToReproduce: c.FormValue("steps_to_reproduce"),
 			Environment: c.FormValue("environment"), PlanID: c.FormValue("plan_id"), SectionID: c.FormValue("section_id"),
 			AssigneeID: c.FormValue("assignee_id")}
-		in := repo.QAIssueInput{Title: f.Title, Severity: f.Severity, Description: f.Description,
-			StepsToReproduce: f.StepsToReproduce, Environment: f.Environment, Source: "internal"}
+		in := repo.QAIssueInput{Source: "internal"}
 		if authz.IsProjectScoped(mustPrincipal(c)) {
 			in.Source = "client"
+		}
+		if err := readQAIssueFields(c, d, s, project, &in); err != nil {
+			return err
 		}
 		var fromItem *uuid.UUID
 		if f.ItemID != "" {
@@ -190,27 +203,6 @@ func createQAIssueUI(d Deps) fiber.Handler {
 				return err
 			}
 			fromItem = &item.ID
-		}
-		if in.PlanID, err = optionalOwned(c, s, project, repo.QAKindPlan, f.PlanID); err != nil {
-			return err
-		}
-		if in.SectionID, err = optionalOwned(c, s, project, repo.QAKindSection, f.SectionID); err != nil {
-			return err
-		}
-		if mustPrincipal(c).Can("qa.issue.write") && strings.TrimSpace(f.AssigneeID) != "" {
-			people, err := qaPeople(c, d, s, project)
-			if err != nil {
-				return writeRepoErr(c, err)
-			}
-			for _, p := range people {
-				if p.ID.String() == f.AssigneeID {
-					id := p.ID
-					in.AssigneeID = &id
-				}
-			}
-			if in.AssigneeID == nil {
-				return fiber.ErrNotFound
-			}
 		}
 		var files []*multipart.FileHeader
 		if form, err := c.MultipartForm(); err == nil {
