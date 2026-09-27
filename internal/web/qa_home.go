@@ -64,6 +64,8 @@ func qaHome(d Deps) fiber.Handler {
 func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
 	app.Get("/qa", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("qa.read"), qaHome(d))
+	app.Get("/qa/my", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("qa.read"), qaMyPage(d))
 	app.Get("/projects/:id/qa", qaRoute(requireSession, loadPrincipal, "qa.read", qaProjectPage(d))...)
 	app.Get("/projects/:id/qa/cases", qaRoute(requireSession, loadPrincipal, "qa.read", qaCasesPage(d))...)
 	app.Post("/projects/:id/qa/cases/move", qaRoute(requireSession, loadPrincipal, "qa.case.write", moveQACasesUI(d))...)

@@ -206,6 +206,21 @@ type QAMyItem struct {
 // ListMyQAItems lists untested items assigned to userID in open runs of open
 // plans. projectIDs nil means every project (members and above); a guest
 // passes its project list, and an empty list returns nothing.
+// CountMyQAItems is len(ListMyQAItems(...)) without reading the items: the
+// sidebar's count on every page.
+func CountMyQAItems(ctx context.Context, s tenant.Scope, userID uuid.UUID, projectIDs []uuid.UUID) (int, error) {
+	var n int
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.GetContext(ctx, &n, `
+			SELECT count(*) FROM qa_run_items i
+			JOIN qa_runs r ON r.id = i.run_id AND r.closed_at IS NULL
+			JOIN qa_plans p ON p.id = r.plan_id AND p.closed_at IS NULL
+			WHERE i.assignee_id = $1 AND i.status = 'untested'
+			  AND ($2::uuid[] IS NULL OR p.project_id = ANY($2))`, userID, projectIDs)
+	})
+	return n, err
+}
+
 func ListMyQAItems(ctx context.Context, s tenant.Scope, userID uuid.UUID, projectIDs []uuid.UUID) ([]QAMyItem, error) {
 	var out []QAMyItem
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {

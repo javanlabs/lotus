@@ -1,0 +1,42 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+
+<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
+  <div style="flex:1;min-width:220px">
+    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">My work</h1>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Total}} untested item{{if ne $d.Total 1}}s{{end}} assigned to you in open runs</p>
+  </div>
+  {{template "qa_home_nav" "my"}}
+</header>
+
+{{if not $d.Projects}}
+{{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
+  Nothing assigned to you is waiting.
+{{template "lotus_card_section_close" .}}
+{{else}}
+<div style="display:flex;flex-direction:column;gap:14px">
+{{range $d.Projects}}
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
+  <div style="padding:10px 14px 4px"><a href="{{.Href}}" style="font-size:14px;font-weight:600;color:#43284E;text-decoration:none">{{.Name}}</a></div>
+  {{range .Plans}}
+  {{range $run := .Runs}}
+  <div class="lotus-table-head" style="display:flex;align-items:center;gap:10px">
+    <span style="flex:1">{{$run.Name}}</span>
+    <a href="{{$run.Href}}" style="font-size:11px;color:#43284E;text-transform:none;letter-spacing:0">Open run</a>
+  </div>
+  {{range $run.Items}}
+  <a href="{{$run.Href}}" data-my-item class="lotus-repo-row" style="display:grid;grid-template-columns:minmax(0,1fr) 200px;gap:10px;align-items:center;padding:0 14px;text-decoration:none;color:inherit">
+    <span style="font-size:12.5px;color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Title}}</span>
+    <span style="font-size:11.5px;color:#6B7280;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.PlanName}}{{if .GroupName}} · {{.GroupName}}{{end}}</span>
+  </a>
+  {{end}}
+  {{end}}
+  {{end}}
+{{template "lotus_card_section_close" .}}
+{{end}}
+</div>
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}

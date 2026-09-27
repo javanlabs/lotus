@@ -44,7 +44,7 @@
       {{if .Href}}
       <a href="{{.Href}}" class="lotus-nav-item{{if eq .Key $.Nav.Active}} is-active{{end}}">
         {{.Icon}}{{.Label}}
-        {{if .Count}}<span style="margin-left:auto;font:500 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.Count}}</span>{{end}}
+        {{if .Count}}<span style="margin-left:auto;font:500 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF"{{if eq .Key "qa_tools"}} data-qa-my-count="{{.Count}}" title="Untested items assigned to you"{{end}}>{{.Count}}</span>{{end}}
       </a>
       {{else}}
       <div class="lotus-nav-item is-disabled" title="Coming soon">
