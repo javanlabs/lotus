@@ -218,3 +218,13 @@ func QAProjectOf(ctx context.Context, s tenant.Scope, kind QAKind, id uuid.UUID)
 	}
 	return projectID, err
 }
+
+// truncateQAName cuts a derived name (a run's "Scenario / Group" label
+// turned into a group name) to MaxQANameLength, ending it with "…".
+func truncateQAName(s string) string {
+	r := []rune(s)
+	if len(r) <= MaxQANameLength {
+		return s
+	}
+	return string(r[:MaxQANameLength-1]) + "…"
+}

@@ -109,3 +109,31 @@ func closeQARunUI() fiber.Handler {
 		return redirectAfterMutation(c, runURL(project, run))
 	}
 }
+
+// saveQARunAsScenarioUI keeps a run's case set for next time: a new
+// scenario with the run's cases, order and groups (qa.case.write).
+func saveQARunAsScenarioUI(d Deps) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		s, project, err := loadQAProject(c)
+		if err != nil {
+			return err
+		}
+		run, err := loadQARun(c, s, project)
+		if err != nil {
+			return err
+		}
+		name, phase, _, msg := readQAScenarioForm(c)
+		if msg != "" {
+			return qaFormError(c, d, fiber.StatusUnprocessableEntity, msg)
+		}
+		sc, err := repo.CreateQAScenarioFromRun(c.Context(), s, run.ID, name, phase, qaActor(c))
+		if err != nil {
+			if status, msg, ok := qaScenarioErr(err); ok {
+				return qaFormError(c, d, status, msg)
+			}
+			return err
+		}
+		setFlash(c, "qa.scenario.created", sc.Name)
+		return redirectAfterCreate(c, qaBase(project)+"/scenarios/"+sc.ID.String())
+	}
+}

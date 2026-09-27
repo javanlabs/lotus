@@ -111,3 +111,36 @@ func TestQARun_RetestAndClose(t *testing.T) {
 		t.Fatalf("guest close = %d; want 403", resp.StatusCode)
 	}
 }
+
+func TestQARun_SaveAsScenario(t *testing.T) {
+	r := newQARunEnv(t, "acme-qarun-save")
+	ctx := context.Background()
+	viewer, _ := r.session(t, "viewer@acme.example", "viewer")
+	run, _ := r.firstRun(t)
+	path := r.base + "/runs/" + run.ID.String()
+
+	if _, body := r.get(t, r.member, path); !strings.Contains(body, "Save as scenario…") {
+		t.Fatal("no Save as scenario on the run page")
+	}
+	resp, _ := r.post(t, r.member, path+"/scenario", url.Values{"name": {"Regression core, as run"}, "phase": {"regression"}}, true)
+	list, _ := repo.ListQAScenarios(ctx, r.s, r.projectID, false)
+	var saved repo.QAScenario
+	for _, sc := range list {
+		if sc.Name == "Regression core, as run" {
+			saved = sc
+		}
+	}
+	if resp.Header.Get("HX-Redirect") != r.base+"/scenarios/"+saved.ID.String() {
+		t.Fatalf("save = %d %q", resp.StatusCode, resp.Header.Get("HX-Redirect"))
+	}
+	if entries, _ := repo.ListQAScenarioEntries(ctx, r.s, saved.ID); len(entries) != 2 {
+		t.Fatalf("saved scenario holds %d cases; want the run's 2", len(entries))
+	}
+	_, body := r.post(t, r.member, path+"/scenario", url.Values{"name": {"X"}, "phase": {"exploratory"}}, true)
+	if !strings.Contains(body, "Choose a phase.") {
+		t.Fatalf("bad phase: %s", body)
+	}
+	if resp, _ := r.post(t, viewer, path+"/scenario", url.Values{"name": {"X"}, "phase": {"uat"}}, false); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("viewer save = %d; want 403", resp.StatusCode)
+	}
+}

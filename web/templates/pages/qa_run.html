@@ -9,6 +9,39 @@
     {{if $d.RetestOf}}<p style="margin:4px 0 0;font-size:12px;color:#6B7280">retest of <a href="{{$d.RetestHref}}" style="color:#43284E">{{$d.RetestOf}}</a></p>{{end}}
     {{if $d.Run.Notes}}<p style="margin:6px 0 0;font-size:12px;color:#374151;white-space:pre-wrap">{{$d.Run.Notes}}</p>{{end}}
   </div>
+  {{if $d.CanSaveScenario}}
+  <div x-data="lotusModal('save-scenario')" style="display:contents">
+    <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Save as scenario…</button>
+    <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="save-scenario-title">
+      <div class="lotus-modal-head">
+        <div class="lotus-modal-title" id="save-scenario-title">Save as scenario</div>
+        <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+        </button>
+      </div>
+      <div class="lotus-modal-form">
+        <form method="post" action="{{$d.URL}}/scenario" hx-post="{{$d.URL}}/scenario" hx-target="#save-scenario-error" hx-swap="innerHTML">
+          <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
+            <div id="save-scenario-error"></div>
+            <p style="margin:0;font-size:12px;color:#6B7280">A new scenario with this run's cases, in this order and these groups, for the next plan to reuse.</p>
+            <label style="display:flex;flex-direction:column;gap:6px">
+              <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
+              <input type="text" name="name" required maxlength="200" value="{{$d.Run.Name}}" class="lotus-input">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:6px">
+              <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PHASE</span>
+              {{template "lotus_select" (dict "Name" "phase" "ID" "save-scenario-phase" "Value" $d.Plan.Phase "Label" "Phase" "Options" (selectOptions $d.PhaseOptions))}}
+            </label>
+          </div>
+          <div class="lotus-modal-foot">
+            <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn-lotus btn-lotus-primary">Save scenario</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+  </div>
+  {{end}}
   {{if and $d.CanManage (not $d.Run.ClosedAt)}}
   <form method="post" action="{{$d.URL}}/retest" hx-post="{{$d.URL}}/retest" hx-target="#run-error" hx-swap="innerHTML">
     <button type="submit" class="btn-lotus btn-lotus-secondary">Retest failed &amp; blocked</button>

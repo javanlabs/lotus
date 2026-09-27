@@ -142,3 +142,25 @@ func mustGroup(t *testing.T, f runFixture, name string) uuid.UUID {
 	t.Fatalf("no group %q", name)
 	return uuid.Nil
 }
+
+func TestCreateQAScenarioFromRun_KeepsOrderAndGroups(t *testing.T) {
+	f := newRunFixture(t, "acme-scenario-from-run")
+	ctx := context.Background()
+	run, _ := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "C1", ScenarioIDs: []uuid.UUID{f.uat.ID}}, nil)
+	repo.ArchiveQACase(ctx, f.s, f.login.ID) // archived since the run: left out
+
+	sc, err := repo.CreateQAScenarioFromRun(ctx, f.s, run.ID, "UAT RFS again", "uat", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sc.ProjectID != f.projectID || sc.Phase != "uat" {
+		t.Fatalf("scenario = %+v", sc)
+	}
+	entries, _ := repo.ListQAScenarioEntries(ctx, f.s, sc.ID)
+	if len(entries) != 1 || entries[0].CaseID != f.rfs.ID || entries[0].GroupName != "Day 2" {
+		t.Fatalf("entries = %+v; want Create RFS in Day 2 (Login is archived)", entries)
+	}
+	if _, err := repo.CreateQAScenarioFromRun(ctx, f.s, run.ID, " ", "uat", nil); err != repo.ErrInvalidInput {
+		t.Fatalf("blank name = %v", err)
+	}
+}

@@ -279,3 +279,62 @@ func SetQAScenarioItemsGroup(ctx context.Context, s tenant.Scope, scenarioID uui
 	})
 	return int(n), qaWriteErr(err)
 }
+
+// CreateQAScenarioFromRun saves a run's case set as a new scenario of the
+// same project: the cases in run order, one group per group name the run
+// used ("" stays ungrouped). Cases archived since the run are left out.
+func CreateQAScenarioFromRun(ctx context.Context, s tenant.Scope, runID uuid.UUID, name, phase string, createdBy *uuid.UUID) (*QAScenario, error) {
+	name, err := normalizeQAName(name, MaxQANameLength)
+	if err != nil {
+		return nil, err
+	}
+	if !validQAPhase(phase) {
+		return nil, ErrInvalidInput
+	}
+	var out QAScenario
+	err = s.Tx(ctx, func(tx *sqlx.Tx) error {
+		var projectID uuid.UUID
+		if err := tx.GetContext(ctx, &projectID, `
+			SELECT p.project_id FROM qa_runs r JOIN qa_plans p ON p.id = r.plan_id WHERE r.id = $1`, runID); err != nil {
+			return err
+		}
+		if err := tx.GetContext(ctx, &out, `
+			INSERT INTO qa_scenarios (org_id, project_id, name, phase, created_by)
+			VALUES ($1, $2, $3, $4, $5) RETURNING `+qaScenarioCols, s.OrgID(), projectID, name, phase, createdBy); err != nil {
+			return err
+		}
+		var items []struct {
+			CaseID    uuid.UUID `db:"case_id"`
+			GroupName string    `db:"group_name"`
+		}
+		if err := tx.SelectContext(ctx, &items, `
+			SELECT i.case_id, i.group_name FROM qa_run_items i JOIN qa_cases c ON c.id = i.case_id
+			WHERE i.run_id = $1 AND c.archived_at IS NULL ORDER BY i.position`, runID); err != nil {
+			return err
+		}
+		groups := map[string]*uuid.UUID{"": nil}
+		for pos, it := range items {
+			g, ok := groups[it.GroupName]
+			if !ok {
+				var id uuid.UUID
+				if err := tx.GetContext(ctx, &id, `
+					INSERT INTO qa_scenario_groups (org_id, scenario_id, name, position) VALUES ($1, $2, $3, $4) RETURNING id`,
+					s.OrgID(), out.ID, truncateQAName(it.GroupName), len(groups)); err != nil {
+					return err
+				}
+				g = &id
+				groups[it.GroupName] = g
+			}
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO qa_scenario_items (org_id, scenario_id, group_id, case_id, position) VALUES ($1, $2, $3, $4, $5)`,
+				s.OrgID(), out.ID, g, it.CaseID, pos+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, qaWriteErr(err)
+	}
+	return &out, nil
+}

@@ -138,6 +138,10 @@ type qaRunData struct {
 	People     []httpx.SelectOption
 	RetestOf   string
 	RetestHref string
+
+	// Save as scenario (qa.case.write).
+	CanSaveScenario bool
+	PhaseOptions    []httpx.SelectOption
 }
 
 // runProgress is the header: overall, then each assignee (unassigned last).
@@ -191,6 +195,9 @@ func qaRunPage(d Deps) fiber.Handler {
 			if orig, err := repo.GetQARun(c.Context(), s, *run.RetestOf); err == nil {
 				data.RetestOf, data.RetestHref = orig.Name, runURL(project, orig)
 			}
+		}
+		if mustPrincipal(c).Can("qa.case.write") {
+			data.CanSaveScenario, data.PhaseOptions = true, qaPhaseOptions()
 		}
 		if mustPrincipal(c).Can("qa.plan.write") {
 			data.CanManage = true
