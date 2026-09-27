@@ -222,3 +222,60 @@ func ListQAScenarioGroups(ctx context.Context, s tenant.Scope, scenarioID uuid.U
 	})
 	return out, err
 }
+
+// RenameQAScenarioGroup renames a group of scenarioID. A group of another
+// scenario is ErrNotFound.
+func RenameQAScenarioGroup(ctx context.Context, s tenant.Scope, scenarioID, groupID uuid.UUID, name string) error {
+	name, err := normalizeQAName(name, MaxQANameLength)
+	if err != nil {
+		return err
+	}
+	err = s.Tx(ctx, func(tx *sqlx.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE qa_scenario_groups SET name = $3 WHERE id = $2 AND scenario_id = $1`,
+			scenarioID, groupID, name)
+		if err != nil {
+			return err
+		}
+		return checkRowsAffected(res)
+	})
+	return qaWriteErr(err)
+}
+
+// ReorderQAScenarioGroups gives the listed groups positions 1..n in that
+// order. Ids of other scenarios' groups are ignored.
+func ReorderQAScenarioGroups(ctx context.Context, s tenant.Scope, scenarioID uuid.UUID, groupIDs []uuid.UUID) error {
+	return s.Tx(ctx, func(tx *sqlx.Tx) error {
+		_, err := tx.ExecContext(ctx, `
+			UPDATE qa_scenario_groups g SET position = o.ord
+			FROM unnest($2::uuid[]) WITH ORDINALITY AS o(id, ord)
+			WHERE g.id = o.id AND g.scenario_id = $1`, scenarioID, groupIDs)
+		return err
+	})
+}
+
+// SetQAScenarioItemsGroup moves items of scenarioID into groupID (nil: no
+// group). Items of other scenarios are skipped; a group of another scenario
+// is ErrNotFound. It returns how many items moved.
+func SetQAScenarioItemsGroup(ctx context.Context, s tenant.Scope, scenarioID uuid.UUID, itemIDs []uuid.UUID, groupID *uuid.UUID) (int, error) {
+	var n int64
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		if groupID != nil {
+			var ok bool
+			if err := tx.GetContext(ctx, &ok, `
+				SELECT EXISTS (SELECT 1 FROM qa_scenario_groups WHERE id = $1 AND scenario_id = $2)`, *groupID, scenarioID); err != nil {
+				return err
+			}
+			if !ok {
+				return ErrNotFound
+			}
+		}
+		res, err := tx.ExecContext(ctx, `
+			UPDATE qa_scenario_items SET group_id = $3 WHERE scenario_id = $1 AND id = ANY($2)`, scenarioID, itemIDs, groupID)
+		if err != nil {
+			return err
+		}
+		n, err = res.RowsAffected()
+		return err
+	})
+	return int(n), qaWriteErr(err)
+}

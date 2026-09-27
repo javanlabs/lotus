@@ -1,0 +1,19 @@
+{{/* qa_case_picker is the Add cases dialog's result list, returned alone
+     as an htmx fragment. Each checkbox belongs to the dialog's add-cases
+     form. Takes qaPickerData. */}}
+{{define "qa_case_picker"}}
+{{if not .Rows}}
+<p style="margin:0;padding:14px 4px;font-size:12px;color:#6B7280">{{if .Searching}}No cases match, or every match is already in this scenario.{{else}}Every case is already in this scenario.{{end}}</p>
+{{else}}
+<div style="display:flex;flex-direction:column;max-height:320px;overflow:auto;border:1px solid var(--ink-200);border-radius:8px">
+  {{range .Rows}}
+  <label style="display:grid;grid-template-columns:18px 64px minmax(0,1fr);gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid #F3F4F6;font-size:12.5px;color:#111827;cursor:pointer">
+    <input type="checkbox" name="case_id" value="{{.ID}}" form="add-cases" style="accent-color:var(--text-brand)">
+    <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">TC-{{.Key}}</span>
+    <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Title}}</span>
+  </label>
+  {{end}}
+</div>
+{{if .More}}<p style="margin:6px 0 0;font-size:11.5px;color:#6B7280">Showing the first 50. Narrow the search to see the rest.</p>{{end}}
+{{end}}
+{{end}}

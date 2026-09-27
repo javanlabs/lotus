@@ -8,6 +8,40 @@
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.PhaseLabel}} · {{$d.Cases}} case{{if ne $d.Cases 1}}s{{end}}{{if $d.Scenario.ArchivedAt}} · archived{{end}}</p>
   </div>
   {{if $d.CanWrite}}
+  {{template "lotus_modal_open" (dict "Name" "add-cases" "Title" "Add cases" "Trigger" "Add cases…")}}
+    <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:12px;min-width:min(560px,80vw)">
+      <div id="add-cases-error"></div>
+      <form method="get" action="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/picker" hx-get="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/picker"
+            hx-target="#picker-results" hx-trigger="submit, input changed delay:300ms from:find input[name=q]" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px">
+        <input type="search" name="q" placeholder="Search titles" aria-label="Search titles" class="lotus-input">
+        {{template "lotus_select" (dict "Placeholder" "All sections" "Name" "section" "ID" "picker-section" "Value" "" "Label" "Section" "AutoSubmit" true "Options" (selectOptions $d.SectionOptions))}}
+      </form>
+      <div id="picker-results" hx-get="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/picker" hx-trigger="load"></div>
+      <form id="add-cases" method="post" action="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/cases" hx-post="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/cases"
+            hx-target="#add-cases-error" hx-swap="innerHTML" style="display:flex;gap:8px;align-items:center;justify-content:flex-end">
+        <span style="font-size:12px;color:#6B7280">Into</span>
+        <div style="min-width:180px">{{template "lotus_select" (dict "Name" "group_id" "ID" "add-cases-group" "Value" "" "Label" "Group" "Options" (selectOptions $d.GroupOptions))}}</div>
+        <button type="submit" class="btn-lotus btn-lotus-primary">Add selected</button>
+      </form>
+    </div>
+  {{template "lotus_modal_close" .}}
+  {{template "lotus_modal_open" (dict "Name" "new-group" "Title" "New group" "Trigger" "New group" "Variant" "secondary")}}
+    <div class="lotus-modal-form">
+      <form method="post" action="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/groups" hx-post="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/groups" hx-target="#new-group-error" hx-swap="innerHTML">
+        <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
+          <div id="new-group-error"></div>
+          <label style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
+            <input type="text" name="name" required maxlength="200" placeholder="Day 1" class="lotus-input">
+          </label>
+        </div>
+        <div class="lotus-modal-foot">
+          <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+          <button type="submit" class="btn-lotus btn-lotus-primary">Add group</button>
+        </div>
+      </form>
+    </div>
+  {{template "lotus_modal_close" .}}
   <div x-data="lotusModal('edit-scenario')" style="display:contents">
     <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Edit scenario…</button>
     <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="edit-scenario-title">
@@ -34,20 +68,64 @@
 </div>
 {{end}}
 
+<div id="scenario-error" style="max-width:760px"></div>
 {{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
-  {{if not $d.Cases}}<p style="margin:0;padding:28px 14px;text-align:center;font-size:12.5px;color:#6B7280">No cases in this scenario yet.</p>{{end}}
-  {{range $d.Groups}}
-  {{if or .ID .Items}}
-  {{if .ID}}<div class="lotus-table-head" style="grid-template-columns:1fr;gap:10px"><div>{{.Name}}</div></div>{{end}}
-  {{range .Items}}
-  <div data-scenario-item class="lotus-repo-row" style="display:grid;grid-template-columns:70px minmax(0,1fr);gap:10px;align-items:center;padding:0 14px">
+  {{if not $d.Cases}}<p style="margin:0;padding:28px 14px;text-align:center;font-size:12.5px;color:#6B7280">No cases in this scenario yet.{{if $d.CanWrite}} Add cases… picks them from the library.{{end}}</p>{{end}}
+  {{$scen := printf "%s/scenarios/%s" $d.Base $d.Scenario.ID}}
+  {{range $g := $d.Groups}}
+  {{if or $g.ID $g.Items}}
+  {{if $g.ID}}
+  <div class="lotus-table-head" style="display:flex;align-items:center;gap:8px" data-group="{{$g.ID}}">
+    <span style="flex:1">{{$g.Name}}</span>
+    {{if $d.CanWrite}}
+    {{template "qa_step_button" (dict "Action" (printf "%s/groups/%s/move" $scen $g.ID) "Dir" "up" "Off" $g.First "Label" (printf "Move %s up" $g.Name))}}
+    {{template "qa_step_button" (dict "Action" (printf "%s/groups/%s/move" $scen $g.ID) "Dir" "down" "Off" $g.Last "Label" (printf "Move %s down" $g.Name))}}
+    <form method="post" action="{{$scen}}/groups/{{$g.ID}}/rename" hx-post="{{$scen}}/groups/{{$g.ID}}/rename" hx-target="#scenario-error" hx-swap="innerHTML" style="display:flex;gap:4px">
+      <input type="text" name="name" required maxlength="200" value="{{$g.Name}}" aria-label="Group name" class="lotus-input" style="height:26px;font-size:11.5px;width:140px">
+      <button type="submit" class="lotus-row-action" style="font-size:11px">Rename</button>
+    </form>
+    {{end}}
+  </div>
+  {{end}}
+  {{range $g.Items}}
+  <div data-scenario-item class="lotus-repo-row" style="display:grid;grid-template-columns:{{if $d.CanWrite}}18px {{end}}70px minmax(0,1fr){{if $d.CanWrite}} auto{{end}};gap:10px;align-items:center;padding:0 14px">
+    {{if $d.CanWrite}}<input type="checkbox" name="item_id" value="{{.ItemID}}" form="scenario-items" aria-label="Select TC-{{.CaseKey}}" style="accent-color:var(--text-brand)">{{end}}
     <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">TC-{{.CaseKey}}</span>
     <a href="{{.Href}}" style="font-size:12.5px;color:#111827;text-decoration:{{if .CaseArchived}}line-through{{else}}none{{end}};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Title}}</a>
+    {{if $d.CanWrite}}
+    <span style="display:flex;gap:4px">
+      {{template "qa_step_button" (dict "Action" (printf "%s/items/%s/move" $scen .ItemID) "Dir" "up" "Off" .First "Label" (printf "Move TC-%d up" .CaseKey))}}
+      {{template "qa_step_button" (dict "Action" (printf "%s/items/%s/move" $scen .ItemID) "Dir" "down" "Off" .Last "Label" (printf "Move TC-%d down" .CaseKey))}}
+      <form method="post" action="{{$scen}}/cases/remove" hx-post="{{$scen}}/cases/remove" hx-target="#scenario-error" hx-swap="innerHTML">
+        <input type="hidden" name="case_id" value="{{.CaseID}}">
+        <button type="submit" class="lotus-row-action" aria-label="Remove TC-{{.CaseKey}} from the scenario">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="transform:rotate(45deg)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+        </button>
+      </form>
+    </span>
+    {{end}}
   </div>
   {{end}}
   {{end}}
   {{end}}
+  {{if and $d.CanWrite $d.Cases}}
+  <form id="scenario-items" method="post" action="{{$scen}}/items/group" hx-post="{{$scen}}/items/group" hx-target="#scenario-error" hx-swap="innerHTML"
+        style="display:flex;gap:8px;align-items:center;justify-content:flex-end;padding:10px 14px">
+    <span style="font-size:12px;color:#6B7280">Move ticked cases to</span>
+    <div style="min-width:180px">{{template "lotus_select" (dict "Name" "group_id" "ID" "regroup-group" "Value" "" "Label" "Group" "Options" (selectOptions $d.GroupOptions))}}</div>
+    <button type="submit" class="btn-lotus btn-lotus-secondary">Move</button>
+  </form>
+  {{end}}
 {{template "lotus_card_section_close" .}}
 
 {{template "shell_close" .}}
+{{end}}
+
+{{/* qa_step_button is a one-step move (a chevron up or down) posted with htmx.
+     Takes (dict "Action" url "Dir" "up"|"down" "Off" bool "Label" aria-label). */}}
+{{define "qa_step_button"}}
+<form method="post" action="{{.Action}}" hx-post="{{.Action}}" hx-target="#scenario-error" hx-swap="innerHTML">
+  <input type="hidden" name="dir" value="{{.Dir}}">
+  <button type="submit" class="lotus-row-action" aria-label="{{.Label}}"{{if .Off}} disabled{{end}}>{{if eq .Dir "up"}}<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="transform:rotate(180deg)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 9s-4.419 6-6 6s-6-6-6-6"></path></svg>{{else}}<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 9s-4.419 6-6 6s-6-6-6-6"></path></svg>{{end}}</button>
+</form>
 {{end}}

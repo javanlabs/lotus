@@ -88,3 +88,57 @@ func TestQAScenarios_ListGroupsInOrder(t *testing.T) {
 		t.Fatalf("groups = %+v, %v; want Day 2 then the empty Day 3", groups, err)
 	}
 }
+
+func TestQAScenarios_RenameReorderAndRegroup(t *testing.T) {
+	f := newRunFixture(t, "acme-scenario-edit")
+	ctx := context.Background()
+	day2 := mustGroup(t, f, "Day 2")
+	day3, _ := repo.CreateQAScenarioGroup(ctx, f.s, f.uat.ID, "Day 3")
+	other, _ := repo.CreateQAScenarioGroup(ctx, f.s, f.reg.ID, "Elsewhere")
+
+	if err := repo.RenameQAScenarioGroup(ctx, f.s, f.uat.ID, day3.ID, "Day 1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.RenameQAScenarioGroup(ctx, f.s, f.uat.ID, other.ID, "Hijack"); err != repo.ErrNotFound {
+		t.Fatalf("rename another scenario's group = %v; want ErrNotFound", err)
+	}
+	if err := repo.ReorderQAScenarioGroups(ctx, f.s, f.uat.ID, []uuid.UUID{day3.ID, day2}); err != nil {
+		t.Fatal(err)
+	}
+	groups, _ := repo.ListQAScenarioGroups(ctx, f.s, f.uat.ID)
+	if groups[0].Name != "Day 1" || groups[1].ID != day2 {
+		t.Fatalf("groups = %+v; want Day 1 first", groups)
+	}
+
+	entries, _ := repo.ListQAScenarioEntries(ctx, f.s, f.uat.ID)
+	var loginItem uuid.UUID
+	for _, e := range entries {
+		if e.CaseID == f.login.ID {
+			loginItem = e.ItemID
+		}
+	}
+	regEntries, _ := repo.ListQAScenarioEntries(ctx, f.s, f.reg.ID)
+	n, err := repo.SetQAScenarioItemsGroup(ctx, f.s, f.uat.ID, []uuid.UUID{loginItem, regEntries[0].ItemID}, &day3.ID)
+	if err != nil || n != 1 {
+		t.Fatalf("regroup = %d, %v; want 1 (the other scenario's item is skipped)", n, err)
+	}
+	if _, err := repo.SetQAScenarioItemsGroup(ctx, f.s, f.uat.ID, []uuid.UUID{loginItem}, &other.ID); err != repo.ErrNotFound {
+		t.Fatalf("regroup into another scenario's group = %v; want ErrNotFound", err)
+	}
+	entries, _ = repo.ListQAScenarioEntries(ctx, f.s, f.uat.ID)
+	if entries[0].CaseID != f.login.ID || entries[0].GroupName != "Day 1" {
+		t.Fatalf("entries = %+v; want Login first, in Day 1", entries)
+	}
+}
+
+func mustGroup(t *testing.T, f runFixture, name string) uuid.UUID {
+	t.Helper()
+	groups, _ := repo.ListQAScenarioGroups(context.Background(), f.s, f.uat.ID)
+	for _, g := range groups {
+		if g.Name == name {
+			return g.ID
+		}
+	}
+	t.Fatalf("no group %q", name)
+	return uuid.Nil
+}
