@@ -10,6 +10,7 @@ import (
 
 	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/repo"
+	"github.com/uyab/lotus/internal/repo/global"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -41,8 +42,9 @@ type qaSignoffRow struct {
 }
 
 // qaPlanSignoffs lists the whole plan, then each of its scenarios, with the
-// latest sign-off of each.
-func qaPlanSignoffs(c *fiber.Ctx, d Deps, s tenant.Scope, planID uuid.UUID, scenarios []qaScenarioRow) ([]qaSignoffRow, error) {
+// latest sign-off of each. namesOnly is for the shared report: a signer is
+// shown by name, never by email address (no name shows "—").
+func qaPlanSignoffs(c *fiber.Ctx, d Deps, s tenant.Scope, planID uuid.UUID, scenarios []qaScenarioRow, namesOnly bool) ([]qaSignoffRow, error) {
 	latest, err := repo.ListLatestQASignoffs(c.Context(), s, planID)
 	if err != nil {
 		return nil, err
@@ -50,6 +52,11 @@ func qaPlanSignoffs(c *fiber.Ctx, d Deps, s tenant.Scope, planID uuid.UUID, scen
 	labels, err := qaPeopleLabels(c, d, s)
 	if err != nil {
 		return nil, err
+	}
+	if namesOnly {
+		if labels, err = qaPeopleNames(c, d, s); err != nil {
+			return nil, err
+		}
 	}
 	byScope := map[uuid.UUID]repo.QASignoff{}
 	for _, so := range latest {
@@ -70,6 +77,22 @@ func qaPlanSignoffs(c *fiber.Ctx, d Deps, s tenant.Scope, planID uuid.UUID, scen
 	out := []qaSignoffRow{row("Whole plan", uuid.Nil)}
 	for _, sc := range scenarios {
 		out = append(out, row(sc.Name, sc.ID))
+	}
+	return out, nil
+}
+
+// qaPeopleNames is qaPeopleLabels without the email fallback: members with
+// no name are left out.
+func qaPeopleNames(c *fiber.Ctx, d Deps, s tenant.Scope) (map[uuid.UUID]string, error) {
+	members, err := global.ListMembersForOrg(c.Context(), d.DB, s.OrgID())
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]string, len(members))
+	for _, m := range members {
+		if name := strings.TrimSpace(m.Name); name != "" {
+			out[m.UserID] = name
+		}
 	}
 	return out, nil
 }

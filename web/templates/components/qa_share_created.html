@@ -1,0 +1,11 @@
+{{/* qa_share_created: the one moment a share link is shown. Only its hash
+     is stored, so it cannot be shown again. */}}
+{{define "qa_share_created"}}
+<div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:12px">
+  <p style="margin:0;font-size:12.5px;color:#374151">Copy the link now: it is not shown again. It works until {{.ExpiresOn}}, or until it is revoked.</p>
+  <input type="text" readonly value="{{.Link}}" aria-label="Share link" class="lotus-input lotus-input-mono" onclick="this.select()">
+</div>
+<div class="lotus-modal-foot">
+  <a href="{{.Back}}" class="btn-lotus btn-lotus-primary">Done</a>
+</div>
+{{end}}

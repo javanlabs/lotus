@@ -63,6 +63,7 @@ func qaHome(d Deps) fiber.Handler {
 
 func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
 	registerProjectGuestRoutes(app, d, requireSession, loadPrincipal)
+	registerQAShareRoutes(app, d, requireSession, loadPrincipal)
 	app.Get("/qa", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("qa.read"), qaHome(d))
 	app.Get("/qa/my", tenant.RequireTenant(), requireSession, loadPrincipal,

@@ -265,6 +265,8 @@ type qaPlanData struct {
 	Signoffs   []qaSignoffRow
 	CanSignoff bool // qa.signoff
 	Scopes     []httpx.SelectOption
+	CanShare   bool // qa.share
+	Shares     []qaShareRow
 }
 
 func qaPlanPage(d Deps) fiber.Handler {
@@ -324,8 +326,13 @@ func qaPlanPage(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		data.Progress = planProgress[plan.ID]
-		if data.Signoffs, err = qaPlanSignoffs(c, d, s, plan.ID, data.Scenarios); err != nil {
+		if data.Signoffs, err = qaPlanSignoffs(c, d, s, plan.ID, data.Scenarios, false); err != nil {
 			return writeRepoErr(c, err)
+		}
+		if data.CanShare = mustPrincipal(c).Can("qa.share"); data.CanShare {
+			if data.Shares, err = qaPlanShares(c, d, s, plan.ID); err != nil {
+				return writeRepoErr(c, err)
+			}
 		}
 		if data.CanSignoff = mustPrincipal(c).Can("qa.signoff"); data.CanSignoff {
 			data.Scopes = qaSignoffScopes(data.Scenarios)

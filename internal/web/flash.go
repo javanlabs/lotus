@@ -75,6 +75,7 @@ var flashMessages = map[string]struct {
 	"project.guest.added":   {"pass", "Guest added"},
 	"project.guest.removed": {"pass", "Guest removed"},
 	"qa.signoff.recorded":   {"pass", "Signed off: %s"},
+	"qa.share.revoked":      {"pass", "Link revoked"},
 }
 
 // setFlash records a message for the next render. Call it immediately
