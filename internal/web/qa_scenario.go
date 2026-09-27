@@ -40,6 +40,7 @@ type qaScenarioData struct {
 	Cases        int
 	ArchivedCase int
 	CanWrite     bool
+	Collapsed    bool // groups start closed: more than qaCollapseAbove cases
 	PhaseOptions []httpx.SelectOption
 	GroupOptions []httpx.SelectOption
 	// SectionOptions filter the Add cases picker.
@@ -93,7 +94,8 @@ func qaScenarioPage(d Deps) fiber.Handler {
 		data := qaScenarioData{
 			Project: *project, Base: qaBase(project), Scenario: *sc, PhaseLabel: qaPhaseLabels[sc.Phase],
 			Groups: qaScenarioGroups(qaBase(project), groups, entries), Cases: len(entries),
-			CanWrite: mustPrincipal(c).Can("qa.case.write") && sc.ArchivedAt == nil, PhaseOptions: qaPhaseOptions(),
+			Collapsed: len(entries) > qaCollapseAbove,
+			CanWrite:  mustPrincipal(c).Can("qa.case.write") && sc.ArchivedAt == nil, PhaseOptions: qaPhaseOptions(),
 			GroupOptions: []httpx.SelectOption{{Value: "", Label: "No group"}},
 		}
 		for _, e := range entries {

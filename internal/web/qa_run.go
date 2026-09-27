@@ -87,6 +87,12 @@ func loadQAItem(c *fiber.Ctx, s tenant.Scope, run *repo.QARun) (*repo.QARunItem,
 	return item, err
 }
 
+// qaCollapseAbove: a run or scenario holding more items than this opens
+// with its groups closed. Production runs reach about 1,100 items (13 are
+// over 500); groups closed turn such a page into a list of groups with
+// their progress, and the tester opens the one they work on.
+const qaCollapseAbove = 200
+
 func runURL(project *repo.Project, run *repo.QARun) string {
 	return qaBase(project) + "/runs/" + run.ID.String()
 }
@@ -132,6 +138,7 @@ type qaRunData struct {
 	GroupNames []string
 	CanExecute bool
 	URL        string
+	Collapsed  bool // groups start closed: a large run seen unfiltered
 
 	// Managing the run (qa.plan.write): assignment, retest, close.
 	CanManage  bool
@@ -246,6 +253,7 @@ func qaRunPage(d Deps) fiber.Handler {
 			})
 			data.Shown++
 		}
+		data.Collapsed = len(items) > qaCollapseAbove && data.Who == "" && data.Status == "" && data.Group == ""
 		org, user, err := shellChrome(c, d.DB)
 		if err != nil {
 			return err

@@ -61,7 +61,7 @@
   <form method="get" action="{{$d.URL}}" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px">
     <div style="width:150px">{{template "lotus_select" (dict "Name" "who" "ID" "run-who" "Value" $d.Who "Label" "Who" "Size" "sm" "AutoSubmit" true "Options" (selectOptions (dict "Value" "" "Label" "Everyone") (dict "Value" "mine" "Label" "Mine") (dict "Value" "unassigned" "Label" "Unassigned")))}}</div>
     <div style="width:150px">{{template "lotus_select" (dict "Name" "status" "ID" "run-status" "Value" $d.Status "Label" "Status" "Size" "sm" "AutoSubmit" true "Options" (selectOptions (dict "Value" "" "Label" "Any status") (dict "Value" "untested" "Label" "untested") (dict "Value" "passed" "Label" "passed") (dict "Value" "failed" "Label" "failed") (dict "Value" "blocked" "Label" "blocked") (dict "Value" "skipped" "Label" "skipped")))}}</div>
-    <span style="margin-left:auto;font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{$d.Shown}} shown</span>
+    <span style="margin-left:auto;font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{$d.Shown}} shown{{if $d.Collapsed}} · Groups start closed; open the one you are working on{{end}}</span>
   </form>
   {{if $d.CanManage}}
   <form id="assign-items" method="post" action="{{$d.URL}}/assign" hx-post="{{$d.URL}}/assign" hx-target="#run-error" hx-swap="innerHTML"
@@ -73,7 +73,7 @@
   {{end}}
   {{range $g := $d.Groups}}
   {{if $g.Items}}
-  <details open x-data>
+  <details{{if not $d.Collapsed}} open{{end}} x-data>
     <summary class="lotus-table-head" style="display:flex;align-items:center;gap:12px;cursor:pointer">
       {{if $d.CanManage}}<input type="checkbox" aria-label="Select the whole group" @click.stop @change="$el.closest('details').querySelectorAll('input[name=item_id]').forEach(b => b.checked = $el.checked)" style="accent-color:var(--text-brand)">{{end}}
       <span style="flex:1">{{if $g.Name}}{{$g.Name}}{{else}}CASES{{end}}</span>
