@@ -78,3 +78,13 @@ func TestQAScenarios_GroupMustBelongToTheScenario(t *testing.T) {
 		t.Fatalf("group of another scenario: %v; want ErrInvalidInput", err)
 	}
 }
+
+func TestQAScenarios_ListGroupsInOrder(t *testing.T) {
+	f := newRunFixture(t, "acme-scenario-groups")
+	ctx := context.Background()
+	repo.CreateQAScenarioGroup(ctx, f.s, f.uat.ID, "Day 3")
+	groups, err := repo.ListQAScenarioGroups(ctx, f.s, f.uat.ID)
+	if err != nil || len(groups) != 2 || groups[0].Name != "Day 2" || groups[1].Name != "Day 3" {
+		t.Fatalf("groups = %+v, %v; want Day 2 then the empty Day 3", groups, err)
+	}
+}

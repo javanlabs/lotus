@@ -55,3 +55,31 @@ func QASummaryForProject(ctx context.Context, s tenant.Scope, projectID uuid.UUI
 	}
 	return rows[0], nil
 }
+
+// QAScenarioCount is how many cases a scenario holds, and how many of those
+// are archived (they still count: runs created from it will include them).
+type QAScenarioCount struct {
+	Cases    int `db:"cases"`
+	Archived int `db:"archived"`
+}
+
+func QAScenarioCaseCounts(ctx context.Context, s tenant.Scope, projectID uuid.UUID) (map[uuid.UUID]QAScenarioCount, error) {
+	var rows []struct {
+		ScenarioID uuid.UUID `db:"scenario_id"`
+		QAScenarioCount
+	}
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &rows, `
+			SELECT i.scenario_id, count(*) AS cases, count(c.archived_at) AS archived
+			FROM qa_scenario_items i
+			JOIN qa_scenarios sc ON sc.id = i.scenario_id
+			JOIN qa_cases c ON c.id = i.case_id
+			WHERE sc.project_id = $1
+			GROUP BY i.scenario_id`, projectID)
+	})
+	out := make(map[uuid.UUID]QAScenarioCount, len(rows))
+	for _, r := range rows {
+		out[r.ScenarioID] = r.QAScenarioCount
+	}
+	return out, err
+}

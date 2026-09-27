@@ -63,3 +63,19 @@ func TestQASummaries_CountLiveRowsPerProject(t *testing.T) {
 		t.Fatalf("archived project summary = %v; want ErrNotFound", err)
 	}
 }
+
+func TestQAScenarioCaseCounts_CountsLiveAndArchivedCases(t *testing.T) {
+	f := newRunFixture(t, "acme-scenario-counts")
+	ctx := context.Background()
+	repo.ArchiveQACase(ctx, f.s, f.report.ID)
+	counts, err := repo.QAScenarioCaseCounts(ctx, f.s, f.projectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := counts[f.uat.ID]; c.Cases != 2 || c.Archived != 0 {
+		t.Fatalf("uat = %+v; want 2 live cases", c)
+	}
+	if c := counts[f.reg.ID]; c.Cases != 2 || c.Archived != 1 {
+		t.Fatalf("regression = %+v; want 2 cases, 1 of them archived", c)
+	}
+}

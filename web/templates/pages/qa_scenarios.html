@@ -1,0 +1,40 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+
+<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
+  <div style="flex:1;min-width:220px">
+    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Project.Name}}</h1>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">Scenarios · {{len $d.Rows}} {{if $d.Archived}}including archived{{else}}live{{end}}</p>
+  </div>
+  {{if $d.CanWrite}}
+  {{template "lotus_modal_open" (dict "Name" "new-scenario" "Title" "New scenario" "Trigger" "New scenario")}}
+    {{template "qa_scenario_form" (dict "Action" (printf "%s/scenarios" $d.Base) "Err" "new-scenario-error" "Name" "" "Phase" "regression" "Description" "" "PhaseOptions" $d.PhaseOptions "Submit" "Create scenario")}}
+  {{template "lotus_modal_close" .}}
+  {{end}}
+  {{template "qa_subnav" (dict "Base" $d.Base "Active" "scenarios")}}
+</header>
+
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
+  <div style="display:flex;justify-content:flex-end;padding:8px 10px">
+    <a href="{{$d.Base}}/scenarios{{if not $d.Archived}}?archived=1{{end}}" style="font-size:11.5px;color:#6B7280">{{if $d.Archived}}Hide archived{{else}}Show archived{{end}}</a>
+  </div>
+  {{if not $d.Rows}}
+  <p style="margin:0;padding:28px 14px;text-align:center;font-size:12.5px;color:#6B7280">No scenarios yet. A scenario is a reusable set of cases for one phase, such as "UAT alur RFS".</p>
+  {{else}}
+  <div class="lotus-table-head" style="grid-template-columns:minmax(0,1fr) 110px 90px 110px;gap:10px">
+    <div>SCENARIO</div><div>PHASE</div><div style="text-align:right">CASES</div><div>UPDATED</div>
+  </div>
+  {{range $d.Rows}}
+  <a href="{{.Href}}" class="lotus-repo-row" style="display:grid;grid-template-columns:minmax(0,1fr) 110px 90px 110px;gap:10px;align-items:center;padding:0 14px;text-decoration:none;color:inherit{{if .ArchivedAt}};opacity:.6{{end}}">
+    <span style="font-size:12.5px;font-weight:600;color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
+    <span><span class="lotus-badge lotus-badge-none">{{.PhaseLabel}}</span></span>
+    <span style="font:500 11.5px 'IBM Plex Mono',monospace;color:#374151;text-align:right">{{.Count.Cases}}{{if .Count.Archived}} <span style="color:#9E2B47">· {{.Count.Archived}} archived</span>{{end}}</span>
+    <span style="font:400 11px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.UpdatedAt.Format "02 Jan 2006"}}</span>
+  </a>
+  {{end}}
+  {{end}}
+{{template "lotus_card_section_close" .}}
+
+{{template "shell_close" .}}
+{{end}}

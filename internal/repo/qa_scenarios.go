@@ -210,3 +210,15 @@ func ListQAScenarioEntries(ctx context.Context, s tenant.Scope, scenarioID uuid.
 	})
 	return out, err
 }
+
+// ListQAScenarioGroups returns the scenario's groups by position, including
+// groups that hold no cases yet.
+func ListQAScenarioGroups(ctx context.Context, s tenant.Scope, scenarioID uuid.UUID) ([]QAScenarioGroup, error) {
+	var out []QAScenarioGroup
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &out, `
+			SELECT id, org_id, scenario_id, name, position FROM qa_scenario_groups
+			WHERE scenario_id = $1 ORDER BY position, lower(name)`, scenarioID)
+	})
+	return out, err
+}

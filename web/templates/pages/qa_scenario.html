@@ -1,0 +1,53 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+
+<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
+  <div style="flex:1;min-width:220px">
+    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Scenario.Name}}</h1>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.PhaseLabel}} · {{$d.Cases}} case{{if ne $d.Cases 1}}s{{end}}{{if $d.Scenario.ArchivedAt}} · archived{{end}}</p>
+  </div>
+  {{if $d.CanWrite}}
+  <div x-data="lotusModal('edit-scenario')" style="display:contents">
+    <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Edit scenario…</button>
+    <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="edit-scenario-title">
+      <div class="lotus-modal-head">
+        <div class="lotus-modal-title" id="edit-scenario-title">Edit scenario</div>
+        <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+        </button>
+      </div>
+      {{template "qa_scenario_form" (dict "Action" (printf "%s/scenarios/%s" $d.Base $d.Scenario.ID) "Err" "edit-scenario-error" "Name" $d.Scenario.Name "Phase" $d.Scenario.Phase "Description" $d.Scenario.Description "PhaseOptions" $d.PhaseOptions "Submit" "Save")}}
+    </dialog>
+  </div>
+  <form method="post" action="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/archive">
+    <button type="submit" class="btn-lotus btn-lotus-secondary">Archive</button>
+  </form>
+  {{end}}
+  {{template "qa_subnav" (dict "Base" $d.Base "Active" "scenarios")}}
+</header>
+
+{{if $d.Scenario.Description}}<p style="margin:0 0 14px;max-width:760px;font-size:12.5px;color:#374151;white-space:pre-wrap">{{$d.Scenario.Description}}</p>{{end}}
+{{if $d.ArchivedCase}}
+<div role="note" style="margin-bottom:14px;max-width:760px;padding:9px 11px;border-radius:var(--radius-petal-sm);background:var(--status-fail-bg);color:var(--status-fail);font-size:12.5px">
+  {{$d.ArchivedCase}} case{{if ne $d.ArchivedCase 1}}s are{{else}} is{{end}} archived and will still be copied into new runs. Remove {{if ne $d.ArchivedCase 1}}them{{else}}it{{end}} or restore the case.
+</div>
+{{end}}
+
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
+  {{if not $d.Cases}}<p style="margin:0;padding:28px 14px;text-align:center;font-size:12.5px;color:#6B7280">No cases in this scenario yet.</p>{{end}}
+  {{range $d.Groups}}
+  {{if or .ID .Items}}
+  {{if .ID}}<div class="lotus-table-head" style="grid-template-columns:1fr;gap:10px"><div>{{.Name}}</div></div>{{end}}
+  {{range .Items}}
+  <div data-scenario-item class="lotus-repo-row" style="display:grid;grid-template-columns:70px minmax(0,1fr);gap:10px;align-items:center;padding:0 14px">
+    <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">TC-{{.CaseKey}}</span>
+    <a href="{{.Href}}" style="font-size:12.5px;color:#111827;text-decoration:{{if .CaseArchived}}line-through{{else}}none{{end}};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Title}}</a>
+  </div>
+  {{end}}
+  {{end}}
+  {{end}}
+{{template "lotus_card_section_close" .}}
+
+{{template "shell_close" .}}
+{{end}}
