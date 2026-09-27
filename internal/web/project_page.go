@@ -76,11 +76,13 @@ func projectPage(d Deps) fiber.Handler {
 				Project      repo.Project
 				Dashboard    dashboardViewModel
 				CanMove      bool
+				CanQA        bool
 				FolderSelect []httpx.SelectOption
 				FolderValue  string
 			}{
 				Project: *project, Dashboard: vm,
 				CanMove:      mustPrincipal(c).Can("project.update"),
+				CanQA:        mustPrincipal(c).Can("qa.read"),
 				FolderSelect: folderSelect(folderOptionsFor(folders), nil),
 				FolderValue:  folderValue,
 			},

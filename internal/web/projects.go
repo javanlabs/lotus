@@ -183,13 +183,27 @@ func deleteProject(c *fiber.Ctx) error {
 	if err != nil {
 		return writeRepoErr(c, err)
 	}
-	if c.Query("confirm_components") != strconv.Itoa(impact.Components) || c.Query("confirm_bindings") != strconv.Itoa(impact.Bindings) {
+	if !confirmedCount(c, "confirm_components", impact.Components) || !confirmedCount(c, "confirm_bindings", impact.Bindings) ||
+		!confirmedCount(c, "confirm_qa_cases", impact.QACases) || !confirmedCount(c, "confirm_qa_runs", impact.QARuns) ||
+		!confirmedCount(c, "confirm_qa_issues", impact.QAIssues) {
 		return fiber.NewError(fiber.StatusConflict, "deletion impact changed; re-confirm before deleting")
 	}
 	if err := repo.HardDeleteProject(c.Context(), s, id); err != nil {
 		return writeRepoErr(c, err)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// confirmedCount reports whether the query parameter echoes n. A missing
+// parameter confirms 0, so callers written before a count existed keep
+// working for projects that have none of it — and are refused for projects
+// that do, which is the point.
+func confirmedCount(c *fiber.Ctx, param string, n int) bool {
+	v := c.Query(param)
+	if v == "" {
+		v = "0"
+	}
+	return v == strconv.Itoa(n)
 }
 
 type createComponentRequest struct {

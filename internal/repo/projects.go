@@ -163,6 +163,12 @@ func SetProjectArchived(ctx context.Context, s tenant.Scope, id uuid.UUID, archi
 type ProjectDeletionImpact struct {
 	Components int `db:"components"`
 	Bindings   int `db:"bindings"`
+	// QA rows go with the project too (every qa_* table cascades from it).
+	// Cases, runs and issues are the ones a person recognises; sections,
+	// results and events go with them.
+	QACases  int `db:"qa_cases"`
+	QARuns   int `db:"qa_runs"`
+	QAIssues int `db:"qa_issues"`
 }
 
 func ProjectDeletionImpactOf(ctx context.Context, s tenant.Scope, id uuid.UUID) (*ProjectDeletionImpact, error) {
@@ -172,7 +178,10 @@ func ProjectDeletionImpactOf(ctx context.Context, s tenant.Scope, id uuid.UUID) 
 			SELECT
 				(SELECT count(*) FROM components WHERE project_id = $1) AS components,
 				(SELECT count(*) FROM metric_bindings mb JOIN components c ON c.id = mb.component_id
-				 WHERE c.project_id = $1 AND mb.deleted_at IS NULL) AS bindings`,
+				 WHERE c.project_id = $1 AND mb.deleted_at IS NULL) AS bindings,
+				(SELECT count(*) FROM qa_cases WHERE project_id = $1) AS qa_cases,
+				(SELECT count(*) FROM qa_runs r JOIN qa_plans p ON p.id = r.plan_id WHERE p.project_id = $1) AS qa_runs,
+				(SELECT count(*) FROM qa_issues WHERE project_id = $1) AS qa_issues`,
 			id)
 	})
 	return &out, err

@@ -1,0 +1,15 @@
+{{/* qa_subnav is the segmented control across a project's QA area:
+     Overview · Cases · Scenarios. Links, not buttons: each is its own
+     page. Takes (dict "Base" "/projects/<id>/qa" "Active" "overview"|"cases"|"scenarios"). */}}
+{{define "qa_subnav"}}
+<nav aria-label="QA" style="display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:var(--radius-group);padding:3px;box-shadow:var(--shadow-segment-track)">
+  {{template "qa_subnav_link" (dict "Href" .Base "Label" "Overview" "On" (eq .Active "overview"))}}
+  {{template "qa_subnav_link" (dict "Href" (printf "%s/cases" .Base) "Label" "Cases" "On" (eq .Active "cases"))}}
+  {{template "qa_subnav_link" (dict "Href" (printf "%s/scenarios" .Base) "Label" "Scenarios" "On" (eq .Active "scenarios"))}}
+</nav>
+{{end}}
+
+{{define "qa_subnav_link"}}
+<a href="{{.Href}}"{{if .On}} aria-current="page"{{end}}
+   style="padding:var(--pad-button-sm);border-radius:var(--radius-segment);white-space:nowrap;font-size:12px;text-decoration:none;{{if .On}}font-weight:600;color:#43284E;background:linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%);box-shadow:var(--shadow-segment-thumb){{else}}font-weight:500;color:#6B7280{{end}}">{{.Label}}</a>
+{{end}}
