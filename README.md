@@ -60,6 +60,7 @@ EnvironmentFile is the only source of config — see `deploy/`, added in task
 | `ADDR` | `:8080` | Address the web process listens on. |
 | `DATABASE_URL` | `postgres://postgres@localhost:5418/lotus?sslmode=disable` | App runtime DSN — connects as the RLS-restricted `lotus_app` role in production. |
 | `MIGRATE_DATABASE_URL` | same as `DATABASE_URL` | DSN used only by `lotus migrate` — connects as the DDL-capable `lotus_migrate` role in production. Falls back to `DATABASE_URL` for local dev, where one role is fine. |
+| `LOTUS_BLOB_DIR` | `var/blob` | Directory holding uploaded files (QA attachments). Production must point it at persistent, backed-up disk. |
 | `LOTUS_DEV` | unset (off) | `1` enables dev mode: templates/static assets are read from disk (hot reload) instead of the embedded build, and the `X-Lotus-Org` header fallback (below) is honored. |
 | `SESSION_SECRET` | random per-boot | Signs session cookies. Set to a stable value in production, or sessions reset on every restart. |
 | `LOTUS_MODE` | `saas` | `saas` = multi-tenant with subdomains (apex / auth host / `<slug>.<domain>`). `single` = one organization on one origin, for self-hosted and local installs: no subdomains, so no wildcard DNS and no wildcard certificate. |

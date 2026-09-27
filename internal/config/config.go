@@ -41,9 +41,11 @@ type Config struct {
 	// (no DDL, subject to RLS). Falls back to DatabaseURL when unset, which is
 	// fine for local dev where one role is fine.
 	MigrateDatabaseURL string
-	Dev                bool
-	SessionSecret      string
-	CookieSecure       bool
+	// BlobDir is where uploaded files (QA attachments) are stored.
+	BlobDir       string
+	Dev           bool
+	SessionSecret string
+	CookieSecure  bool
 
 	// BaseDomain is the wildcard root Lotus is served under: apex is
 	// BaseDomain, auth host is "auth."+BaseDomain, tenants are
@@ -232,6 +234,7 @@ func Load() Config {
 		Addr:               envOr("ADDR", ":8080"),
 		DatabaseURL:        envOr("DATABASE_URL", "postgres://postgres@localhost:5418/lotus?sslmode=disable"),
 		MigrateDatabaseURL: os.Getenv("MIGRATE_DATABASE_URL"),
+		BlobDir:            envOr("LOTUS_BLOB_DIR", "var/blob"),
 		Dev:                os.Getenv("LOTUS_DEV") == "1",
 		SessionSecret:      os.Getenv("SESSION_SECRET"),
 		BaseDomain:         envOr("LOTUS_BASE_DOMAIN", "lotus.localhost"),
