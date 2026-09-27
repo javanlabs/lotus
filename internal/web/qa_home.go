@@ -98,6 +98,7 @@ func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fibe
 	app.Get("/projects/:id/qa/plans/:pid", qaRoute(requireSession, loadPrincipal, "qa.read", qaPlanPage(d))...)
 	app.Post("/projects/:id/qa/plans/:pid", qaRoute(requireSession, loadPrincipal, "qa.plan.write", updateQAPlanUI(d))...)
 	app.Post("/projects/:id/qa/plans/:pid/duplicate", qaRoute(requireSession, loadPrincipal, "qa.plan.write", duplicateQAPlanUI(d))...)
+	app.Post("/projects/:id/qa/plans/:pid/signoffs", qaRoute(requireSession, loadPrincipal, "qa.signoff", recordQASignoffUI(d))...)
 	app.Post("/projects/:id/qa/plans/:pid/close", qaRoute(requireSession, loadPrincipal, "qa.plan.write", closeQAPlanUI())...)
 	app.Get("/projects/:id/qa/plans/:pid/runs/new", qaRoute(requireSession, loadPrincipal, "qa.plan.write", newQARunPage(d))...)
 	app.Post("/projects/:id/qa/plans/:pid/runs", qaRoute(requireSession, loadPrincipal, "qa.plan.write", createQARunUI(d))...)

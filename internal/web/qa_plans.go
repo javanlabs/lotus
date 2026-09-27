@@ -262,6 +262,9 @@ type qaPlanData struct {
 	CanCopy    bool // qa.plan.write (a closed plan can still be duplicated)
 	Form       qaPlanFormData
 	CopyName   string
+	Signoffs   []qaSignoffRow
+	CanSignoff bool // qa.signoff
+	Scopes     []httpx.SelectOption
 }
 
 func qaPlanPage(d Deps) fiber.Handler {
@@ -321,6 +324,12 @@ func qaPlanPage(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		data.Progress = planProgress[plan.ID]
+		if data.Signoffs, err = qaPlanSignoffs(c, d, s, plan.ID, data.Scenarios); err != nil {
+			return writeRepoErr(c, err)
+		}
+		if data.CanSignoff = mustPrincipal(c).Can("qa.signoff"); data.CanSignoff {
+			data.Scopes = qaSignoffScopes(data.Scenarios)
+		}
 		if data.CanWrite {
 			options, err := qaPlanScenarioOptions(c, s, project, scenarioIDs)
 			if err != nil {

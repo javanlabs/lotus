@@ -94,5 +94,59 @@
   {{template "lotus_card_section_close" .}}
 </div>
 
+{{template "lotus_card_section_open" (dict "Padding" "14px" "Style" "margin-top:14px;display:flex;flex-direction:column;gap:10px")}}
+  <div style="display:flex;align-items:center;gap:10px">
+    <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">SIGN-OFF</div>
+    {{if $d.CanSignoff}}
+    <div x-data="lotusModal('signoff')" style="display:contents">
+      <button type="button" class="btn-lotus btn-lotus-secondary" style="margin-left:auto" @click="open()">Sign off…</button>
+      <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="signoff-title">
+        <div class="lotus-modal-head">
+          <div class="lotus-modal-title" id="signoff-title">Sign off</div>
+          <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+          </button>
+        </div>
+        <div class="lotus-modal-form">
+          <form method="post" action="{{$d.Base}}/plans/{{$d.Plan.ID}}/signoffs" hx-post="{{$d.Base}}/plans/{{$d.Plan.ID}}/signoffs" hx-target="#signoff-error" hx-swap="innerHTML">
+            <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
+              <div id="signoff-error"></div>
+              <label style="display:flex;flex-direction:column;gap:6px">
+                <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">FOR</span>
+                {{template "lotus_select" (dict "Name" "scope" "ID" "signoff-scope" "Value" "plan" "Label" "Scope" "Options" (selectOptions $d.Scopes))}}
+              </label>
+              <fieldset style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">
+                <legend style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:6px">DECISION</legend>
+                <label style="display:flex;align-items:center;gap:8px;font-size:12.5px"><input type="radio" name="decision" value="accepted" required style="accent-color:var(--text-brand)"> Accepted</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:12.5px"><input type="radio" name="decision" value="accepted_with_notes" style="accent-color:var(--text-brand)"> Accepted with notes</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:12.5px"><input type="radio" name="decision" value="rejected" style="accent-color:var(--text-brand)"> Rejected</label>
+              </fieldset>
+              <label style="display:flex;flex-direction:column;gap:6px">
+                <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NOTE</span>
+                <textarea name="note" rows="4" maxlength="4000" class="lotus-textarea" placeholder="Required unless accepted as is"></textarea>
+              </label>
+            </div>
+            <div class="lotus-modal-foot">
+              <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+              <button type="submit" class="btn-lotus btn-lotus-primary">Sign off</button>
+            </div>
+          </form>
+        </div>
+      </dialog>
+    </div>
+    {{end}}
+  </div>
+  {{range $d.Signoffs}}
+  <div data-signoff-scope="{{.Scope}}" style="display:grid;grid-template-columns:minmax(0,1fr) 150px minmax(0,2fr);gap:10px;align-items:baseline;font-size:12.5px;padding:6px 0;border-top:1px solid var(--ink-100)">
+    <span style="color:#111827;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Scope}}</span>
+    <span>{{if .Decision}}<span class="lotus-badge lotus-badge-{{.Tone}}">{{.Label}}</span>{{else}}<span style="color:#9CA3AF">Not signed off</span>{{end}}</span>
+    <span style="min-width:0;display:flex;flex-direction:column;gap:2px">
+      {{if .Note}}<span style="color:#374151;white-space:pre-wrap">{{.Note}}</span>{{end}}
+      {{if .Decision}}<span style="font-size:11px;color:#6B7280">{{.SignedBy}} · {{.SignedAt}}</span>{{end}}
+    </span>
+  </div>
+  {{end}}
+{{template "lotus_card_section_close" .}}
+
 {{template "shell_close" .}}
 {{end}}
