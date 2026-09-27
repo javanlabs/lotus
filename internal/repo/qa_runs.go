@@ -92,15 +92,82 @@ func insertQARun(ctx context.Context, tx *sqlx.Tx, orgID, planID uuid.UUID, name
 	return &run, nil
 }
 
-func CreateQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARunInput, createdBy *uuid.UUID) (*QARun, error) {
+func validQADistribution(in QARunInput) error {
 	switch in.Distribution {
 	case "", DistributeNone:
 	case DistributeRoundRobin, DistributeByGroup:
 		if len(in.Testers) == 0 {
-			return nil, ErrInvalidInput
+			return ErrInvalidInput
 		}
 	default:
-		return nil, ErrInvalidInput
+		return ErrInvalidInput
+	}
+	return nil
+}
+
+// qaRunSources is the cases a run of planID over scenarioIDs (empty: all
+// the plan's scenarios) would hold, in run order: live cases only, each
+// once, grouped by scenario and group.
+func qaRunSources(ctx context.Context, tx *sqlx.Tx, planID uuid.UUID, scenarioIDs []uuid.UUID) ([]runSource, error) {
+	var planScenarios []struct {
+		ID   uuid.UUID `db:"id"`
+		Name string    `db:"name"`
+	}
+	if err := tx.SelectContext(ctx, &planScenarios, `
+		SELECT sc.id, sc.name FROM qa_plan_scenarios ps JOIN qa_scenarios sc ON sc.id = ps.scenario_id
+		WHERE ps.plan_id = $1 ORDER BY lower(sc.name)`, planID); err != nil {
+		return nil, err
+	}
+	wanted := map[uuid.UUID]bool{}
+	for _, id := range scenarioIDs {
+		wanted[id] = true
+	}
+	chosen := planScenarios[:0:0]
+	for _, sc := range planScenarios {
+		if len(wanted) == 0 || wanted[sc.ID] {
+			chosen = append(chosen, sc)
+			delete(wanted, sc.ID)
+		}
+	}
+	if len(wanted) > 0 {
+		return nil, ErrInvalidInput // asked for a scenario the plan does not cover
+	}
+	multi := len(chosen) > 1
+	seen := map[uuid.UUID]bool{}
+	var items []runSource
+	for _, sc := range chosen {
+		var rows []runSource
+		if err := tx.SelectContext(ctx, &rows, `
+			SELECT c.id AS case_id, COALESCE(g.name, '') AS group_name,
+				c.title, c.precondition, c.steps, c.version
+			FROM qa_scenario_items i
+			JOIN qa_cases c ON c.id = i.case_id
+			LEFT JOIN qa_scenario_groups g ON g.id = i.group_id
+			WHERE i.scenario_id = $1 AND c.archived_at IS NULL
+			ORDER BY COALESCE(g.position, 0), i.position, c.key`, sc.ID); err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			if seen[r.CaseID] {
+				continue
+			}
+			seen[r.CaseID] = true
+			if multi {
+				if r.GroupName == "" {
+					r.GroupName = sc.Name
+				} else {
+					r.GroupName = sc.Name + " / " + r.GroupName
+				}
+			}
+			items = append(items, r)
+		}
+	}
+	return items, nil
+}
+
+func CreateQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARunInput, createdBy *uuid.UUID) (*QARun, error) {
+	if err := validQADistribution(in); err != nil {
+		return nil, err
 	}
 	var out *QARun
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
@@ -112,58 +179,9 @@ func CreateQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARun
 		if closed != nil {
 			return ErrQAClosed
 		}
-		var planScenarios []struct {
-			ID   uuid.UUID `db:"id"`
-			Name string    `db:"name"`
-		}
-		if err := tx.SelectContext(ctx, &planScenarios, `
-			SELECT sc.id, sc.name FROM qa_plan_scenarios ps JOIN qa_scenarios sc ON sc.id = ps.scenario_id
-			WHERE ps.plan_id = $1 ORDER BY lower(sc.name)`, planID); err != nil {
+		items, err := qaRunSources(ctx, tx, planID, in.ScenarioIDs)
+		if err != nil {
 			return err
-		}
-		wanted := map[uuid.UUID]bool{}
-		for _, id := range in.ScenarioIDs {
-			wanted[id] = true
-		}
-		chosen := planScenarios[:0:0]
-		for _, sc := range planScenarios {
-			if len(wanted) == 0 || wanted[sc.ID] {
-				chosen = append(chosen, sc)
-				delete(wanted, sc.ID)
-			}
-		}
-		if len(wanted) > 0 {
-			return ErrInvalidInput // asked for a scenario the plan does not cover
-		}
-		multi := len(chosen) > 1
-		seen := map[uuid.UUID]bool{}
-		var items []runSource
-		for _, sc := range chosen {
-			var rows []runSource
-			if err := tx.SelectContext(ctx, &rows, `
-				SELECT c.id AS case_id, COALESCE(g.name, '') AS group_name,
-					c.title, c.precondition, c.steps, c.version
-				FROM qa_scenario_items i
-				JOIN qa_cases c ON c.id = i.case_id
-				LEFT JOIN qa_scenario_groups g ON g.id = i.group_id
-				WHERE i.scenario_id = $1 AND c.archived_at IS NULL
-				ORDER BY COALESCE(g.position, 0), i.position, c.key`, sc.ID); err != nil {
-				return err
-			}
-			for _, r := range rows {
-				if seen[r.CaseID] {
-					continue
-				}
-				seen[r.CaseID] = true
-				if multi {
-					if r.GroupName == "" {
-						r.GroupName = sc.Name
-					} else {
-						r.GroupName = sc.Name + " / " + r.GroupName
-					}
-				}
-				items = append(items, r)
-			}
 		}
 		distribute(items, in.Testers, in.Distribution)
 		run, err := insertQARun(ctx, tx, s.OrgID(), planID, in.Name, in.Notes, nil, createdBy, items)
@@ -174,6 +192,40 @@ func CreateQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARun
 		return nil, qaWriteErr(err)
 	}
 	return out, nil
+}
+
+// QARunPreview is what CreateQARun would do with the same input: how many
+// cases, and how many each tester would get.
+type QARunPreview struct {
+	Cases      int
+	PerTester  map[uuid.UUID]int
+	Unassigned int
+}
+
+// PreviewQARun computes CreateQARun's case list and distribution without
+// writing anything. A plan with nothing to run previews as zero cases.
+func PreviewQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARunInput) (QARunPreview, error) {
+	out := QARunPreview{PerTester: map[uuid.UUID]int{}}
+	if err := validQADistribution(in); err != nil {
+		return out, err
+	}
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		items, err := qaRunSources(ctx, tx, planID, in.ScenarioIDs)
+		if err != nil {
+			return err
+		}
+		distribute(items, in.Testers, in.Distribution)
+		out.Cases = len(items)
+		for _, it := range items {
+			if it.Assignee == nil {
+				out.Unassigned++
+			} else {
+				out.PerTester[*it.Assignee]++
+			}
+		}
+		return nil
+	})
+	return out, qaWriteErr(err)
 }
 
 // distribute sets Assignee on items in place.

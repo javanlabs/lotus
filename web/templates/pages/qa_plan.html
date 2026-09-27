@@ -8,6 +8,9 @@
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.PhaseLabel}}{{if $d.Plan.Environment}} · {{$d.Plan.Environment}}{{end}}{{if $d.Plan.Build}} · <span style="font-family:'IBM Plex Mono',monospace">{{$d.Plan.Build}}</span>{{end}}{{if $d.Window}} · {{$d.Window}}{{end}}{{if $d.Plan.ClosedAt}} · closed {{$d.Plan.ClosedAt.Format "02 Jan 2006"}}{{end}}</p>
   </div>
   {{if $d.CanWrite}}
+  <a href="{{$d.Base}}/plans/{{$d.Plan.ID}}/runs/new" class="btn-lotus btn-lotus-primary">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>New run
+  </a>
   <div x-data="lotusModal('edit-plan')" style="display:contents">
     <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Edit plan…</button>
     <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="edit-plan-title">

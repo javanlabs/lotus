@@ -1,0 +1,67 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+{{$action := printf "%s/plans/%s/runs" $d.Base $d.Plan.ID}}
+
+<header style="margin-bottom:18px">
+  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">New run</h1>
+  <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Plan.Name}} · cases are copied from the chosen scenarios when the run is created</p>
+</header>
+
+<form id="new-run-form" method="post" action="{{$action}}" style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:14px;align-items:start;max-width:980px">
+  <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+    {{if $d.Error}}{{template "form_error" $d.Error}}{{end}}
+    {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:14px")}}
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
+        <input type="text" name="name" required maxlength="200" value="{{$d.Name}}" class="lotus-input">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NOTES</span>
+        <textarea name="notes" rows="2" class="lotus-textarea" placeholder="Browser: Chrome · test data in the shared sheet">{{$d.Notes}}</textarea>
+      </label>
+      <fieldset style="border:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px">
+        <legend style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:6px">SCENARIOS</legend>
+        {{range $d.Scenarios}}
+        <label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:12.5px;color:#111827">
+          <input type="checkbox" name="scenario_id" value="{{.ID}}"{{if .Checked}} checked{{end}} style="accent-color:var(--text-brand)">
+          <span>{{.Name}}</span><span class="lotus-badge lotus-badge-none">{{.PhaseLabel}}</span>
+        </label>
+        {{else}}<p style="margin:0;font-size:12px;color:#6B7280">The plan has no scenarios. Edit the plan first.</p>{{end}}
+      </fieldset>
+    {{template "lotus_card_section_close" .}}
+    {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:14px")}}
+      <fieldset style="border:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px">
+        <legend style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:6px">TESTERS</legend>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px 12px;max-height:260px;overflow:auto">
+          {{range $d.People}}
+          <label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:12.5px;color:#111827;min-width:0">
+            <input type="checkbox" name="tester_id" value="{{.ID}}"{{if .Checked}} checked{{end}} style="accent-color:var(--text-brand)">
+            <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Label}}</span>
+            {{if .Guest}}<span class="lotus-badge lotus-badge-none">guest</span>{{end}}
+          </label>
+          {{end}}
+        </div>
+      </fieldset>
+      <fieldset style="border:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">
+        <legend style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:6px">SHARE THE CASES</legend>
+        {{range $opt := (selectOptions (dict "Value" "none" "Label" "Leave unassigned") (dict "Value" "round_robin" "Label" "One by one, in turn") (dict "Value" "by_group" "Label" "Whole groups, in turn"))}}
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#111827">
+          <input type="radio" name="distribution" value="{{$opt.Value}}"{{if eq $opt.Value $d.Distribution}} checked{{end}} style="accent-color:var(--text-brand)"> {{$opt.Label}}
+        </label>
+        {{end}}
+      </fieldset>
+    {{template "lotus_card_section_close" .}}
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <a href="{{$d.Base}}/plans/{{$d.Plan.ID}}" class="btn-lotus btn-lotus-secondary">Cancel</a>
+      <button type="submit" class="btn-lotus btn-lotus-primary">Create run</button>
+    </div>
+  </div>
+  {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:10px;position:sticky;top:16px")}}
+    <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PREVIEW</div>
+    <div id="run-preview" hx-post="{{$action}}/preview" hx-include="#new-run-form" hx-trigger="load, change from:#new-run-form"></div>
+  {{template "lotus_card_section_close" .}}
+</form>
+
+{{template "shell_close" .}}
+{{end}}
