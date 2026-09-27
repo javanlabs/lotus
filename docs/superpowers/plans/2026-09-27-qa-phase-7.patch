@@ -1,0 +1,2779 @@
+diff --git a/e2e/tests/dropdown.spec.ts b/e2e/tests/dropdown.spec.ts
+index ba05d78..725b93b 100644
+--- a/e2e/tests/dropdown.spec.ts
++++ b/e2e/tests/dropdown.spec.ts
+@@ -20,6 +20,7 @@ function tenantOrigin(subdomain: string): string {
+ 
+ test('a dropdown submits the value a native select would have submitted', async ({ page, context }) => {
+   const { sessionToken, subdomain, orgId } = await seedOwnerSession('dropdown-value-e2e', 'placeholder');
++  const invitee = `dropdown-invitee-${subdomain}@example.com`; // invitations are capped per address per day
+   const origin = tenantOrigin(subdomain);
+   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+ 
+@@ -36,14 +37,15 @@ test('a dropdown submits the value a native select would have submitted', async
+   expect(await dropdownValue(page, 'role')).toBe('admin');
+   await expect(dropdownTrigger(page, 'role')).toHaveValue(/Admin/);
+ 
+-  await page.locator('input[name="email"]').fill('dropdown-invitee@example.com');
++  await page.locator('input[name="email"]').fill(invitee);
+   await page.getByRole('button', { name: 'Send invite' }).click();
++  await page.getByRole('button', { name: 'Done' }).click();
+ 
+   // The value chosen in the dropdown is what reached the server: the
+   // pending invite is for an Admin, not the default Member.
+   // Scoped to <main>: the toast sits outside it and repeats the address,
+   // so an unscoped text locator would match the toast too.
+-  const row = page.locator('main').locator('div', { hasText: 'dropdown-invitee@example.com' }).last();
++  const row = page.locator('main').locator('div', { hasText: invitee }).last();
+   await expect(row).toContainText(/admin/i);
+ 
+   await retireOrg(orgId);
+diff --git a/e2e/tests/helpers/qa.ts b/e2e/tests/helpers/qa.ts
+new file mode 100644
+index 0000000..1908c44
+--- /dev/null
++++ b/e2e/tests/helpers/qa.ts
+@@ -0,0 +1,39 @@
++import { createHash, randomUUID } from 'node:crypto';
++import { withDB } from './db';
++
++// seedPlan inserts a project with two cases, a scenario holding both and a
++// plan over that scenario, straight into Postgres.
++export async function seedPlan(orgId: string): Promise<{ projectId: string; planId: string }> {
++  return withDB(async (c) => {
++    const p = await c.query(`INSERT INTO projects (org_id, slug, name) VALUES ($1, 'portal', 'Portal') RETURNING id`, [orgId]);
++    const projectId = p.rows[0].id as string;
++    const sec = await c.query(`INSERT INTO qa_sections (org_id, project_id, name) VALUES ($1, $2, 'Auth') RETURNING id`, [orgId, projectId]);
++    const sc = await c.query(`INSERT INTO qa_scenarios (org_id, project_id, name, phase) VALUES ($1, $2, 'Regression core', 'regression') RETURNING id`, [orgId, projectId]);
++    for (const [i, title] of ['Login valid', 'Login invalid'].entries()) {
++      const cs = await c.query(
++        `INSERT INTO qa_cases (org_id, project_id, section_id, key, title, steps) VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id`,
++        [orgId, projectId, sec.rows[0].id, i + 1, title, JSON.stringify([{ action: 'Open the portal', expected: 'Login page' }])]);
++      await c.query(`INSERT INTO qa_scenario_items (org_id, scenario_id, case_id, position) VALUES ($1, $2, $3, $4)`,
++        [orgId, sc.rows[0].id, cs.rows[0].id, i + 1]);
++    }
++    const plan = await c.query(`INSERT INTO qa_plans (org_id, project_id, name, phase) VALUES ($1, $2, 'Regression October', 'regression') RETURNING id`, [orgId, projectId]);
++    await c.query(`INSERT INTO qa_plan_scenarios (org_id, plan_id, scenario_id) VALUES ($1, $2, $3)`, [orgId, plan.rows[0].id, sc.rows[0].id]);
++    return { projectId, planId: plan.rows[0].id as string };
++  });
++}
++
++// seedGuest adds a guest to orgId, lists it on projectId and returns a
++// session cookie value for it.
++export async function seedGuest(orgId: string, projectId: string, host: string): Promise<{ userId: string; sessionToken: string }> {
++  return withDB(async (c) => {
++    const u = await c.query(`INSERT INTO users (email, name, email_verified_at) VALUES ($1, 'Client Reviewer', now()) RETURNING id`,
++      [`client-${randomUUID().slice(0, 8)}@bank.example`]);
++    const userId = u.rows[0].id as string;
++    await c.query(`INSERT INTO memberships (org_id, user_id, role_id) SELECT $1, $2, r.id FROM roles r WHERE r.key = 'guest' AND r.org_id IS NULL`, [orgId, userId]);
++    await c.query(`INSERT INTO project_members (org_id, project_id, user_id) VALUES ($1, $2, $3)`, [orgId, projectId, userId]);
++    const sessionToken = randomUUID();
++    await c.query(`INSERT INTO sessions (id, user_id, org_id, host, expires_at) VALUES ($1, $2, $3, $4, now() + interval '1 day')`,
++      [createHash('sha256').update(sessionToken).digest('hex'), userId, orgId, host]);
++    return { userId, sessionToken };
++  });
++}
+diff --git a/e2e/tests/qa-guest.spec.ts b/e2e/tests/qa-guest.spec.ts
+new file mode 100644
+index 0000000..972df30
+--- /dev/null
++++ b/e2e/tests/qa-guest.spec.ts
+@@ -0,0 +1,75 @@
++import { expect, test } from '@playwright/test';
++import { retireOrg, seedOwnerSession } from './helpers/db';
++import { seedGuest, seedPlan } from './helpers/qa';
++
++const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
++const BASE_DOMAIN = process.env.LOTUS_BASE_DOMAIN ?? 'lotus.localhost';
++const tenantOrigin = (s: string) => `http://${s}.${BASE_DOMAIN}:${PORT}`;
++
++test('a guest lands on its own work, sees only its project and signs the plan off', async ({ page, context }) => {
++  const { subdomain, orgId } = await seedOwnerSession('qa-guest-e2e', 'placeholder');
++  const origin = tenantOrigin(subdomain);
++  const { projectId, planId } = await seedPlan(orgId);
++  const { sessionToken } = await seedGuest(orgId, projectId, 'placeholder');
++  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
++
++  try {
++    await page.goto(`${origin}/projects`);
++    await expect(page).toHaveURL(/\/qa\/my$/);
++    const sidebar = page.locator('aside');
++    await expect(sidebar.getByRole('link', { name: 'My work' })).toBeVisible();
++    await expect(sidebar.getByRole('link', { name: 'Integrations' })).toHaveCount(0);
++    await sidebar.getByRole('link', { name: 'Portal' }).click();
++    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/qa$`));
++
++    await page.goto(`${origin}/projects/${projectId}/qa/plans/${planId}`);
++    await page.getByRole('button', { name: 'Sign off…' }).click();
++    const dialog = page.getByRole('dialog');
++    await dialog.getByLabel('Rejected').check();
++    await dialog.getByRole('button', { name: 'Sign off' }).click();
++    await expect(dialog.getByText('Say what is wrong in the note.')).toBeVisible();
++    await dialog.getByRole('textbox', { name: 'Note' }).fill('Login invalid shows no message');
++    await dialog.getByRole('button', { name: 'Sign off' }).click();
++
++    const row = page.locator('[data-signoff-scope="Whole plan"]');
++    await expect(row.getByText('Rejected')).toBeVisible();
++    await expect(row.getByText('Login invalid shows no message')).toBeVisible();
++    await expect(page.getByRole('button', { name: 'Create link…' })).toHaveCount(0);
++
++    const settings = await page.goto(`${origin}/settings/members`);
++    expect(settings?.status()).toBe(404);
++  } finally {
++    await retireOrg(orgId);
++  }
++});
++
++test('a share link opens the plan report without signing in, until it is revoked', async ({ page, context, browser }) => {
++  const { sessionToken, subdomain, orgId } = await seedOwnerSession('qa-share-e2e', 'placeholder');
++  const origin = tenantOrigin(subdomain);
++  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
++  const { projectId, planId } = await seedPlan(orgId);
++  const anonymous = await browser.newContext();
++
++  try {
++    await page.goto(`${origin}/projects/${projectId}/qa/plans/${planId}`);
++    await page.getByRole('button', { name: 'Create link…' }).click();
++    await page.getByRole('dialog').getByRole('button', { name: 'Create link' }).click();
++    const link = await page.getByLabel('Share link').inputValue();
++    expect(link).toMatch(/\/s\/qa\/[0-9a-f]{64}$/);
++
++    const visitor = await anonymous.newPage();
++    await visitor.goto(link);
++    await expect(visitor.getByRole('heading', { level: 1, name: 'Regression October' })).toBeVisible();
++    await expect(visitor.getByText('Regression core').first()).toBeVisible();
++    await expect(visitor.locator('form')).toHaveCount(0);
++
++    await page.getByRole('link', { name: 'Done' }).click();
++    await page.getByRole('button', { name: 'Revoke' }).click();
++    await expect(page.getByRole('button', { name: 'Revoke' })).toHaveCount(0);
++    const gone = await visitor.goto(link);
++    expect(gone?.status()).toBe(404);
++  } finally {
++    await anonymous.close();
++    await retireOrg(orgId);
++  }
++});
+diff --git a/e2e/tests/qa-issues.spec.ts b/e2e/tests/qa-issues.spec.ts
+index c26713c..163b88e 100644
+--- a/e2e/tests/qa-issues.spec.ts
++++ b/e2e/tests/qa-issues.spec.ts
+@@ -1,31 +1,11 @@
+ import { expect, test } from '@playwright/test';
+-import { retireOrg, seedOwnerSession, withDB } from './helpers/db';
++import { retireOrg, seedOwnerSession } from './helpers/db';
++import { seedPlan } from './helpers/qa';
+ 
+ const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
+ const BASE_DOMAIN = process.env.LOTUS_BASE_DOMAIN ?? 'lotus.localhost';
+ const tenantOrigin = (s: string) => `http://${s}.${BASE_DOMAIN}:${PORT}`;
+ 
+-// seedPlan inserts a project with two cases, a scenario holding both and a
+-// plan over that scenario, straight into Postgres.
+-async function seedPlan(orgId: string): Promise<{ projectId: string; planId: string }> {
+-  return withDB(async (c) => {
+-    const p = await c.query(`INSERT INTO projects (org_id, slug, name) VALUES ($1, 'portal', 'Portal') RETURNING id`, [orgId]);
+-    const projectId = p.rows[0].id as string;
+-    const sec = await c.query(`INSERT INTO qa_sections (org_id, project_id, name) VALUES ($1, $2, 'Auth') RETURNING id`, [orgId, projectId]);
+-    const sc = await c.query(`INSERT INTO qa_scenarios (org_id, project_id, name, phase) VALUES ($1, $2, 'Regression core', 'regression') RETURNING id`, [orgId, projectId]);
+-    for (const [i, title] of ['Login valid', 'Login invalid'].entries()) {
+-      const cs = await c.query(
+-        `INSERT INTO qa_cases (org_id, project_id, section_id, key, title, steps) VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id`,
+-        [orgId, projectId, sec.rows[0].id, i + 1, title, JSON.stringify([{ action: 'Open the portal', expected: 'Login page' }])]);
+-      await c.query(`INSERT INTO qa_scenario_items (org_id, scenario_id, case_id, position) VALUES ($1, $2, $3, $4)`,
+-        [orgId, sc.rows[0].id, cs.rows[0].id, i + 1]);
+-    }
+-    const plan = await c.query(`INSERT INTO qa_plans (org_id, project_id, name, phase) VALUES ($1, $2, 'Regression October', 'regression') RETURNING id`, [orgId, projectId]);
+-    await c.query(`INSERT INTO qa_plan_scenarios (org_id, plan_id, scenario_id) VALUES ($1, $2, $3)`, [orgId, plan.rows[0].id, sc.rows[0].id]);
+-    return { projectId, planId: plan.rows[0].id as string };
+-  });
+-}
+-
+ test('a failure is reported as an issue from its run item and triaged', async ({ page, context }) => {
+   const { sessionToken, subdomain, orgId } = await seedOwnerSession('qa-issue-e2e', 'placeholder');
+   const origin = tenantOrigin(subdomain);
+diff --git a/e2e/tests/settings.spec.ts b/e2e/tests/settings.spec.ts
+index 5bb90d9..38902e5 100644
+--- a/e2e/tests/settings.spec.ts
++++ b/e2e/tests/settings.spec.ts
+@@ -48,23 +48,29 @@ test('creating a connection through the settings form appears in the list, real
+ 
+ test('inviting a member shows it as pending, and revoke removes it, real browser round-trip', async ({ page, context }) => {
+   const { sessionToken, subdomain } = await seedOwnerSession('settings-member-e2e', 'placeholder');
++  // Unique per run: invitations are capped per address per day, and the
++  // e2e database outlives a run.
++  const invitee = `newteammate-${subdomain}@example.com`;
+   const origin = tenantOrigin(subdomain);
+   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+ 
+   await page.goto(`${origin}/settings/members`);
+   await page.getByRole('button', { name: 'Invite a member' }).click();
+-  await page.locator('input[name="email"]').fill('newteammate@example.com');
++  await page.locator('input[name="email"]').fill(invitee);
+   await chooseFromDropdown(page, 'role', 'Member');
+   expect(await dropdownValue(page, 'role')).toBe('member');
+   await page.getByRole('button', { name: 'Send invite' }).click();
++  // Without mail set up the link is the only way in, so the dialog shows it.
++  await expect(page.getByLabel('Invitation link')).toHaveValue(/\/invite\/[A-Za-z0-9_-]{43}$/);
++  await page.getByRole('button', { name: 'Done' }).click();
+ 
+   await expect(page).toHaveURL(`${origin}/settings/members`);
+-  await expect(page.locator('.toaster .toast')).toContainText('Invitation sent to newteammate@example.com');
+-  await expect(page.locator('main').getByText('newteammate@example.com')).toBeVisible();
++  await expect(page.locator('.toaster .toast')).toContainText(`Invitation sent to ${invitee}`);
++  await expect(page.locator('main').getByText(invitee)).toBeVisible();
+ 
+   page.once('dialog', (d) => d.accept());
+   await page.getByRole('button', { name: 'Revoke' }).click();
+-  await expect(page.locator('main').getByText('newteammate@example.com')).not.toBeVisible();
++  await expect(page.locator('main').getByText(invitee)).not.toBeVisible();
+ });
+ 
+ test('organization danger zone requires typing the exact subdomain to delete', async ({ page, context }) => {
+diff --git a/internal/authn/invitations.go b/internal/authn/invitations.go
+index adc9422..956d407 100644
+--- a/internal/authn/invitations.go
++++ b/internal/authn/invitations.go
+@@ -43,6 +43,8 @@ type SendInvitationParams struct {
+ 	ActorRole string // the inviter's current role, for the escalation guard
+ 	Email     string
+ 	RoleKey   string
++	// ProjectIDs: the projects a guest will see (ignored for other roles).
++	ProjectIDs []uuid.UUID
+ }
+ 
+ // SendInvitation creates an invitation (enforcing the escalation guard and
+@@ -67,12 +69,13 @@ func SendInvitation(ctx context.Context, deps Deps, p SendInvitationParams) (str
+ 
+ 	raw := randToken(32)
+ 	_, err := global.CreateInvitation(ctx, deps.DB, global.NewInvitation{
+-		OrgID:     p.OrgID,
+-		Email:     p.Email,
+-		RoleKey:   p.RoleKey,
+-		InvitedBy: p.ActorID,
+-		TokenHash: sha256Hex(raw),
+-		ExpiresAt: time.Now().Add(invitationTTL),
++		OrgID:      p.OrgID,
++		Email:      p.Email,
++		RoleKey:    p.RoleKey,
++		InvitedBy:  p.ActorID,
++		TokenHash:  sha256Hex(raw),
++		ExpiresAt:  time.Now().Add(invitationTTL),
++		ProjectIDs: p.ProjectIDs,
+ 	})
+ 	if err != nil {
+ 		return "", err
+diff --git a/internal/authz/middleware.go b/internal/authz/middleware.go
+index fad083c..1116256 100644
+--- a/internal/authz/middleware.go
++++ b/internal/authz/middleware.go
+@@ -2,6 +2,7 @@ package authz
+ 
+ import (
+ 	"reflect"
++	"strings"
+ 
+ 	"github.com/gofiber/fiber/v2"
+ 	"github.com/google/uuid"
+@@ -72,7 +73,8 @@ func LoadPrincipal(db *sqlx.DB) fiber.Handler {
+ // in diffs, and the thing task 1.5's route-coverage test checks every
+ // route has one of (this or authz.Public). A principal that exists but
+ // lacks perm gets 403 — they're a known, authenticated member of this org,
+-// just not allowed to do this. That's a different failure than the
++// just not allowed to do this. A guest is the exception outside QA: it
++// gets 404 there (Phase 7's guest shell). That's a different failure than the
+ // object-level "does this resource even belong to your org" check (see
+ // CheckOwnership), which is 404 specifically to avoid confirming a
+ // cross-org object's existence to someone who can't see it.
+@@ -83,6 +85,12 @@ func Require(perm string) fiber.Handler {
+ 			return fiber.NewError(fiber.StatusUnauthorized, "no principal")
+ 		}
+ 		if !p.Can(perm) {
++			// A guest only ever sees QA: outside it, a page answers as if
++			// it did not exist, so the chrome of the internal product
++			// (metrics, settings, integrations) is not even confirmed.
++			if IsProjectScoped(p) && !strings.HasPrefix(perm, "qa.") {
++				return fiber.ErrNotFound
++			}
+ 			return fiber.NewError(fiber.StatusForbidden, "missing permission: "+perm)
+ 		}
+ 		return c.Next()
+diff --git a/internal/authz/middleware_test.go b/internal/authz/middleware_test.go
+index 5f1dd98..2f56719 100644
+--- a/internal/authz/middleware_test.go
++++ b/internal/authz/middleware_test.go
+@@ -153,3 +153,30 @@ func sha256HexForAuthzTest(s string) string {
+ 	sum := sha256.Sum256([]byte(s))
+ 	return hex.EncodeToString(sum[:])
+ }
++
++// A guest is told a page outside QA does not exist (404); inside QA a
++// missing permission is still 403, and everyone else keeps 403 throughout.
++func TestRequire_GuestOutsideQAIsNotFound(t *testing.T) {
++	for _, tc := range []struct {
++		role, perm string
++		want       int
++	}{
++		{"guest", "dashboard.read", http.StatusNotFound},
++		{"guest", "qa.case.write", http.StatusForbidden},
++		{"guest", "qa.execute", http.StatusOK},
++		{"viewer", "sync.trigger", http.StatusForbidden},
++	} {
++		app := fiber.New()
++		app.Get("/x", func(c *fiber.Ctx) error {
++			authz.SetPrincipal(c, authz.Principal{Kind: authz.KindSession, Role: tc.role})
++			return c.Next()
++		}, authz.Require(tc.perm), func(c *fiber.Ctx) error { return c.SendString("ok") })
++		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/x", nil))
++		if err != nil {
++			t.Fatal(err)
++		}
++		if resp.StatusCode != tc.want {
++			t.Errorf("%s on %s = %d, want %d", tc.role, tc.perm, resp.StatusCode, tc.want)
++		}
++	}
++}
+diff --git a/internal/db/migrations/00029_invitation_projects.sql b/internal/db/migrations/00029_invitation_projects.sql
+new file mode 100644
+index 0000000..f98d645
+--- /dev/null
++++ b/internal/db/migrations/00029_invitation_projects.sql
+@@ -0,0 +1,8 @@
++-- +goose Up
++-- A guest invitation names the projects the guest will see
++-- (docs/superpowers/plans/2026-09-27-qa-phase-7.md). Accepting it lists
++-- the guest on them in project_members. Empty for every other role.
++ALTER TABLE invitations ADD COLUMN project_ids uuid[] NOT NULL DEFAULT '{}';
++
++-- +goose Down
++ALTER TABLE invitations DROP COLUMN IF EXISTS project_ids;
+diff --git a/internal/httpx/render.go b/internal/httpx/render.go
+index 7ad7d63..67e2ad7 100644
+--- a/internal/httpx/render.go
++++ b/internal/httpx/render.go
+@@ -92,6 +92,9 @@ type Nav struct {
+ 	// page and stays plain. A single-element Trail is the common case
+ 	// (Settings), a project page adds one level, a component two.
+ 	Trail []NavCrumb
++	// Guest trims the chrome for a guest: the logo and the organization
++	// crumb lead to /qa/my, and the user menu has no Settings.
++	Guest bool
+ 	// Below the top level (whenever Trail is set) the organization's name
+ 	// is the first link, back to its projects. OrgDrop also makes it a
+ 	// drag-and-drop target on the folder view, meaning "the top level".
+diff --git a/internal/repo/global/invitations.go b/internal/repo/global/invitations.go
+index 7d71ea3..ec5e407 100644
+--- a/internal/repo/global/invitations.go
++++ b/internal/repo/global/invitations.go
+@@ -40,6 +40,9 @@ type NewInvitation struct {
+ 	InvitedBy uuid.UUID
+ 	TokenHash string
+ 	ExpiresAt time.Time
++	// ProjectIDs are the projects a guest will see once it accepts. Ignored
++	// for other roles, who see every project.
++	ProjectIDs []uuid.UUID
+ }
+ 
+ // CreateInvitation is the invite-creation path both task 1.6's onboarding
+@@ -47,11 +50,11 @@ type NewInvitation struct {
+ func CreateInvitation(ctx context.Context, db *sqlx.DB, in NewInvitation) (uuid.UUID, error) {
+ 	var id uuid.UUID
+ 	err := sqlx.GetContext(ctx, db, &id, `
+-		INSERT INTO invitations (org_id, email, role_id, invited_by, token_hash, expires_at)
+-		SELECT $1, $2, r.id, $3, $4, $5
++		INSERT INTO invitations (org_id, email, role_id, invited_by, token_hash, expires_at, project_ids)
++		SELECT $1, $2, r.id, $3, $4, $5, $7
+ 		FROM roles r WHERE r.key = $6 AND r.org_id IS NULL
+ 		RETURNING id`,
+-		in.OrgID, in.Email, in.InvitedBy, in.TokenHash, in.ExpiresAt, in.RoleKey)
++		in.OrgID, in.Email, in.InvitedBy, in.TokenHash, in.ExpiresAt, in.RoleKey, projectIDs(in.ProjectIDs))
+ 	if err != nil {
+ 		var pgErr *pgconn.PgError
+ 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+@@ -86,11 +89,21 @@ func InvitationByTokenHash(ctx context.Context, db *sqlx.DB, tokenHash string) (
+ 	return &out, nil
+ }
+ 
++// projectIDs never hands Postgres a NULL array for the NOT NULL column.
++func projectIDs(ids []uuid.UUID) []uuid.UUID {
++	if ids == nil {
++		return []uuid.UUID{}
++	}
++	return ids
++}
++
+ // AcceptInvitation marks the invitation accepted and creates the
+ // membership, in one transaction. If the invitee is already a member (a
+ // second invite accepted, or they joined some other way in the meantime),
+ // this is a no-op on the membership — accepting an invitation can only
+-// ever add access, never silently downgrade an existing role.
++// ever add access, never silently downgrade an existing role. A guest
++// invitation also lists the invitee on its projects (those still in the
++// organization), under the organization's row-level security.
+ func AcceptInvitation(ctx context.Context, db *sqlx.DB, invitationID, userID uuid.UUID) error {
+ 	tx, err := db.BeginTxx(ctx, nil)
+ 	if err != nil {
+@@ -111,6 +124,18 @@ func AcceptInvitation(ctx context.Context, db *sqlx.DB, invitationID, userID uui
+ 		ON CONFLICT (org_id, user_id) DO NOTHING`, orgID, userID, roleID); err != nil {
+ 		return err
+ 	}
++	if _, err := tx.ExecContext(ctx, `SELECT set_config('app.org_id', $1, true)`, orgID.String()); err != nil {
++		return err
++	}
++	if _, err := tx.ExecContext(ctx, `
++		INSERT INTO project_members (org_id, project_id, user_id)
++		SELECT $1, p.id, $3 FROM projects p
++		JOIN invitations i ON i.id = $2 AND p.id = ANY(i.project_ids)
++		JOIN roles r ON r.id = i.role_id AND r.key = 'guest'
++		WHERE p.org_id = $1
++		ON CONFLICT (project_id, user_id) DO NOTHING`, orgID, invitationID, userID); err != nil {
++		return err
++	}
+ 	if _, err := tx.ExecContext(ctx, `UPDATE organizations SET perm_epoch = perm_epoch + 1 WHERE id = $1`, orgID); err != nil {
+ 		return err
+ 	}
+@@ -161,9 +186,9 @@ func ResendInvitation(ctx context.Context, db *sqlx.DB, oldInvitationID uuid.UUI
+ 
+ 	var newID uuid.UUID
+ 	err = tx.QueryRowxContext(ctx, `
+-		INSERT INTO invitations (org_id, email, role_id, invited_by, token_hash, expires_at)
+-		VALUES ($1, $2, $3, $4, $5, $6)
+-		RETURNING id`, orgID, email, roleID, invitedBy, newTokenHash, newExpiresAt).Scan(&newID)
++		INSERT INTO invitations (org_id, email, role_id, invited_by, token_hash, expires_at, project_ids)
++		SELECT $1, $2, $3, $4, $5, $6, project_ids FROM invitations WHERE id = $7
++		RETURNING id`, orgID, email, roleID, invitedBy, newTokenHash, newExpiresAt, oldInvitationID).Scan(&newID)
+ 	if err != nil {
+ 		return uuid.Nil, err
+ 	}
+diff --git a/internal/repo/global/invitations_test.go b/internal/repo/global/invitations_test.go
+new file mode 100644
+index 0000000..454fcc0
+--- /dev/null
++++ b/internal/repo/global/invitations_test.go
+@@ -0,0 +1,85 @@
++package global_test
++
++import (
++	"context"
++	"testing"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/jmoiron/sqlx"
++
++	"github.com/uyab/lotus/internal/dbtest"
++	"github.com/uyab/lotus/internal/repo/global"
++)
++
++func projectMembers(t *testing.T, db *sqlx.DB, orgID, userID uuid.UUID) map[uuid.UUID]bool {
++	t.Helper()
++	tx, _ := db.Beginx()
++	defer tx.Rollback() //nolint:errcheck
++	tx.Exec(`SELECT set_config('app.org_id', $1, true)`, orgID.String())
++	var ids []uuid.UUID
++	if err := tx.Select(&ids, `SELECT project_id FROM project_members WHERE user_id = $1`, userID); err != nil {
++		t.Fatal(err)
++	}
++	out := map[uuid.UUID]bool{}
++	for _, id := range ids {
++		out[id] = true
++	}
++	return out
++}
++
++// A guest invitation carries the projects the guest will see; accepting
++// it lists the guest on them (only projects of the inviting organization).
++func TestInvitation_GuestProjectsAreAppliedOnAccept(t *testing.T) {
++	db := dbtest.Open(t)
++	ctx := context.Background()
++	var orgID, otherOrg, a, b, foreign, inviter uuid.UUID
++	db.Get(&orgID, `INSERT INTO organizations (subdomain, name) VALUES ('acme-inv', 'Acme') RETURNING id`)
++	db.Get(&otherOrg, `INSERT INTO organizations (subdomain, name) VALUES ('other-inv', 'Other') RETURNING id`)
++	a, b = seedProject(t, db, orgID, "a"), seedProject(t, db, orgID, "b")
++	foreign = seedProject(t, db, otherOrg, "f")
++	db.Get(&inviter, `INSERT INTO users (email) VALUES ('admin@acme.example') RETURNING id`)
++
++	invID, err := global.CreateInvitation(ctx, db, global.NewInvitation{
++		OrgID: orgID, Email: "client@bank.example", RoleKey: "guest", InvitedBy: inviter,
++		TokenHash: "h1", ExpiresAt: time.Now().Add(time.Hour), ProjectIDs: []uuid.UUID{a, foreign},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	// Resending keeps the projects.
++	newID, err := global.ResendInvitation(ctx, db, invID, "h2", time.Now().Add(time.Hour))
++	if err != nil {
++		t.Fatal(err)
++	}
++	u, _ := global.CreateUser(ctx, db, global.NewUser{Email: ptr("client@bank.example"), EmailVerified: true})
++	if err := global.AcceptInvitation(ctx, db, newID, u.ID); err != nil {
++		t.Fatal(err)
++	}
++	got := projectMembers(t, db, orgID, u.ID)
++	if len(got) != 1 || !got[a] || got[b] {
++		t.Fatalf("guest projects = %v; want only A (B was not chosen, F belongs to another organization)", got)
++	}
++	if m, _ := global.ActiveMembership(ctx, db, u.ID, orgID); m == nil || m.RoleKey != "guest" {
++		t.Fatalf("membership = %+v", m)
++	}
++}
++
++// seedProject inserts a project under its organization's row-level security.
++func seedProject(t *testing.T, db *sqlx.DB, orgID uuid.UUID, slug string) uuid.UUID {
++	t.Helper()
++	tx, err := db.Beginx()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer tx.Rollback() //nolint:errcheck
++	tx.Exec(`SELECT set_config('app.org_id', $1, true)`, orgID.String())
++	var id uuid.UUID
++	if err := tx.Get(&id, `INSERT INTO projects (org_id, slug, name) VALUES ($1, $2, $2) RETURNING id`, orgID, slug); err != nil {
++		t.Fatalf("project %s: %v", slug, err)
++	}
++	if err := tx.Commit(); err != nil {
++		t.Fatal(err)
++	}
++	return id
++}
+diff --git a/internal/repo/qa_share.go b/internal/repo/qa_share.go
+new file mode 100644
+index 0000000..ee63092
+--- /dev/null
++++ b/internal/repo/qa_share.go
+@@ -0,0 +1,112 @@
++package repo
++
++import (
++	"context"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/jmoiron/sqlx"
++
++	"github.com/uyab/lotus/internal/tenant"
++)
++
++// A share link opens one plan's read-only report to whoever holds it, with
++// no login (/s/qa/:token). Only the token's sha256 is stored; a link lasts
++// QAShareLinkTTL unless revoked first.
++
++const QAShareLinkTTL = 30 * 24 * time.Hour
++
++type QAShareLink struct {
++	ID        uuid.UUID  `db:"id"`
++	PlanID    uuid.UUID  `db:"plan_id"`
++	ExpiresAt time.Time  `db:"expires_at"`
++	RevokedAt *time.Time `db:"revoked_at"`
++	CreatedBy *uuid.UUID `db:"created_by"`
++	CreatedAt time.Time  `db:"created_at"`
++}
++
++const qaShareLinkCols = `id, plan_id, expires_at, revoked_at, created_by, created_at`
++
++func CreateQAShareLink(ctx context.Context, s tenant.Scope, planID uuid.UUID, tokenHash string, by *uuid.UUID) (*QAShareLink, error) {
++	var out QAShareLink
++	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
++		return tx.GetContext(ctx, &out, `
++			INSERT INTO qa_share_links (org_id, plan_id, token_hash, expires_at, created_by)
++			VALUES ($1, $2, $3, now() + $4 * interval '1 second', $5) RETURNING `+qaShareLinkCols,
++			s.OrgID(), planID, tokenHash, int64(QAShareLinkTTL/time.Second), by)
++	})
++	if err != nil {
++		return nil, qaWriteErr(err)
++	}
++	return &out, nil
++}
++
++// QAShareLinkByHash is the live link with this token hash: ErrNotFound when
++// there is none, or it was revoked, or it has expired.
++func QAShareLinkByHash(ctx context.Context, s tenant.Scope, tokenHash string) (*QAShareLink, error) {
++	var out QAShareLink
++	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
++		return tx.GetContext(ctx, &out, `
++			SELECT `+qaShareLinkCols+` FROM qa_share_links
++			WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()`, tokenHash)
++	})
++	if err != nil {
++		return nil, qaWriteErr(err)
++	}
++	return &out, nil
++}
++
++// ListQAShareLinks is planID's live links, newest first.
++func ListQAShareLinks(ctx context.Context, s tenant.Scope, planID uuid.UUID) ([]QAShareLink, error) {
++	var out []QAShareLink
++	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
++		return tx.SelectContext(ctx, &out, `
++			SELECT `+qaShareLinkCols+` FROM qa_share_links
++			WHERE plan_id = $1 AND revoked_at IS NULL AND expires_at > now()
++			ORDER BY created_at DESC, id`, planID)
++	})
++	return out, err
++}
++
++// RevokeQAShareLink ends a live link of planID at once.
++func RevokeQAShareLink(ctx context.Context, s tenant.Scope, planID, id uuid.UUID) error {
++	return s.Tx(ctx, func(tx *sqlx.Tx) error {
++		res, err := tx.ExecContext(ctx, `
++			UPDATE qa_share_links SET revoked_at = now()
++			WHERE id = $1 AND plan_id = $2 AND revoked_at IS NULL`, id, planID)
++		if err != nil {
++			return err
++		}
++		return checkRowsAffected(res)
++	})
++}
++
++// QAPlanScenarioProgress is, for each scenario of planID, the latest status
++// (highest cycle) of each of its cases that the plan's runs hold.
++func QAPlanScenarioProgress(ctx context.Context, s tenant.Scope, planID uuid.UUID) (map[uuid.UUID]QAProgress, error) {
++	var rows []struct {
++		ScenarioID uuid.UUID `db:"scenario_id"`
++		Status     string    `db:"status"`
++		N          int       `db:"n"`
++	}
++	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
++		return tx.SelectContext(ctx, &rows, `
++			SELECT si.scenario_id, latest.status, count(*) AS n
++			FROM (
++				SELECT DISTINCT ON (i.case_id) i.case_id, i.status
++				FROM qa_run_items i JOIN qa_runs r ON r.id = i.run_id
++				WHERE r.plan_id = $1
++				ORDER BY i.case_id, r.cycle DESC
++			) latest
++			JOIN qa_scenario_items si ON si.case_id = latest.case_id
++			JOIN qa_plan_scenarios ps ON ps.scenario_id = si.scenario_id AND ps.plan_id = $1
++			GROUP BY si.scenario_id, latest.status`, planID)
++	})
++	out := map[uuid.UUID]QAProgress{}
++	for _, r := range rows {
++		p := out[r.ScenarioID]
++		p.add(r.Status, r.N)
++		out[r.ScenarioID] = p
++	}
++	return out, err
++}
+diff --git a/internal/repo/qa_share_test.go b/internal/repo/qa_share_test.go
+new file mode 100644
+index 0000000..280e11c
+--- /dev/null
++++ b/internal/repo/qa_share_test.go
+@@ -0,0 +1,83 @@
++package repo_test
++
++import (
++	"context"
++	"testing"
++	"time"
++
++	"github.com/jmoiron/sqlx"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++func TestQAShareLinks_ActiveUntilRevokedOrExpired(t *testing.T) {
++	f := newRunFixture(t, "acme-share")
++	ctx := context.Background()
++	link, err := repo.CreateQAShareLink(ctx, f.s, f.plan.ID, "hash-a", nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if d := time.Until(link.ExpiresAt); d < 29*24*time.Hour || d > 31*24*time.Hour {
++		t.Fatalf("expires in %v; want 30 days", d)
++	}
++	if got, err := repo.QAShareLinkByHash(ctx, f.s, "hash-a"); err != nil || got.PlanID != f.plan.ID {
++		t.Fatalf("by hash = %+v, %v", got, err)
++	}
++	expired, _ := repo.CreateQAShareLink(ctx, f.s, f.plan.ID, "hash-b", nil)
++	if err := f.s.Tx(ctx, func(tx *sqlx.Tx) error {
++		_, err := tx.Exec(`UPDATE qa_share_links SET expires_at = now() - interval '1 minute' WHERE id = $1`, expired.ID)
++		return err
++	}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := repo.QAShareLinkByHash(ctx, f.s, "hash-b"); err != repo.ErrNotFound {
++		t.Errorf("expired: %v; want ErrNotFound", err)
++	}
++	if err := repo.RevokeQAShareLink(ctx, f.s, f.plan.ID, link.ID); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := repo.QAShareLinkByHash(ctx, f.s, "hash-a"); err != repo.ErrNotFound {
++		t.Errorf("revoked: %v; want ErrNotFound", err)
++	}
++	if err := repo.RevokeQAShareLink(ctx, f.s, f.plan.ID, link.ID); err != repo.ErrNotFound {
++		t.Errorf("revoke twice: %v; want ErrNotFound", err)
++	}
++	other, _ := repo.CreateQAPlan(ctx, f.s, f.projectID, repo.QAPlanInput{Name: "Other", Phase: "uat"}, nil)
++	third, _ := repo.CreateQAShareLink(ctx, f.s, f.plan.ID, "hash-c", nil)
++	if err := repo.RevokeQAShareLink(ctx, f.s, other.ID, third.ID); err != repo.ErrNotFound {
++		t.Errorf("revoke through another plan: %v; want ErrNotFound", err)
++	}
++	active, _ := repo.ListQAShareLinks(ctx, f.s, f.plan.ID)
++	if len(active) != 1 || active[0].ID != third.ID {
++		t.Fatalf("active = %+v; want only the third link", active)
++	}
++}
++
++func TestQAPlanScenarioProgress_LatestStatusPerCase(t *testing.T) {
++	f := newRunFixture(t, "acme-scenario-progress")
++	ctx := context.Background()
++	run, err := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "Cycle 1", Distribution: repo.DistributeNone}, nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	items, _ := repo.ListQARunItems(ctx, f.s, run.ID, repo.QAItemFilter{})
++	for _, it := range items {
++		status := map[string]string{"Login": "failed", "Create RFS": "passed"}[it.Title]
++		if status == "" {
++			continue
++		}
++		if _, err := repo.RecordQAResult(ctx, f.s, repo.QAResultInput{ItemID: it.ID, Status: status}); err != nil {
++			t.Fatal(err)
++		}
++	}
++	got, err := repo.QAPlanScenarioProgress(ctx, f.s, f.plan.ID)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if p := got[f.uat.ID]; p.Total != 2 || p.Failed != 1 || p.Passed != 1 {
++		t.Errorf("UAT RFS = %+v; want 2 cases, 1 failed, 1 passed", p)
++	}
++	if p := got[f.reg.ID]; p.Total != 2 || p.Failed != 1 || p.Untested != 1 {
++		t.Errorf("Regression core = %+v; want 2 cases, 1 failed, 1 untested", p)
++	}
++}
+diff --git a/internal/repo/qa_signoffs.go b/internal/repo/qa_signoffs.go
+new file mode 100644
+index 0000000..5e00c12
+--- /dev/null
++++ b/internal/repo/qa_signoffs.go
+@@ -0,0 +1,99 @@
++package repo
++
++import (
++	"context"
++	"strings"
++	"time"
++	"unicode/utf8"
++
++	"github.com/google/uuid"
++	"github.com/jmoiron/sqlx"
++
++	"github.com/uyab/lotus/internal/tenant"
++)
++
++// A sign-off is a client's (or an admin's) verdict on a plan, for the whole
++// plan or for one of its scenarios. Sign-offs are never edited: a new one
++// supersedes the last for the same scope, and the history stays.
++
++// QASignoffDecisions in the order the form offers them.
++var QASignoffDecisions = []string{"accepted", "accepted_with_notes", "rejected"}
++
++// MaxQASignoffNote bounds a sign-off note, in runes.
++const MaxQASignoffNote = 4000
++
++type QASignoff struct {
++	ID         uuid.UUID  `db:"id"`
++	PlanID     uuid.UUID  `db:"plan_id"`
++	ScenarioID *uuid.UUID `db:"scenario_id"` // nil: the whole plan
++	Decision   string     `db:"decision"`
++	Note       string     `db:"note"`
++	SignedBy   *uuid.UUID `db:"signed_by"`
++	SignedAt   time.Time  `db:"signed_at"`
++}
++
++const qaSignoffCols = `id, plan_id, scenario_id, decision, note, signed_by, signed_at`
++
++type QASignoffInput struct {
++	ScenarioID *uuid.UUID
++	Decision   string
++	Note       string
++}
++
++func (in QASignoffInput) normalized() (QASignoffInput, error) {
++	in.Note = strings.TrimSpace(in.Note)
++	valid := false
++	for _, d := range QASignoffDecisions {
++		valid = valid || d == in.Decision
++	}
++	switch {
++	case !valid, utf8.RuneCountInString(in.Note) > MaxQASignoffNote:
++		return in, ErrInvalidInput
++	case in.Decision != "accepted" && in.Note == "":
++		// Anything short of a plain accept has to say what is wrong.
++		return in, ErrInvalidInput
++	}
++	return in, nil
++}
++
++// RecordQASignoff signs off planID, or one of its scenarios.
++func RecordQASignoff(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QASignoffInput, by *uuid.UUID) (*QASignoff, error) {
++	in, err := in.normalized()
++	if err != nil {
++		return nil, err
++	}
++	var out QASignoff
++	err = s.Tx(ctx, func(tx *sqlx.Tx) error {
++		if in.ScenarioID != nil {
++			var n int
++			if err := tx.GetContext(ctx, &n, `
++				SELECT count(*) FROM qa_plan_scenarios WHERE plan_id = $1 AND scenario_id = $2`, planID, *in.ScenarioID); err != nil {
++				return err
++			}
++			if n == 0 {
++				return ErrInvalidInput
++			}
++		}
++		return tx.GetContext(ctx, &out, `
++			INSERT INTO qa_signoffs (org_id, plan_id, scenario_id, decision, note, signed_by)
++			VALUES ($1, $2, $3, $4, $5, $6) RETURNING `+qaSignoffCols,
++			s.OrgID(), planID, in.ScenarioID, in.Decision, in.Note, by)
++	})
++	if err != nil {
++		return nil, qaWriteErr(err)
++	}
++	return &out, nil
++}
++
++// ListLatestQASignoffs is the standing sign-off per scope of planID: the
++// whole plan first, then each signed scenario.
++func ListLatestQASignoffs(ctx context.Context, s tenant.Scope, planID uuid.UUID) ([]QASignoff, error) {
++	var out []QASignoff
++	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
++		return tx.SelectContext(ctx, &out, `
++			SELECT DISTINCT ON (scenario_id) `+qaSignoffCols+` FROM qa_signoffs
++			WHERE plan_id = $1
++			ORDER BY scenario_id NULLS FIRST, signed_at DESC, id DESC`, planID)
++	})
++	return out, err
++}
+diff --git a/internal/repo/qa_signoffs_test.go b/internal/repo/qa_signoffs_test.go
+new file mode 100644
+index 0000000..8d0b6a7
+--- /dev/null
++++ b/internal/repo/qa_signoffs_test.go
+@@ -0,0 +1,65 @@
++package repo_test
++
++import (
++	"context"
++	"strings"
++	"testing"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++func TestQASignoffs_LatestPerScopeAndValidation(t *testing.T) {
++	f := newRunFixture(t, "acme-signoff")
++	ctx := context.Background()
++	sign := func(scenario *repo.QAScenario, decision, note string) error {
++		in := repo.QASignoffInput{Decision: decision, Note: note}
++		if scenario != nil {
++			in.ScenarioID = &scenario.ID
++		}
++		_, err := repo.RecordQASignoff(ctx, f.s, f.plan.ID, in, nil)
++		return err
++	}
++	for _, step := range []struct {
++		scenario       *repo.QAScenario
++		decision, note string
++	}{
++		{f.uat, "rejected", "Login fails on Safari"},
++		{f.uat, "accepted", ""},
++		{nil, "accepted_with_notes", "Minor copy issues remain"},
++	} {
++		if err := sign(step.scenario, step.decision, step.note); err != nil {
++			t.Fatalf("sign %s: %v", step.decision, err)
++		}
++	}
++	latest, err := repo.ListLatestQASignoffs(ctx, f.s, f.plan.ID)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var got []string
++	for _, so := range latest {
++		scope := "plan"
++		if so.ScenarioID != nil {
++			scope = so.ScenarioID.String()
++		}
++		got = append(got, scope+"="+so.Decision)
++	}
++	want := []string{"plan=accepted_with_notes", f.uat.ID.String() + "=accepted"}
++	if strings.Join(got, ",") != strings.Join(want, ",") {
++		t.Fatalf("latest = %v; want %v", got, want)
++	}
++
++	// A note is required unless the decision is a plain accept; a scenario
++	// must be in the plan; the decision must be one of three.
++	other, _ := repo.CreateQAScenario(ctx, f.s, f.projectID, "Not in plan", "uat", "", nil)
++	for name, err := range map[string]error{
++		"rejected without note": sign(f.uat, "rejected", "  "),
++		"with notes, no note":   sign(nil, "accepted_with_notes", ""),
++		"scenario not in plan":  sign(other, "accepted", ""),
++		"unknown decision":      sign(nil, "approved", ""),
++		"note over 4000 runes":  sign(nil, "rejected", strings.Repeat("é", 4001)),
++	} {
++		if err != repo.ErrInvalidInput {
++			t.Errorf("%s: %v; want ErrInvalidInput", name, err)
++		}
++	}
++}
+diff --git a/internal/web/dashboard.go b/internal/web/dashboard.go
+index 77b6e71..d8d65bf 100644
+--- a/internal/web/dashboard.go
++++ b/internal/web/dashboard.go
+@@ -102,7 +102,7 @@ func registerDashboardRoutes(app *fiber.App, d Deps, requireSession, loadPrincip
+ 	// handler for the same path — so the browser gets HTML. See AGENTS.md
+ 	// on the shadowed JSON endpoints.
+ 	app.Get("/projects", tenant.RequireTenant(), requireSession, loadPrincipal,
+-		authz.Require("dashboard.read"), dashboardPage(d))
++		guestHome, authz.Require("dashboard.read"), dashboardPage(d))
+ 
+ 	// Kept so links and bookmarks made while this lived at /dashboard keep
+ 	// working. Public: it only forwards, and the page it forwards to
+diff --git a/internal/web/flash.go b/internal/web/flash.go
+index ccdf50c..73a390b 100644
+--- a/internal/web/flash.go
++++ b/internal/web/flash.go
+@@ -36,42 +36,46 @@ var flashMessages = map[string]struct {
+ 	Tone   string
+ 	Format string
+ }{
+-	"connection.created":   {"pass", "Connection created"},
+-	"connection.deleted":   {"pass", "Connection deleted"},
+-	"connection.unbound":   {"pass", "Connection deleted · %s bindings removed"},
+-	"connection.rotated":   {"pass", "Secret rotated"},
+-	"member.invited":       {"pass", "Invitation sent to %s"},
+-	"member.role":          {"pass", "Role updated"},
+-	"member.removed":       {"pass", "Member removed"},
+-	"invitation.resent":    {"pass", "Invitation resent"},
+-	"invitation.revoked":   {"pass", "Invitation revoked"},
+-	"folder.created":       {"pass", "Folder %s created"},
+-	"folder.renamed":       {"pass", "Folder renamed to %s"},
+-	"folder.moved":         {"pass", "Folder %s moved"},
+-	"folder.deleted":       {"pass", "Folder %s deleted"},
+-	"project.moved":        {"pass", "Project moved"},
+-	"projects.moved":       {"pass", "%s projects moved"},
+-	"qa.section.created":   {"pass", "Section %s created"},
+-	"qa.section.renamed":   {"pass", "Section renamed to %s"},
+-	"qa.section.moved":     {"pass", "Section %s moved"},
+-	"qa.section.archived":  {"pass", "Section %s archived"},
+-	"qa.cases.moved":       {"pass", "%s cases moved"},
+-	"qa.case.created":      {"pass", "%s created"},
+-	"qa.case.saved":        {"pass", "%s saved"},
+-	"qa.case.archived":     {"pass", "%s archived"},
+-	"qa.case.restored":     {"pass", "%s restored"},
+-	"qa.cases.imported":    {"pass", "%s cases imported"},
+-	"qa.scenario.created":  {"pass", "Scenario %s created"},
+-	"qa.scenario.saved":    {"pass", "Scenario %s saved"},
+-	"qa.scenario.archived": {"pass", "Scenario %s archived"},
+-	"qa.plan.created":      {"pass", "Plan %s created"},
+-	"qa.plan.saved":        {"pass", "Plan %s saved"},
+-	"qa.plan.closed":       {"pass", "Plan %s closed"},
+-	"qa.run.created":       {"pass", "Run %s created"},
+-	"qa.run.closed":        {"pass", "Run %s closed"},
+-	"qa.items.assigned":    {"pass", "%s items assigned"},
+-	"qa.issue.reported":    {"pass", "%s reported"},
+-	"qa.issue.saved":       {"pass", "%s saved"},
++	"connection.created":    {"pass", "Connection created"},
++	"connection.deleted":    {"pass", "Connection deleted"},
++	"connection.unbound":    {"pass", "Connection deleted · %s bindings removed"},
++	"connection.rotated":    {"pass", "Secret rotated"},
++	"member.invited":        {"pass", "Invitation sent to %s"},
++	"member.role":           {"pass", "Role updated"},
++	"member.removed":        {"pass", "Member removed"},
++	"invitation.resent":     {"pass", "Invitation resent"},
++	"invitation.revoked":    {"pass", "Invitation revoked"},
++	"folder.created":        {"pass", "Folder %s created"},
++	"folder.renamed":        {"pass", "Folder renamed to %s"},
++	"folder.moved":          {"pass", "Folder %s moved"},
++	"folder.deleted":        {"pass", "Folder %s deleted"},
++	"project.moved":         {"pass", "Project moved"},
++	"projects.moved":        {"pass", "%s projects moved"},
++	"qa.section.created":    {"pass", "Section %s created"},
++	"qa.section.renamed":    {"pass", "Section renamed to %s"},
++	"qa.section.moved":      {"pass", "Section %s moved"},
++	"qa.section.archived":   {"pass", "Section %s archived"},
++	"qa.cases.moved":        {"pass", "%s cases moved"},
++	"qa.case.created":       {"pass", "%s created"},
++	"qa.case.saved":         {"pass", "%s saved"},
++	"qa.case.archived":      {"pass", "%s archived"},
++	"qa.case.restored":      {"pass", "%s restored"},
++	"qa.cases.imported":     {"pass", "%s cases imported"},
++	"qa.scenario.created":   {"pass", "Scenario %s created"},
++	"qa.scenario.saved":     {"pass", "Scenario %s saved"},
++	"qa.scenario.archived":  {"pass", "Scenario %s archived"},
++	"qa.plan.created":       {"pass", "Plan %s created"},
++	"qa.plan.saved":         {"pass", "Plan %s saved"},
++	"qa.plan.closed":        {"pass", "Plan %s closed"},
++	"qa.run.created":        {"pass", "Run %s created"},
++	"qa.run.closed":         {"pass", "Run %s closed"},
++	"qa.items.assigned":     {"pass", "%s items assigned"},
++	"qa.issue.reported":     {"pass", "%s reported"},
++	"qa.issue.saved":        {"pass", "%s saved"},
++	"project.guest.added":   {"pass", "Guest added"},
++	"project.guest.removed": {"pass", "Guest removed"},
++	"qa.signoff.recorded":   {"pass", "Signed off: %s"},
++	"qa.share.revoked":      {"pass", "Link revoked"},
+ }
+ 
+ // setFlash records a message for the next render. Call it immediately
+@@ -159,6 +163,7 @@ func redirectAfterMutation(c *fiber.Ctx, to string) error {
+ func renderPage(c *fiber.Ctx, d Deps, page string, vd httpx.ViewData) error {
+ 	vd.Flash = takeFlash(c)
+ 	if vd.Nav != nil {
++		guestNav(c, vd.Nav)
+ 		qaNavCount(c, vd.Nav)
+ 	}
+ 	return d.Renderer.Render(c, page, vd)
+diff --git a/internal/web/project_page.go b/internal/web/project_page.go
+index 2320db0..2717196 100644
+--- a/internal/web/project_page.go
++++ b/internal/web/project_page.go
+@@ -64,6 +64,13 @@ func projectPage(d Deps) fiber.Handler {
+ 		if err != nil {
+ 			return writeRepoErr(c, err)
+ 		}
++		var guests projectGuestsView
++		canGuests := mustPrincipal(c).Can("project_member.manage")
++		if canGuests {
++			if guests, err = projectGuestsFor(c, d, s, project.ID); err != nil {
++				return writeRepoErr(c, err)
++			}
++		}
+ 		folderValue := ""
+ 		if project.FolderID != nil {
+ 			folderValue = project.FolderID.String()
+@@ -77,12 +84,16 @@ func projectPage(d Deps) fiber.Handler {
+ 				Dashboard    dashboardViewModel
+ 				CanMove      bool
+ 				CanQA        bool
++				CanGuests    bool
++				Guests       projectGuestsView
+ 				FolderSelect []httpx.SelectOption
+ 				FolderValue  string
+ 			}{
+ 				Project: *project, Dashboard: vm,
+ 				CanMove:      mustPrincipal(c).Can("project.update"),
+ 				CanQA:        mustPrincipal(c).Can("qa.read"),
++				CanGuests:    canGuests,
++				Guests:       guests,
+ 				FolderSelect: folderSelect(folderOptionsFor(folders), nil),
+ 				FolderValue:  folderValue,
+ 			},
+diff --git a/internal/web/projects_test.go b/internal/web/projects_test.go
+index 8a04bd0..b5426ab 100644
+--- a/internal/web/projects_test.go
++++ b/internal/web/projects_test.go
+@@ -65,10 +65,13 @@ func seedMember(t *testing.T, db *sqlx.DB, subdomain, roleKey string) (orgID, us
+ 
+ func seedSession(t *testing.T, db *sqlx.DB, orgID, userID uuid.UUID) string {
+ 	t.Helper()
+-	raw := "test-session-" + userID.String()
++	raw := "test-session-" + userID.String() + "-" + uuid.NewString()[:8]
++	// perm_epoch is the organization's current one: a session seeded after
++	// a role change or an accepted invitation is current, not rotated (and
++	// its cookie revoked) on first use.
+ 	_, err := db.Exec(`
+-		INSERT INTO sessions (id, user_id, org_id, host, expires_at)
+-		VALUES ($1, $2, $3, 'acme.test', now() + interval '1 day')`,
++		INSERT INTO sessions (id, user_id, org_id, host, expires_at, perm_epoch)
++		VALUES ($1, $2, $3, 'acme.test', now() + interval '1 day', (SELECT perm_epoch FROM organizations WHERE id = $3))`,
+ 		sha256HexForProjectsTest(raw), userID, orgID)
+ 	if err != nil {
+ 		t.Fatalf("insert session: %v", err)
+diff --git a/internal/web/qa_guest_shell.go b/internal/web/qa_guest_shell.go
+new file mode 100644
+index 0000000..06ba52a
+--- /dev/null
++++ b/internal/web/qa_guest_shell.go
+@@ -0,0 +1,65 @@
++package web
++
++import (
++	"strings"
++
++	"github.com/gofiber/fiber/v2"
++
++	"github.com/uyab/lotus/internal/authz"
++	"github.com/uyab/lotus/internal/httpx"
++	"github.com/uyab/lotus/internal/repo"
++	"github.com/uyab/lotus/internal/tenant"
++)
++
++// A guest's whole Lotus is the QA of the projects it is listed on: its
++// home is /qa/my, its sidebar is My work plus one entry per project, and
++// every page outside QA answers 404 (authz.Require).
++
++// guestHome sends a guest from the landing page (/projects, where / and
++// every login lead) to its own work.
++func guestHome(c *fiber.Ctx) error {
++	if p, ok := authz.CurrentPrincipal(c); ok && authz.IsProjectScoped(p) {
++		return c.Redirect("/qa/my", fiber.StatusFound)
++	}
++	return c.Next()
++}
++
++// guestNav replaces the sidebar for a guest. Pages build the one everybody
++// else sees; renderPage trims it here so no page has to remember to.
++func guestNav(c *fiber.Ctx, nav *httpx.Nav) {
++	p, ok := authz.CurrentPrincipal(c)
++	if !ok || !authz.IsProjectScoped(p) {
++		return
++	}
++	nav.Guest = true
++	nav.FooterItems = nil
++	nav.Items = []httpx.NavItem{{Key: "qa_tools", Label: "My work", Href: "/qa/my", Icon: iconQATools}}
++	nav.Active = "qa_tools"
++	s, ok := tenant.FromContext(c)
++	if !ok {
++		return
++	}
++	ids, err := repo.ListProjectIDsForMember(c.Context(), s, p.UserID)
++	if err != nil || len(ids) == 0 {
++		return
++	}
++	listed := make(map[string]bool, len(ids))
++	for _, id := range ids {
++		listed[id.String()] = true
++	}
++	projects, err := repo.ListProjects(c.Context(), s, false)
++	if err != nil {
++		return
++	}
++	for _, project := range projects {
++		if !listed[project.ID.String()] {
++			continue
++		}
++		key := "qa_project_" + project.ID.String()
++		href := "/projects/" + project.ID.String() + "/qa"
++		nav.Items = append(nav.Items, httpx.NavItem{Key: key, Label: project.Name, Href: href, Icon: iconProjects})
++		if c.Path() == href || strings.HasPrefix(c.Path(), href+"/") {
++			nav.Active = key
++		}
++	}
++}
+diff --git a/internal/web/qa_guest_shell_test.go b/internal/web/qa_guest_shell_test.go
+new file mode 100644
+index 0000000..69c232e
+--- /dev/null
++++ b/internal/web/qa_guest_shell_test.go
+@@ -0,0 +1,98 @@
++package web
++
++import (
++	"net/http"
++	"regexp"
++	"sort"
++	"strings"
++	"testing"
++
++	"github.com/gofiber/fiber/v2"
++	"github.com/google/uuid"
++)
++
++var routeParam = regexp.MustCompile(`:[A-Za-z_]+\??|\*`)
++
++// TestGuestShell_CrawlEveryGetRoute visits every registered GET route as a
++// guest listed on one project. Only QA pages of that project (and /qa,
++// /qa/my, filtered to it) answer 200; a QA page it may not act on is 403;
++// everything else is 404, never a page.
++func TestGuestShell_CrawlEveryGetRoute(t *testing.T) {
++	e := newQAEnv(t, "acme-guest-crawl")
++	_, adminID := e.session(t, "admin@acme.example", "admin")
++	listed, other := e.project(t, "Portal"), e.project(t, "Mobile")
++	guest, _, _ := inviteAndAccept(t, e, e.relogin(t, adminID), "client@bank.example", listed)
++
++	var seen []string
++	for _, route := range e.app.GetRoutes(true) {
++		if route.Method != fiber.MethodGet || guestCrawlPublic(route.Handlers) {
++			continue
++		}
++		for _, project := range []uuid.UUID{listed, other} {
++			path := strings.Replace(route.Path, ":id", project.String(), 1)
++			path = routeParam.ReplaceAllString(path, uuid.NewString())
++			status, _ := e.get(t, guest, path)
++			qa := strings.HasPrefix(route.Path, "/projects/:id/qa") || route.Path == "/qa" || strings.HasPrefix(route.Path, "/qa/")
++			switch {
++			case qa && project == listed:
++				// Its own QA: pages answer 200, unknown ids 404, write
++				// pages it lacks the permission for 403.
++				if status != http.StatusOK && status != http.StatusNotFound && status != http.StatusForbidden {
++					t.Errorf("guest GET %s = %d, want 200, 403 or 404", route.Path, status)
++				}
++			case route.Path == "/projects":
++				// The landing page sends a guest home (TestGuestShell_HomeIsMyWork).
++			case status != http.StatusNotFound:
++				t.Errorf("guest GET %s (project listed=%v) = %d, want 404", route.Path, project == listed, status)
++			}
++			seen = append(seen, route.Path)
++			if !strings.Contains(route.Path, ":id") {
++				break // no project in the path: one visit is enough
++			}
++		}
++	}
++	sort.Strings(seen)
++	if len(seen) < 20 {
++		t.Fatalf("crawled only %d routes: %v", len(seen), seen)
++	}
++}
++
++// TestGuestShell_HomeIsMyWork: a guest's home is /qa/my, the sidebar only
++// offers QA, and a guest missing a QA permission still gets 403 (the page
++// exists for it; the action does not).
++func TestGuestShell_HomeIsMyWork(t *testing.T) {
++	e := newQAEnv(t, "acme-guest-home")
++	_, adminID := e.session(t, "admin@acme.example", "admin")
++	listed := e.project(t, "Portal")
++	guest, _, _ := inviteAndAccept(t, e, e.relogin(t, adminID), "client@bank.example", listed)
++
++	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, "/projects", guest))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/qa/my" {
++		t.Fatalf("guest /projects = %d → %q, want 302 → /qa/my", resp.StatusCode, resp.Header.Get("Location"))
++	}
++	status, body := e.get(t, guest, "/qa/my")
++	if status != http.StatusOK {
++		t.Fatalf("guest /qa/my = %d", status)
++	}
++	for _, hidden := range []string{`href="/settings`, `href="/projects"`, `href="/metrics`} {
++		if strings.Contains(body, hidden) {
++			t.Errorf("guest sidebar links %s", hidden)
++		}
++	}
++	if !strings.Contains(body, `href="/projects/`+listed.String()+`/qa"`) {
++		t.Errorf("guest sidebar has no link to its project's QA")
++	}
++	if status, _ := e.get(t, guest, "/projects/"+listed.String()+"/qa/cases/new"); status != http.StatusForbidden {
++		t.Errorf("guest new case page = %d, want 403", status)
++	}
++}
++
++// guestCrawlPublic: public routes (login, invitations, static, health)
++// decide nothing about a principal, so the crawl leaves them out.
++func guestCrawlPublic(handlers []fiber.Handler) bool {
++	kind, _ := decisionFor(handlers)
++	return kind == "public"
++}
+diff --git a/internal/web/qa_guests_test.go b/internal/web/qa_guests_test.go
+new file mode 100644
+index 0000000..3004a35
+--- /dev/null
++++ b/internal/web/qa_guests_test.go
+@@ -0,0 +1,125 @@
++package web
++
++import (
++	"context"
++	"net/http"
++	"net/url"
++	"regexp"
++	"strings"
++	"testing"
++
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/repo"
++	"github.com/uyab/lotus/internal/repo/global"
++	"github.com/uyab/lotus/internal/tenant"
++)
++
++// inviteAndAccept invites email as a guest to projects through Settings ->
++// Members (as admin), then accepts the link it shows as a new user, and
++// returns that user's session.
++func inviteAndAccept(t *testing.T, e qaEnv, admin, email string, projects ...uuid.UUID) (string, uuid.UUID, string) {
++	t.Helper()
++	form := url.Values{"email": {email}, "role": {"guest"}}
++	for _, p := range projects {
++		form.Add("project_id", p.String())
++	}
++	resp, body := e.post(t, admin, "/settings/members/invite", form, true)
++	m := regexp.MustCompile(`/invite/([A-Za-z0-9_-]+)`).FindStringSubmatch(body)
++	if resp.StatusCode != http.StatusOK || m == nil {
++		t.Fatalf("invite = %d, no link:\n%s", resp.StatusCode, body)
++	}
++	inv, err := global.InvitationByTokenHash(context.Background(), e.db, sha256HexForProjectsTest(m[1]))
++	if err != nil {
++		t.Fatalf("invitation: %v", err)
++	}
++	u, _ := global.CreateUser(context.Background(), e.db, global.NewUser{Email: &email, EmailVerified: true})
++	if err := global.AcceptInvitation(context.Background(), e.db, inv.ID, u.ID); err != nil {
++		t.Fatal(err)
++	}
++	return seedSession(t, e.db, e.orgID, u.ID), u.ID, m[0]
++}
++
++func TestGuests_InvitedToTwoProjectsSeesExactlyThose(t *testing.T) {
++	e := newQAEnv(t, "acme-guests")
++	admin, adminID := e.session(t, "admin@acme.example", "admin")
++	a, b := e.project(t, "Portal"), e.project(t, "Mobile")
++	e.project(t, "Internal billing")
++
++	guest, _, _ := inviteAndAccept(t, e, admin, "client@bank.example", a, b)
++	admin = e.relogin(t, adminID)
++	_, body := e.get(t, guest, "/qa")
++	if !strings.Contains(body, "Portal") || !strings.Contains(body, "Mobile") || strings.Contains(body, "Internal billing") {
++		t.Fatalf("guest /qa:\n%s", body)
++	}
++	resp, body := e.post(t, admin, "/settings/members/invite", url.Values{"email": {"nobody@bank.example"}, "role": {"guest"}}, true)
++	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "Choose at least one project for a guest.") {
++		t.Fatalf("guest without projects = %d:\n%s", resp.StatusCode, body)
++	}
++	otherOrg, _ := seedMember(t, e.db, "other-guests", "owner")
++	foreign, _ := repo.CreateProject(context.Background(), tenant.FromRun(e.db, otherOrg), repo.NewProject{Slug: "f", Name: "Foreign"})
++	resp, body = e.post(t, admin, "/settings/members/invite", url.Values{"email": {"x@bank.example"}, "role": {"guest"}, "project_id": {foreign.ID.String()}}, true)
++	if !strings.Contains(body, "Choose projects of this organization.") {
++		t.Fatalf("project of another organization = %d:\n%s", resp.StatusCode, body)
++	}
++}
++
++func TestGuests_ProjectPanelAddsAndRemoves(t *testing.T) {
++	e := newQAEnv(t, "acme-guests-panel")
++	admin, adminID := e.session(t, "admin@acme.example", "admin")
++	_, memberID := e.session(t, "qa@acme.example", "member")
++	a, b := e.project(t, "Portal"), e.project(t, "Mobile")
++	guest, guestID, _ := inviteAndAccept(t, e, admin, "client@bank.example", a)
++	admin, member := e.relogin(t, adminID), e.relogin(t, memberID)
++
++	status, body := e.get(t, admin, "/projects/"+b.String())
++	if status != http.StatusOK || !strings.Contains(body, "Guests") || !strings.Contains(body, "client@bank.example") {
++		t.Fatalf("project page for admin = %d, no guests panel", status)
++	}
++	if resp, _ := e.post(t, admin, "/projects/"+b.String()+"/guests", url.Values{"user_id": {guestID.String()}}, false); resp.StatusCode != http.StatusFound {
++		t.Fatalf("add guest = %d", resp.StatusCode)
++	}
++	if _, body = e.get(t, guest, "/qa"); !strings.Contains(body, "Mobile") {
++		t.Fatal("added project not visible to the guest")
++	}
++	if resp, _ := e.post(t, admin, "/projects/"+a.String()+"/guests/"+guestID.String()+"/remove", nil, false); resp.StatusCode != http.StatusFound {
++		t.Fatalf("remove guest = %d", resp.StatusCode)
++	}
++	if status, _ := e.get(t, guest, "/projects/"+a.String()+"/qa"); status != http.StatusNotFound {
++		t.Fatalf("removed project = %d; want 404 at once", status)
++	}
++	if n := auditCount(t, e.db, e.orgID, "project_member.add") + auditCount(t, e.db, e.orgID, "project_member.remove"); n != 2 {
++		t.Fatalf("audit rows = %d; want 2", n)
++	}
++	// A member cannot manage guests; only guests can be listed.
++	if _, body = e.get(t, member, "/projects/"+b.String()); strings.Contains(body, `action="/projects/`+b.String()+`/guests"`) {
++		t.Fatal("member sees the guests panel controls")
++	}
++	if resp, _ := e.post(t, member, "/projects/"+b.String()+"/guests", url.Values{"user_id": {guestID.String()}}, false); resp.StatusCode != http.StatusForbidden {
++		t.Fatalf("member add = %d; want 403", resp.StatusCode)
++	}
++	_, otherID := e.session(t, "other@acme.example", "member")
++	admin = e.relogin(t, adminID)
++	if resp, _ := e.post(t, admin, "/projects/"+b.String()+"/guests", url.Values{"user_id": {otherID.String()}}, false); resp.StatusCode != http.StatusNotFound {
++		t.Fatalf("listing a non-guest = %d; want 404", resp.StatusCode)
++	}
++}
++
++func TestGuests_AdminChangesGuestToMemberAndBack(t *testing.T) {
++	e := newQAEnv(t, "acme-guests-role")
++	admin, adminID := e.session(t, "admin@acme.example", "admin")
++	p := e.project(t, "Portal")
++	_, guestID, _ := inviteAndAccept(t, e, admin, "client@bank.example", p)
++	path := "/settings/members/" + guestID.String() + "/role"
++	for _, role := range []string{"member", "guest"} {
++		admin = e.relogin(t, adminID)
++		resp, _ := e.post(t, admin, path, url.Values{"role": {role}}, false)
++		m, _ := global.ActiveMembership(context.Background(), e.db, guestID, e.orgID)
++		if resp.StatusCode != http.StatusFound || m.RoleKey != role {
++			t.Fatalf("to %s = %d, role %s", role, resp.StatusCode, m.RoleKey)
++		}
++	}
++	if _, body := e.get(t, e.relogin(t, adminID), "/settings/members"); !strings.Contains(body, `"Value":"guest"`) && !strings.Contains(body, ">Guest<") {
++		t.Fatal("members page does not offer the guest role")
++	}
++}
+diff --git a/internal/web/qa_helpers_test.go b/internal/web/qa_helpers_test.go
+index 21540ee..5c393ef 100644
+--- a/internal/web/qa_helpers_test.go
++++ b/internal/web/qa_helpers_test.go
+@@ -97,3 +97,12 @@ func (e qaEnv) post(t *testing.T, raw, path string, form url.Values, hx bool) (*
+ func hasText(body, text string) bool {
+ 	return strings.Contains(body, text) || strings.Contains(body, strings.ReplaceAll(text, "'", "&#39;"))
+ }
++
++// relogin gives userID a fresh session. Accepting an invitation or changing
++// a role bumps the organization's perm_epoch; the server then rotates an
++// older session to a new cookie (and revokes the old one), which a test
++// holding the old cookie would see as 401.
++func (e qaEnv) relogin(t *testing.T, userID uuid.UUID) string {
++	t.Helper()
++	return seedSession(t, e.db, e.orgID, userID)
++}
+diff --git a/internal/web/qa_home.go b/internal/web/qa_home.go
+index 6059dc5..b73e391 100644
+--- a/internal/web/qa_home.go
++++ b/internal/web/qa_home.go
+@@ -62,6 +62,8 @@ func qaHome(d Deps) fiber.Handler {
+ }
+ 
+ func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
++	registerProjectGuestRoutes(app, d, requireSession, loadPrincipal)
++	registerQAShareRoutes(app, d, requireSession, loadPrincipal)
+ 	app.Get("/qa", tenant.RequireTenant(), requireSession, loadPrincipal,
+ 		authz.Require("qa.read"), qaHome(d))
+ 	app.Get("/qa/my", tenant.RequireTenant(), requireSession, loadPrincipal,
+@@ -97,6 +99,7 @@ func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fibe
+ 	app.Get("/projects/:id/qa/plans/:pid", qaRoute(requireSession, loadPrincipal, "qa.read", qaPlanPage(d))...)
+ 	app.Post("/projects/:id/qa/plans/:pid", qaRoute(requireSession, loadPrincipal, "qa.plan.write", updateQAPlanUI(d))...)
+ 	app.Post("/projects/:id/qa/plans/:pid/duplicate", qaRoute(requireSession, loadPrincipal, "qa.plan.write", duplicateQAPlanUI(d))...)
++	app.Post("/projects/:id/qa/plans/:pid/signoffs", qaRoute(requireSession, loadPrincipal, "qa.signoff", recordQASignoffUI(d))...)
+ 	app.Post("/projects/:id/qa/plans/:pid/close", qaRoute(requireSession, loadPrincipal, "qa.plan.write", closeQAPlanUI())...)
+ 	app.Get("/projects/:id/qa/plans/:pid/runs/new", qaRoute(requireSession, loadPrincipal, "qa.plan.write", newQARunPage(d))...)
+ 	app.Post("/projects/:id/qa/plans/:pid/runs", qaRoute(requireSession, loadPrincipal, "qa.plan.write", createQARunUI(d))...)
+diff --git a/internal/web/qa_plans.go b/internal/web/qa_plans.go
+index ce5e945..8c9b330 100644
+--- a/internal/web/qa_plans.go
++++ b/internal/web/qa_plans.go
+@@ -262,6 +262,11 @@ type qaPlanData struct {
+ 	CanCopy    bool // qa.plan.write (a closed plan can still be duplicated)
+ 	Form       qaPlanFormData
+ 	CopyName   string
++	Signoffs   []qaSignoffRow
++	CanSignoff bool // qa.signoff
++	Scopes     []httpx.SelectOption
++	CanShare   bool // qa.share
++	Shares     []qaShareRow
+ }
+ 
+ func qaPlanPage(d Deps) fiber.Handler {
+@@ -321,6 +326,17 @@ func qaPlanPage(d Deps) fiber.Handler {
+ 			return writeRepoErr(c, err)
+ 		}
+ 		data.Progress = planProgress[plan.ID]
++		if data.Signoffs, err = qaPlanSignoffs(c, d, s, plan.ID, data.Scenarios, false); err != nil {
++			return writeRepoErr(c, err)
++		}
++		if data.CanShare = mustPrincipal(c).Can("qa.share"); data.CanShare {
++			if data.Shares, err = qaPlanShares(c, d, s, plan.ID); err != nil {
++				return writeRepoErr(c, err)
++			}
++		}
++		if data.CanSignoff = mustPrincipal(c).Can("qa.signoff"); data.CanSignoff {
++			data.Scopes = qaSignoffScopes(data.Scenarios)
++		}
+ 		if data.CanWrite {
+ 			options, err := qaPlanScenarioOptions(c, s, project, scenarioIDs)
+ 			if err != nil {
+diff --git a/internal/web/qa_project_guests.go b/internal/web/qa_project_guests.go
+new file mode 100644
+index 0000000..2c6b7b2
+--- /dev/null
++++ b/internal/web/qa_project_guests.go
+@@ -0,0 +1,135 @@
++package web
++
++import (
++	"encoding/json"
++	"errors"
++	"strings"
++
++	"github.com/gofiber/fiber/v2"
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/authz"
++	"github.com/uyab/lotus/internal/httpx"
++	"github.com/uyab/lotus/internal/repo"
++	"github.com/uyab/lotus/internal/repo/global"
++	"github.com/uyab/lotus/internal/tenant"
++)
++
++// Guests of a project (project_member.manage): the organization's guests
++// listed on it see its QA, nothing else. The panel sits on the project
++// page; invitations can name projects too (Settings -> Members).
++
++type projectGuest struct {
++	ID    uuid.UUID
++	Label string
++}
++
++type projectGuestsView struct {
++	Listed  []projectGuest
++	Options []httpx.SelectOption // guests of the organization not listed yet
++}
++
++// projectGuestsFor builds the panel: who is listed, and who could be.
++func projectGuestsFor(c *fiber.Ctx, d Deps, s tenant.Scope, projectID uuid.UUID) (projectGuestsView, error) {
++	var v projectGuestsView
++	members, err := global.ListMembersForOrg(c.Context(), d.DB, s.OrgID())
++	if err != nil {
++		return v, err
++	}
++	listed, err := repo.ListProjectMemberUserIDs(c.Context(), s, projectID)
++	if err != nil {
++		return v, err
++	}
++	on := map[uuid.UUID]bool{}
++	for _, id := range listed {
++		on[id] = true
++	}
++	v.Options = []httpx.SelectOption{}
++	for _, m := range members {
++		if m.RoleKey != "guest" {
++			continue
++		}
++		label := m.Name
++		if strings.TrimSpace(label) == "" {
++			label = m.Email
++		} else {
++			label += " · " + m.Email
++		}
++		if on[m.UserID] {
++			v.Listed = append(v.Listed, projectGuest{ID: m.UserID, Label: label})
++		} else {
++			v.Options = append(v.Options, httpx.SelectOption{Value: m.UserID.String(), Label: label})
++		}
++	}
++	return v, nil
++}
++
++func auditProjectMember(c *fiber.Ctx, s tenant.Scope, action string, projectID, userID uuid.UUID) error {
++	raw, _ := json.Marshal(fiber.Map{"project_id": projectID, "user_id": userID})
++	return repo.RecordAuditEvent(c.Context(), s, qaActor(c), action, "project", &projectID, raw)
++}
++
++// guestOf reads a user id that must be a guest of this organization.
++func guestOf(c *fiber.Ctx, d Deps, s tenant.Scope, raw string) (uuid.UUID, error) {
++	id, err := uuid.Parse(strings.TrimSpace(raw))
++	if err != nil {
++		return uuid.Nil, fiber.ErrNotFound
++	}
++	m, err := global.ActiveMembership(c.Context(), d.DB, id, s.OrgID())
++	if err != nil || m == nil || m.RoleKey != "guest" {
++		return uuid.Nil, fiber.ErrNotFound
++	}
++	return id, nil
++}
++
++func addProjectGuestUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		userID, err := guestOf(c, d, s, c.FormValue("user_id"))
++		if err != nil {
++			return err
++		}
++		if err := repo.AddProjectMember(c.Context(), s, project.ID, userID); err != nil {
++			if errors.Is(err, repo.ErrNotFound) {
++				return fiber.ErrNotFound
++			}
++			return writeRepoErr(c, err)
++		}
++		if err := auditProjectMember(c, s, "project_member.add", project.ID, userID); err != nil {
++			return writeRepoErr(c, err)
++		}
++		setFlash(c, "project.guest.added")
++		return redirectAfterMutation(c, "/projects/"+project.ID.String())
++	}
++}
++
++func removeProjectGuestUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		userID, err := uuid.Parse(c.Params("uid"))
++		if err != nil {
++			return fiber.ErrNotFound
++		}
++		if err := repo.RemoveProjectMember(c.Context(), s, project.ID, userID); err != nil {
++			return writeRepoErr(c, err)
++		}
++		if err := auditProjectMember(c, s, "project_member.remove", project.ID, userID); err != nil {
++			return writeRepoErr(c, err)
++		}
++		setFlash(c, "project.guest.removed")
++		return redirectAfterMutation(c, "/projects/"+project.ID.String())
++	}
++}
++
++func registerProjectGuestRoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
++	app.Post("/projects/:id/guests", tenant.RequireTenant(), requireSession, loadPrincipal,
++		authz.Require("project_member.manage"), addProjectGuestUI(d))
++	app.Post("/projects/:id/guests/:uid/remove", tenant.RequireTenant(), requireSession, loadPrincipal,
++		authz.Require("project_member.manage"), removeProjectGuestUI(d))
++}
+diff --git a/internal/web/qa_share.go b/internal/web/qa_share.go
+new file mode 100644
+index 0000000..2449a51
+--- /dev/null
++++ b/internal/web/qa_share.go
+@@ -0,0 +1,298 @@
++package web
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"regexp"
++	"time"
++
++	"github.com/gofiber/fiber/v2"
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/authz"
++	"github.com/uyab/lotus/internal/httpx"
++	"github.com/uyab/lotus/internal/repo"
++	"github.com/uyab/lotus/internal/tenant"
++)
++
++// The plan report: what a client signs off against. Signed in, anyone who
++// reads QA opens it at …/plans/:pid/report; qa.share hands out a link
++// (/s/qa/:token) that opens the same report with no login, read-only,
++// until it expires (30 days) or is revoked. The report holds no forms, no
++// attachments and no links into the app.
++
++type qaReportScenario struct {
++	Name       string
++	PhaseLabel string
++	Progress   repo.QAProgress
++}
++
++type qaReportRun struct {
++	Name     string
++	Cycle    int
++	Closed   bool
++	Progress repo.QAProgress
++}
++
++type qaReportIssue struct {
++	Key          int
++	Title        string
++	Severity     string
++	SeverityTone string
++	Status       string
++}
++
++type qaReportData struct {
++	ProjectName string
++	Plan        repo.QAPlan
++	PhaseLabel  string
++	Window      string
++	Progress    repo.QAProgress
++	Scenarios   []qaReportScenario
++	Runs        []qaReportRun
++	Issues      []qaReportIssue
++	Signoffs    []qaSignoffRow
++	Shared      bool // opened through a share link
++	Generated   string
++	ExpiresOn   string // the share link's last day
++}
++
++// buildQAReport gathers the report; shared is true for a share link, whose
++// holder is nobody in particular (see qaPlanSignoffs).
++func buildQAReport(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, plan *repo.QAPlan, shared bool) (qaReportData, error) {
++	data := qaReportData{ProjectName: project.Name, Plan: *plan, Shared: shared, PhaseLabel: qaPhaseLabels[plan.Phase],
++		Window: qaWindow(plan.StartsOn, plan.EndsOn), Generated: time.Now().Format("02 Jan 2006 15:04")}
++	progress, err := repo.QAPlanProgress(c.Context(), s, []uuid.UUID{plan.ID})
++	if err != nil {
++		return data, err
++	}
++	data.Progress = progress[plan.ID]
++
++	ids, err := repo.ListQAPlanScenarioIDs(c.Context(), s, plan.ID)
++	if err != nil {
++		return data, err
++	}
++	inPlan := map[uuid.UUID]bool{}
++	for _, id := range ids {
++		inPlan[id] = true
++	}
++	all, err := repo.ListQAScenarios(c.Context(), s, project.ID, true)
++	if err != nil {
++		return data, err
++	}
++	perScenario, err := repo.QAPlanScenarioProgress(c.Context(), s, plan.ID)
++	if err != nil {
++		return data, err
++	}
++	var rows []qaScenarioRow
++	for _, sc := range all {
++		if inPlan[sc.ID] {
++			rows = append(rows, qaScenarioRow{QAScenario: sc})
++			data.Scenarios = append(data.Scenarios, qaReportScenario{Name: sc.Name, PhaseLabel: qaPhaseLabels[sc.Phase], Progress: perScenario[sc.ID]})
++		}
++	}
++	if data.Signoffs, err = qaPlanSignoffs(c, d, s, plan.ID, rows, shared); err != nil {
++		return data, err
++	}
++
++	runs, err := repo.ListQARuns(c.Context(), s, plan.ID)
++	if err != nil {
++		return data, err
++	}
++	runIDs := make([]uuid.UUID, len(runs))
++	for i, r := range runs {
++		runIDs[i] = r.ID
++	}
++	runProgress, err := repo.QARunProgressFor(c.Context(), s, runIDs)
++	if err != nil {
++		return data, err
++	}
++	for _, r := range runs {
++		data.Runs = append(data.Runs, qaReportRun{Name: r.Name, Cycle: r.Cycle, Closed: r.ClosedAt != nil, Progress: runProgress[r.ID]})
++	}
++
++	issues, err := repo.ListQAIssues(c.Context(), s, project.ID, repo.QAIssueFilter{Statuses: repo.QAOpenIssueStatuses, PlanID: &plan.ID})
++	if err != nil {
++		return data, err
++	}
++	for _, is := range issues {
++		data.Issues = append(data.Issues, qaReportIssue{Key: is.Key, Title: is.Title, Severity: is.Severity,
++			SeverityTone: qaSeverityTone(is.Severity), Status: is.Status})
++	}
++	return data, nil
++}
++
++func renderQAReport(c *fiber.Ctx, d Deps, data qaReportData) error {
++	c.Type("html")
++	return renderPage(c, d, "pages/qa_report.html", httpx.ViewData{
++		Title: data.Plan.Name + " · " + data.ProjectName, Data: data,
++	})
++}
++
++// qaReportPage is GET …/plans/:pid/report (qa.read).
++func qaReportPage(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		plan, err := loadQAPlan(c, s, project)
++		if err != nil {
++			return err
++		}
++		data, err := buildQAReport(c, d, s, project, plan, false)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		return renderQAReport(c, d, data)
++	}
++}
++
++var qaShareTokenPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
++
++func qaShareTokenHash(raw string) string {
++	sum := sha256.Sum256([]byte(raw))
++	return hex.EncodeToString(sum[:])
++}
++
++// qaSharedReport is GET /s/qa/:token: no session, the token is the whole
++// authorization, and it answers for one plan's report only. Anything wrong
++// with it (unknown, revoked, expired, another organization's) is 404.
++func qaSharedReport(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		// A link is a secret: not cached, not indexed, not leaked onward.
++		c.Set("Cache-Control", "no-store")
++		c.Set("X-Robots-Tag", "noindex, nofollow")
++		c.Set("Referrer-Policy", "no-referrer")
++		token := c.Params("token")
++		if !qaShareTokenPattern.MatchString(token) {
++			return fiber.ErrNotFound
++		}
++		s, err := mustScope(c)
++		if err != nil {
++			return err
++		}
++		link, err := repo.QAShareLinkByHash(c.Context(), s, qaShareTokenHash(token))
++		if errors.Is(err, repo.ErrNotFound) {
++			return fiber.ErrNotFound
++		}
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		plan, err := repo.GetQAPlan(c.Context(), s, link.PlanID)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		project, err := repo.ProjectByID(c.Context(), s, plan.ProjectID)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		data, err := buildQAReport(c, d, s, project, plan, true)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		data.ExpiresOn = link.ExpiresAt.Format("02 Jan 2006")
++		return renderQAReport(c, d, data)
++	}
++}
++
++type qaShareRow struct {
++	ID        uuid.UUID
++	CreatedBy string
++	CreatedAt string
++	ExpiresOn string
++}
++
++// qaPlanShares lists planID's live links for the plan page.
++func qaPlanShares(c *fiber.Ctx, d Deps, s tenant.Scope, planID uuid.UUID) ([]qaShareRow, error) {
++	links, err := repo.ListQAShareLinks(c.Context(), s, planID)
++	if err != nil || len(links) == 0 {
++		return nil, err
++	}
++	labels, err := qaPeopleLabels(c, d, s)
++	if err != nil {
++		return nil, err
++	}
++	out := make([]qaShareRow, len(links))
++	for i, l := range links {
++		out[i] = qaShareRow{ID: l.ID, CreatedBy: personLabel(labels, l.CreatedBy),
++			CreatedAt: l.CreatedAt.Format("02 Jan 2006"), ExpiresOn: l.ExpiresAt.Format("02 Jan 2006")}
++	}
++	return out, nil
++}
++
++// createQAShareUI makes a link and shows it once: only its hash is kept.
++func createQAShareUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		plan, err := loadQAPlan(c, s, project)
++		if err != nil {
++			return err
++		}
++		raw, hash, err := newInvitationToken()
++		if err != nil {
++			return err
++		}
++		link, err := repo.CreateQAShareLink(c.Context(), s, plan.ID, hash, qaActor(c))
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		audit, _ := json.Marshal(fiber.Map{"plan_id": plan.ID, "link_id": link.ID, "expires_at": link.ExpiresAt})
++		if err := repo.RecordAuditEvent(c.Context(), s, qaActor(c), "qa.share.create", "qa_plan", &plan.ID, audit); err != nil {
++			return writeRepoErr(c, err)
++		}
++		org, ok := tenant.OrgFromContext(c)
++		if !ok {
++			return fiber.ErrNotFound
++		}
++		c.Set("Cache-Control", "no-store")
++		c.Type("html")
++		return d.Renderer.RenderNamed(c, "qa_share_created", fiber.Map{
++			"Link": d.Cfg.TenantURL(org.Subdomain) + "/s/qa/" + raw, "ExpiresOn": link.ExpiresAt.Format("02 Jan 2006"),
++			"Back": planURL(project, plan),
++		})
++	}
++}
++
++func revokeQAShareUI() fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		plan, err := loadQAPlan(c, s, project)
++		if err != nil {
++			return err
++		}
++		id, err := uuid.Parse(c.Params("lid"))
++		if err != nil {
++			return fiber.ErrNotFound
++		}
++		if err := repo.RevokeQAShareLink(c.Context(), s, plan.ID, id); err != nil {
++			if errors.Is(err, repo.ErrNotFound) {
++				return fiber.ErrNotFound
++			}
++			return writeRepoErr(c, err)
++		}
++		audit, _ := json.Marshal(fiber.Map{"plan_id": plan.ID, "link_id": id})
++		if err := repo.RecordAuditEvent(c.Context(), s, qaActor(c), "qa.share.revoke", "qa_plan", &plan.ID, audit); err != nil {
++			return writeRepoErr(c, err)
++		}
++		setFlash(c, "qa.share.revoked")
++		return redirectAfterMutation(c, planURL(project, plan))
++	}
++}
++
++func registerQAShareRoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
++	app.Get("/s/qa/:token", tenant.RequireTenant(),
++		authz.Public("QA share link: the token is checked by the handler and opens one plan report only"),
++		qaSharedReport(d))
++	app.Get("/projects/:id/qa/plans/:pid/report", qaRoute(requireSession, loadPrincipal, "qa.read", qaReportPage(d))...)
++	app.Post("/projects/:id/qa/plans/:pid/share", qaRoute(requireSession, loadPrincipal, "qa.share", createQAShareUI(d))...)
++	app.Post("/projects/:id/qa/plans/:pid/share/:lid/revoke", qaRoute(requireSession, loadPrincipal, "qa.share", revokeQAShareUI())...)
++}
+diff --git a/internal/web/qa_share_test.go b/internal/web/qa_share_test.go
+new file mode 100644
+index 0000000..399813d
+--- /dev/null
++++ b/internal/web/qa_share_test.go
+@@ -0,0 +1,118 @@
++package web
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"net/url"
++	"regexp"
++	"strings"
++	"testing"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++var shareLink = regexp.MustCompile(`/s/qa/([0-9a-f]{64})`)
++
++// openShared fetches a share link with no session at all.
++func (r qaRunEnv) openShared(t *testing.T, host, token string) (*http.Response, string) {
++	t.Helper()
++	req := httptest.NewRequest(http.MethodGet, "http://"+host+"/s/qa/"+token, nil)
++	req.Host = host
++	resp, err := r.app.Test(req)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer resp.Body.Close()
++	body, _ := io.ReadAll(resp.Body)
++	return resp, string(body)
++}
++
++func TestQAShare_LinkOpensTheReportUntilRevoked(t *testing.T) {
++	r := newQARunEnv(t, "acme-share")
++	ctx := context.Background()
++	planPath := r.base + "/plans/" + r.plan.ID.String()
++	if _, err := repo.CreateQAIssue(ctx, r.s, r.projectID, repo.QAIssueInput{
++		Title: "Total <b>rounds</b> wrong", Severity: "major", PlanID: &r.plan.ID, Source: "internal",
++	}, nil, nil); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := repo.RecordQASignoff(ctx, r.s, r.plan.ID, repo.QASignoffInput{Decision: "rejected", Note: "Rounding"}, &r.guestID); err != nil {
++		t.Fatal(err)
++	}
++
++	// Only qa.share creates links; the plan page offers it to a member.
++	if _, body := r.get(t, r.member, planPath); !strings.Contains(body, `action="`+planPath+`/share"`) {
++		t.Fatalf("member plan page has no share form")
++	}
++	if _, body := r.get(t, r.guest, planPath); strings.Contains(body, `action="`+planPath+`/share"`) {
++		t.Errorf("guest sees the share form")
++	}
++	if resp, _ := r.post(t, r.guest, planPath+"/share", nil, false); resp.StatusCode != http.StatusForbidden {
++		t.Errorf("guest share = %d; want 403", resp.StatusCode)
++	}
++	_, body := r.post(t, r.member, planPath+"/share", url.Values{}, true)
++	m := shareLink.FindStringSubmatch(body)
++	if m == nil {
++		t.Fatalf("share response has no link:\n%s", body)
++	}
++	token := m[1]
++
++	resp, body := r.openShared(t, r.host, token)
++	if resp.StatusCode != http.StatusOK || !strings.Contains(body, r.plan.Name) || !strings.Contains(body, "Total &lt;b&gt;rounds&lt;/b&gt; wrong") ||
++		!strings.Contains(body, "Rejected") || !strings.Contains(body, "Rounding") {
++		t.Fatalf("shared report = %d:\n%s", resp.StatusCode, body)
++	}
++	// The signer is named, never shown by address: the guest here has no
++	// name, and its email must not reach whoever holds the link.
++	for _, leak := range []string{"<form", "/qa/files/", `href="/projects`, "hx-post", "client@bank.example"} {
++		if strings.Contains(body, leak) {
++			t.Errorf("shared report contains %q", leak)
++		}
++	}
++	for header, want := range map[string]string{"Cache-Control": "no-store", "X-Robots-Tag": "noindex", "Referrer-Policy": "no-referrer"} {
++		if got := resp.Header.Get(header); !strings.Contains(got, want) {
++			t.Errorf("%s = %q; want %q", header, got, want)
++		}
++	}
++	// The token opens this report and nothing else.
++	if status, _ := r.get(t, token, planPath); status == http.StatusOK {
++		t.Errorf("token as a session opened the plan page")
++	}
++	if resp, _ := r.openShared(t, r.host, strings.Repeat("0", 64)); resp.StatusCode != http.StatusNotFound {
++		t.Errorf("unknown token = %d; want 404", resp.StatusCode)
++	}
++	other := newQAEnv(t, "other-share")
++	if resp, _ := r.openShared(t, other.host, token); resp.StatusCode != http.StatusNotFound {
++		t.Errorf("token on another organization's host = %d; want 404", resp.StatusCode)
++	}
++
++	// The plan page lists the live link; revoking it ends it.
++	links, _ := repo.ListQAShareLinks(ctx, r.s, r.plan.ID)
++	if len(links) != 1 {
++		t.Fatalf("links = %d", len(links))
++	}
++	revoke := planPath + "/share/" + links[0].ID.String() + "/revoke"
++	if _, body := r.get(t, r.member, planPath); !strings.Contains(body, `action="`+revoke+`"`) {
++		t.Errorf("plan page does not list the live link")
++	}
++	if resp, _ := r.post(t, r.member, revoke, nil, false); resp.StatusCode != http.StatusFound {
++		t.Fatalf("revoke = %d", resp.StatusCode)
++	}
++	if resp, _ := r.openShared(t, r.host, token); resp.StatusCode != http.StatusNotFound {
++		t.Errorf("revoked link = %d; want 404", resp.StatusCode)
++	}
++	if resp, _ := r.post(t, r.member, revoke, nil, false); resp.StatusCode != http.StatusNotFound {
++		t.Errorf("revoke twice = %d; want 404", resp.StatusCode)
++	}
++	if a, b := auditCount(t, r.db, r.orgID, "qa.share.create"), auditCount(t, r.db, r.orgID, "qa.share.revoke"); a != 1 || b != 1 {
++		t.Errorf("audit create/revoke = %d/%d; want 1/1", a, b)
++	}
++
++	// Signed in, anyone who reads QA prints the same report.
++	status, body := r.get(t, r.guest, planPath+"/report")
++	if status != http.StatusOK || !strings.Contains(body, "window.print()") || strings.Contains(body, "/qa/files/") {
++		t.Fatalf("report for guest = %d", status)
++	}
++}
+diff --git a/internal/web/qa_signoff.go b/internal/web/qa_signoff.go
+new file mode 100644
+index 0000000..e374d95
+--- /dev/null
++++ b/internal/web/qa_signoff.go
+@@ -0,0 +1,152 @@
++package web
++
++import (
++	"encoding/json"
++	"errors"
++	"strings"
++
++	"github.com/gofiber/fiber/v2"
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/httpx"
++	"github.com/uyab/lotus/internal/repo"
++	"github.com/uyab/lotus/internal/repo/global"
++	"github.com/uyab/lotus/internal/tenant"
++)
++
++// Sign-off (qa.signoff): the client's verdict on a plan, for the whole plan
++// or one of its scenarios. The plan page shows the standing one per scope;
++// the audit log keeps every one.
++
++var qaSignoffLabels = map[string]string{
++	"accepted":            "Accepted",
++	"accepted_with_notes": "Accepted with notes",
++	"rejected":            "Rejected",
++}
++
++var qaSignoffTones = map[string]string{
++	"accepted":            "pass",
++	"accepted_with_notes": "none",
++	"rejected":            "fail",
++}
++
++// qaSignoffRow is one scope of a plan and where it stands.
++type qaSignoffRow struct {
++	Scope    string // "Whole plan" or the scenario's name
++	Decision string // "" when nobody has signed this scope off
++	Label    string
++	Tone     string
++	Note     string
++	SignedBy string
++	SignedAt string
++}
++
++// qaPlanSignoffs lists the whole plan, then each of its scenarios, with the
++// latest sign-off of each. namesOnly is for the shared report: a signer is
++// shown by name, never by email address (no name shows "—").
++func qaPlanSignoffs(c *fiber.Ctx, d Deps, s tenant.Scope, planID uuid.UUID, scenarios []qaScenarioRow, namesOnly bool) ([]qaSignoffRow, error) {
++	latest, err := repo.ListLatestQASignoffs(c.Context(), s, planID)
++	if err != nil {
++		return nil, err
++	}
++	labels, err := qaPeopleLabels(c, d, s)
++	if err != nil {
++		return nil, err
++	}
++	if namesOnly {
++		if labels, err = qaPeopleNames(c, d, s); err != nil {
++			return nil, err
++		}
++	}
++	byScope := map[uuid.UUID]repo.QASignoff{}
++	for _, so := range latest {
++		key := uuid.Nil
++		if so.ScenarioID != nil {
++			key = *so.ScenarioID
++		}
++		byScope[key] = so
++	}
++	row := func(scope string, key uuid.UUID) qaSignoffRow {
++		r := qaSignoffRow{Scope: scope}
++		if so, ok := byScope[key]; ok {
++			r.Decision, r.Label, r.Tone, r.Note = so.Decision, qaSignoffLabels[so.Decision], qaSignoffTones[so.Decision], so.Note
++			r.SignedBy, r.SignedAt = personLabel(labels, so.SignedBy), so.SignedAt.Format("02 Jan 2006 15:04")
++		}
++		return r
++	}
++	out := []qaSignoffRow{row("Whole plan", uuid.Nil)}
++	for _, sc := range scenarios {
++		out = append(out, row(sc.Name, sc.ID))
++	}
++	return out, nil
++}
++
++// qaPeopleNames is qaPeopleLabels without the email fallback: members with
++// no name are left out.
++func qaPeopleNames(c *fiber.Ctx, d Deps, s tenant.Scope) (map[uuid.UUID]string, error) {
++	members, err := global.ListMembersForOrg(c.Context(), d.DB, s.OrgID())
++	if err != nil {
++		return nil, err
++	}
++	out := make(map[uuid.UUID]string, len(members))
++	for _, m := range members {
++		if name := strings.TrimSpace(m.Name); name != "" {
++			out[m.UserID] = name
++		}
++	}
++	return out, nil
++}
++
++// qaSignoffScopes are the choices of the sign-off form.
++func qaSignoffScopes(scenarios []qaScenarioRow) []httpx.SelectOption {
++	out := []httpx.SelectOption{{Value: "plan", Label: "Whole plan"}}
++	for _, sc := range scenarios {
++		out = append(out, httpx.SelectOption{Value: sc.ID.String(), Label: sc.Name})
++	}
++	return out
++}
++
++func recordQASignoffUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		plan, err := loadQAPlan(c, s, project)
++		if err != nil {
++			return err
++		}
++		in := repo.QASignoffInput{Decision: c.FormValue("decision"), Note: c.FormValue("note")}
++		if scope := strings.TrimSpace(c.FormValue("scope")); scope != "plan" {
++			id, err := uuid.Parse(scope)
++			if err != nil {
++				return qaFormError(c, d, fiber.StatusUnprocessableEntity, "Choose the plan or one of its scenarios.")
++			}
++			in.ScenarioID = &id
++		}
++		if _, ok := qaSignoffLabels[in.Decision]; !ok {
++			return qaFormError(c, d, fiber.StatusUnprocessableEntity, "Choose a decision.")
++		}
++		if in.Decision != "accepted" && strings.TrimSpace(in.Note) == "" {
++			return qaFormError(c, d, fiber.StatusUnprocessableEntity, "Say what is wrong in the note.")
++		}
++		so, err := repo.RecordQASignoff(c.Context(), s, plan.ID, in, qaActor(c))
++		if errors.Is(err, repo.ErrInvalidInput) {
++			if in.ScenarioID != nil {
++				// The note and decision were checked above: what is left
++				// is a scenario that is not in this plan.
++				return qaFormError(c, d, fiber.StatusUnprocessableEntity, "Choose the plan or one of its scenarios.")
++			}
++			return qaFormError(c, d, fiber.StatusUnprocessableEntity, "The note is too long.")
++		}
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		raw, _ := json.Marshal(fiber.Map{"plan_id": plan.ID, "scenario_id": so.ScenarioID, "decision": so.Decision})
++		if err := repo.RecordAuditEvent(c.Context(), s, qaActor(c), "qa.signoff", "qa_plan", &plan.ID, raw); err != nil {
++			return writeRepoErr(c, err)
++		}
++		setFlash(c, "qa.signoff.recorded", qaSignoffLabels[so.Decision])
++		return redirectAfterMutation(c, planURL(project, plan))
++	}
++}
+diff --git a/internal/web/qa_signoff_test.go b/internal/web/qa_signoff_test.go
+new file mode 100644
+index 0000000..c1615f1
+--- /dev/null
++++ b/internal/web/qa_signoff_test.go
+@@ -0,0 +1,70 @@
++package web
++
++import (
++	"context"
++	"net/http"
++	"net/url"
++	"strings"
++	"testing"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++func TestQASignoff_GuestSignsOffAndThePlanShowsTheLatest(t *testing.T) {
++	r := newQARunEnv(t, "acme-signoff")
++	ctx := context.Background()
++	planPath := r.base + "/plans/" + r.plan.ID.String()
++	scenarios := mustPlanScenarios(t, r.qaEnv, r.plan.ID)
++	scenario := scenarios[0].String()
++
++	status, body := r.get(t, r.guest, planPath)
++	if status != http.StatusOK || !strings.Contains(body, `action="`+planPath+`/signoffs"`) {
++		t.Fatalf("guest plan page = %d, no sign-off form", status)
++	}
++	// Rejecting without saying why is refused, in the dialog.
++	if _, body := r.post(t, r.guest, planPath+"/signoffs", url.Values{"scope": {scenario}, "decision": {"rejected"}}, true); !strings.Contains(body, "Say what is wrong") {
++		t.Fatalf("rejected without a note:\n%s", body)
++	}
++	for _, form := range []url.Values{
++		{"scope": {scenario}, "decision": {"rejected"}, "note": {"Invoice <total> is wrong"}},
++		{"scope": {scenario}, "decision": {"accepted"}},
++		{"scope": {"plan"}, "decision": {"accepted_with_notes"}, "note": {"Copy fixes pending"}},
++	} {
++		if resp, _ := r.post(t, r.guest, planPath+"/signoffs", form, false); resp.StatusCode != http.StatusFound {
++			t.Fatalf("sign off %v = %d", form, resp.StatusCode)
++		}
++	}
++	if n := auditCount(t, r.db, r.orgID, "qa.signoff"); n != 3 {
++		t.Fatalf("audit qa.signoff = %d; want 3", n)
++	}
++	latest, _ := repo.ListLatestQASignoffs(ctx, r.s, r.plan.ID)
++	if len(latest) != 2 || latest[1].Decision != "accepted" {
++		t.Fatalf("latest = %+v", latest)
++	}
++
++	// The member reads the standing sign-offs (only the latest per scope)
++	// but may not sign.
++	status, body = r.get(t, r.member, planPath)
++	if status != http.StatusOK || !strings.Contains(body, "Accepted with notes") || !strings.Contains(body, "Copy fixes pending") ||
++		strings.Contains(body, "Invoice &lt;total&gt; is wrong") || !strings.Contains(body, "client@bank.example") {
++		t.Fatalf("member plan page = %d; sign-offs missing or stale", status)
++	}
++	if strings.Contains(body, `action="`+planPath+`/signoffs"`) {
++		t.Errorf("member sees the sign-off form")
++	}
++	if resp, _ := r.post(t, r.member, planPath+"/signoffs", url.Values{"scope": {"plan"}, "decision": {"accepted"}}, false); resp.StatusCode != http.StatusForbidden {
++		t.Errorf("member sign-off = %d; want 403", resp.StatusCode)
++	}
++	// A scenario outside the plan, or of another project, is refused.
++	other := r.project(t, "Mobile")
++	foreign, _ := repo.CreateQAScenario(ctx, r.s, other, "Elsewhere", "uat", "", nil)
++	if _, body := r.post(t, r.guest, planPath+"/signoffs", url.Values{"scope": {foreign.ID.String()}, "decision": {"accepted"}}, true); !strings.Contains(body, "Choose the plan or one of its scenarios") {
++		t.Errorf("foreign scenario:\n%s", body)
++	}
++	// A guest of another project gets 404 on this plan.
++	otherGuest, otherGuestID := r.session(t, "else@bank.example", "guest")
++	_ = repo.AddProjectMember(ctx, r.s, other, otherGuestID)
++	if resp, _ := r.post(t, otherGuest, planPath+"/signoffs", url.Values{"scope": {"plan"}, "decision": {"accepted"}}, false); resp.StatusCode != http.StatusNotFound {
++		t.Errorf("guest of another project = %d; want 404", resp.StatusCode)
++	}
++}
+diff --git a/internal/web/settings_members.go b/internal/web/settings_members.go
+index 77ca4c0..fa2fe38 100644
+--- a/internal/web/settings_members.go
++++ b/internal/web/settings_members.go
+@@ -12,6 +12,7 @@ import (
+ 	"github.com/google/uuid"
+ 	"github.com/jmoiron/sqlx"
+ 
++	"github.com/uyab/lotus/internal/authn"
+ 	"github.com/uyab/lotus/internal/authz"
+ 	"github.com/uyab/lotus/internal/httpx"
+ 	"github.com/uyab/lotus/internal/repo"
+@@ -53,6 +54,10 @@ func settingsMembersPage(d Deps) fiber.Handler {
+ 		if err != nil {
+ 			return writeRepoErr(c, err)
+ 		}
++		inviteForm := buildInviteForm("", "member", "")
++		if inviteForm.Projects, err = inviteProjects(c, nil); err != nil {
++			return writeRepoErr(c, err)
++		}
+ 		invRows := make([]invitationRow, 0, len(invitations))
+ 		for _, inv := range invitations {
+ 			invRows = append(invRows, invitationRow{
+@@ -79,8 +84,8 @@ func settingsMembersPage(d Deps) fiber.Handler {
+ 				InviteForm    inviteFormView
+ 			}{
+ 				SettingsNav: buildSettingsNav("members"), Members: members, Invitations: invRows,
+-				InviteForm: buildInviteForm("", "member", ""),
+-				Roles:      []string{"admin", "member", "viewer"},
++				InviteForm: inviteForm,
++				Roles:      []string{"admin", "member", "viewer", "guest"},
+ 				CanInvite:  chrome.Principal.Can("member.invite"), CanChangeRole: chrome.Principal.Can("member.role.change"),
+ 				CanRemove: chrome.Principal.Can("member.remove"), Self: chrome.Principal.UserID, ActorRole: chrome.Principal.Role,
+ 			},
+@@ -97,18 +102,46 @@ func settingsMembersPage(d Deps) fiber.Handler {
+ // connection's form it never changes shape, so it exists only so a
+ // rejected submit can come back with the address already typed.
+ type inviteFormView struct {
+-	Email string
+-	Role  string
+-	Error string
++	Email    string
++	Role     string
++	Error    string
++	Projects []inviteProjectOption // offered for a guest
++	Link     string                // set once the invitation exists: the link to share
++}
++
++type inviteProjectOption struct {
++	ID      uuid.UUID
++	Name    string
++	Checked bool
+ }
+ 
++var inviteRoles = map[string]bool{"admin": true, "member": true, "viewer": true, "guest": true}
++
+ func buildInviteForm(email, role, errMsg string) inviteFormView {
+-	if role != "admin" && role != "member" && role != "viewer" {
++	if !inviteRoles[role] {
+ 		role = "member"
+ 	}
+ 	return inviteFormView{Email: email, Role: role, Error: errMsg}
+ }
+ 
++// inviteProjects lists the organization's live projects for the guest
++// picker, ticking chosen.
++func inviteProjects(c *fiber.Ctx, chosen map[uuid.UUID]bool) ([]inviteProjectOption, error) {
++	s, err := mustScope(c)
++	if err != nil {
++		return nil, err
++	}
++	projects, err := repo.ListProjects(c.Context(), s, false)
++	if err != nil {
++		return nil, err
++	}
++	out := make([]inviteProjectOption, 0, len(projects))
++	for _, p := range projects {
++		out = append(out, inviteProjectOption{ID: p.ID, Name: p.Name, Checked: chosen[p.ID]})
++	}
++	return out, nil
++}
++
+ // rejectInviteForm mirrors rejectConnectionForm: htmx gets the form back
+ // inside the still-open modal (200, since htmx does not swap 4xx), a
+ // plain post keeps the error the handler always returned.
+@@ -116,43 +149,78 @@ func rejectInviteForm(c *fiber.Ctx, d Deps, email, role, msg string, status int)
+ 	if c.Get("HX-Request") == "" {
+ 		return fiber.NewError(status, msg)
+ 	}
++	f := buildInviteForm(email, role, msg)
++	chosen := map[uuid.UUID]bool{}
++	for _, raw := range c.Context().PostArgs().PeekMulti("project_id") {
++		if id, err := uuid.Parse(string(raw)); err == nil {
++			chosen[id] = true
++		}
++	}
++	projects, err := inviteProjects(c, chosen)
++	if err != nil {
++		return writeRepoErr(c, err)
++	}
++	f.Projects = projects
+ 	c.Type("html")
+-	return d.Renderer.RenderNamed(c, "invite_form", buildInviteForm(email, role, msg))
++	return d.Renderer.RenderNamed(c, "invite_form", f)
+ }
+ 
++// inviteMemberUI invites someone into this organization through
++// authn.SendInvitation — the same escalation guard, rate limits and email
++// as onboarding's invite screen. The answer shows the invitation link, so
++// it can be shared even where no mail is configured (a client doing UAT).
++// A guest invitation names at least one project of this organization.
+ func inviteMemberUI(d Deps) fiber.Handler {
+ 	return func(c *fiber.Ctx) error {
+ 		chrome, err := loadSettingsChrome(c)
+ 		if err != nil {
+ 			return err
+ 		}
++		s, err := mustScope(c)
++		if err != nil {
++			return err
++		}
+ 		email := strings.ToLower(strings.TrimSpace(c.FormValue("email")))
+ 		role := c.FormValue("role")
+-		if email == "" || (role != "admin" && role != "member" && role != "viewer") {
++		if email == "" || !inviteRoles[role] {
+ 			return rejectInviteForm(c, d, email, role, "A valid email and role are required.", fiber.StatusUnprocessableEntity)
+ 		}
+-		since := time.Now().Add(-24 * time.Hour)
+-		if n, err := global.CountRecentInvitationsByOrg(c.Context(), d.DB, chrome.OrgID, since); err != nil {
+-			return writeRepoErr(c, err)
+-		} else if n >= 50 {
+-			return rejectInviteForm(c, d, email, role, "Too many invitations sent recently.", fiber.StatusTooManyRequests)
++		var projects []uuid.UUID
++		if role == "guest" {
++			for _, raw := range c.Context().PostArgs().PeekMulti("project_id") {
++				id, err := uuid.Parse(string(raw))
++				if err == nil {
++					_, err = repo.ProjectByID(c.Context(), s, id)
++				}
++				if err != nil {
++					return rejectInviteForm(c, d, email, role, "Choose projects of this organization.", fiber.StatusUnprocessableEntity)
++				}
++				projects = append(projects, id)
++			}
++			if len(projects) == 0 {
++				return rejectInviteForm(c, d, email, role, "Choose at least one project for a guest.", fiber.StatusUnprocessableEntity)
++			}
+ 		}
+-
+-		token, hash, err := newInvitationToken()
+-		if err != nil {
++		org, _ := tenant.OrgFromContext(c)
++		link, err := authn.SendInvitation(c.Context(), authn.Deps{DB: d.DB, Cfg: d.Cfg, Mailer: d.Mailer}, authn.SendInvitationParams{
++			OrgID: chrome.OrgID, OrgName: org.Name, ActorID: chrome.Principal.UserID, ActorRole: chrome.Principal.Role,
++			Email: email, RoleKey: role, ProjectIDs: projects,
++		})
++		switch {
++		case errors.Is(err, global.ErrInvitationPending):
++			return rejectInviteForm(c, d, email, role, "An invitation to this email is already pending.", fiber.StatusConflict)
++		case errors.Is(err, authn.ErrInviteRateLimited):
++			return rejectInviteForm(c, d, email, role, "Too many invitations sent recently.", fiber.StatusTooManyRequests)
++		case errors.Is(err, authn.ErrCannotInviteOwner):
++			return rejectInviteForm(c, d, email, role, "Only an owner can invite an owner.", fiber.StatusForbidden)
++		case err != nil:
+ 			return writeRepoErr(c, err)
+ 		}
+-		if _, err := global.CreateInvitation(c.Context(), d.DB, global.NewInvitation{
+-			OrgID: chrome.OrgID, Email: email, RoleKey: role, InvitedBy: chrome.Principal.UserID,
+-			TokenHash: hash, ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+-		}); err != nil {
+-			if errors.Is(err, global.ErrInvitationPending) {
+-				return rejectInviteForm(c, d, email, role, "An invitation to this email is already pending.", fiber.StatusConflict)
+-			}
+-			return writeRepoErr(c, err)
++		setFlash(c, "member.invited", email) // shown once the dialog's Done reloads the page
++		if c.Get("HX-Request") != "" {
++			c.Type("html")
++			return d.Renderer.RenderNamed(c, "invite_form", inviteFormView{Email: email, Role: role, Link: link})
+ 		}
+-		_ = token // sent by email in the onboarding flow (task 1.6); this settings-page path has no mailer wiring yet, matching resend's own scope below
+-		setFlash(c, "member.invited", email)
+ 		return redirectAfterMutation(c, "/settings/members")
+ 	}
+ }
+@@ -215,7 +283,7 @@ func changeMemberRoleUI(d Deps) fiber.Handler {
+ 			return fiber.ErrNotFound
+ 		}
+ 		newRole := c.FormValue("role")
+-		if newRole != "owner" && newRole != "admin" && newRole != "member" && newRole != "viewer" {
++		if newRole != "owner" && !inviteRoles[newRole] {
+ 			return fiber.NewError(fiber.StatusBadRequest, "unknown role")
+ 		}
+ 		target, err := global.ActiveMembership(c.Context(), d.DB, targetID, chrome.OrgID)
+diff --git a/web/templates/components/invite_form.html b/web/templates/components/invite_form.html
+index 459892e..f07ae0e 100644
+--- a/web/templates/components/invite_form.html
++++ b/web/templates/components/invite_form.html
+@@ -9,6 +9,15 @@
+      Takes an inviteFormView. */}}
+ {{define "invite_form"}}
+ <div id="invite-form" class="lotus-modal-form">
++  {{if .Link}}
++  <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:12px">
++    <p style="margin:0;font-size:12.5px;color:#374151">Invitation created for <strong>{{.Email}}</strong> as {{.Role}}. It is emailed when mail is set up; otherwise send this link yourself. It works once, for 7 days.</p>
++    <input type="text" readonly value="{{.Link}}" aria-label="Invitation link" class="lotus-input lotus-input-mono" onclick="this.select()">
++  </div>
++  <div class="lotus-modal-foot">
++    <button type="button" class="btn-lotus btn-lotus-primary" onclick="location.reload()">Done</button>
++  </div>
++  {{else}}
+   <form method="post" action="/settings/members/invite"
+         hx-post="/settings/members/invite" hx-target="#invite-form" hx-swap="outerHTML">
+     <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
+@@ -31,8 +40,21 @@
+           "Options" (selectOptions
+             (dict "Value" "member" "Label" "Member")
+             (dict "Value" "admin" "Label" "Admin")
+-            (dict "Value" "viewer" "Label" "Viewer")))}}
++            (dict "Value" "viewer" "Label" "Viewer")
++            (dict "Value" "guest" "Label" "Guest")))}}
+       </label>
++
++      <fieldset style="border:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px">
++        <legend style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:6px">PROJECTS · GUESTS ONLY</legend>
++        <p style="margin:0 0 4px;font-size:11.5px;color:#6B7280">A guest (a client doing UAT) sees only these projects' QA. Other roles see every project.</p>
++        <div style="display:flex;flex-direction:column;max-height:180px;overflow:auto">
++          {{range .Projects}}
++          <label style="display:flex;align-items:center;gap:8px;padding:3px 2px;font-size:12.5px;color:#111827">
++            <input type="checkbox" name="project_id" value="{{.ID}}"{{if .Checked}} checked{{end}} style="accent-color:var(--text-brand)"> {{.Name}}
++          </label>
++          {{end}}
++        </div>
++      </fieldset>
+     </div>
+ 
+     <div class="lotus-modal-foot">
+@@ -41,5 +63,6 @@
+       <button type="submit" class="btn-lotus btn-lotus-primary">Send invite</button>
+     </div>
+   </form>
++  {{end}}
+ </div>
+ {{end}}
+diff --git a/web/templates/components/qa_share_created.html b/web/templates/components/qa_share_created.html
+new file mode 100644
+index 0000000..5958f2c
+--- /dev/null
++++ b/web/templates/components/qa_share_created.html
+@@ -0,0 +1,11 @@
++{{/* qa_share_created: the one moment a share link is shown. Only its hash
++     is stored, so it cannot be shown again. */}}
++{{define "qa_share_created"}}
++<div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:12px">
++  <p style="margin:0;font-size:12.5px;color:#374151">Copy the link now: it is not shown again. It works until {{.ExpiresOn}}, or until it is revoked.</p>
++  <input type="text" readonly value="{{.Link}}" aria-label="Share link" class="lotus-input lotus-input-mono" onclick="this.select()">
++</div>
++<div class="lotus-modal-foot">
++  <a href="{{.Back}}" class="btn-lotus btn-lotus-primary">Done</a>
++</div>
++{{end}}
+diff --git a/web/templates/components/shell.html b/web/templates/components/shell.html
+index eb62fb8..82fc34d 100644
+--- a/web/templates/components/shell.html
++++ b/web/templates/components/shell.html
+@@ -26,8 +26,8 @@
+              :aria-hidden="open ? 'false' : 'true'">
+           <div style="height:1px;background:#E5E7EB;margin:0 9px"></div>
+           <div style="padding:5px;display:flex;flex-direction:column;gap:1px">
+-            <a href="/settings/organization" class="lotus-nav-item" style="padding:7px 9px;font-size:12.5px;color:#111827">
+-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#6B7280;flex:none"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M20 21a7.53 7.53 0 0 0-7.005-6.934L12 14q-.531.015-1 .038c-3.7.181-6.716 3.268-7 6.962"></path><circle cx="12" cy="7" r="4"></circle></g></svg>Settings</a>
++            {{if not .Nav.Guest}}<a href="/settings/organization" class="lotus-nav-item" style="padding:7px 9px;font-size:12.5px;color:#111827">
++              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#6B7280;flex:none"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M20 21a7.53 7.53 0 0 0-7.005-6.934L12 14q-.531.015-1 .038c-3.7.181-6.716 3.268-7 6.962"></path><circle cx="12" cy="7" r="4"></circle></g></svg>Settings</a>{{end}}
+             <form method="post" action="/logout">
+               <button type="submit" class="lotus-nav-item" style="width:100%;padding:7px 9px;font-size:12.5px;color:#9E2B47;border:none;background:none;text-align:left;cursor:pointer">
+                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#9E2B47;flex:none"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M18 18c0 .464 0 .697-.022.892a3.5 3.5 0 0 1-3.086 3.086C14.697 22 14.464 22 14 22h-3c-3.3 0-4.95 0-5.975-1.025S4 18.3 4 15V9c0-3.3 0-4.95 1.025-5.975S7.7 2 11 2h3c.464 0 .697 0 .892.022a3.5 3.5 0 0 1 3.086 3.086C18 5.303 18 5.536 18 6"></path><path d="M8.076 11.118C8 11.302 8 11.535 8 12.001s0 .699.076.883a1 1 0 0 0 .541.54c.184.077.417.077.883.077h5c0 1.75.011 2.629.562 2.885q.03.015.063.026c.58.223 1.275-.398 2.666-1.64c1.467-1.312 2.2-1.987 2.209-2.815c-.009-.828-.742-1.503-2.21-2.814c-1.39-1.243-2.085-1.864-2.665-1.641l-.063.026c-.56.26-.562 1.165-.562 2.973h-5c-.466 0-.699 0-.883.076a1 1 0 0 0-.54.541"></path></g></svg>Log out
+@@ -88,9 +88,9 @@
+   <main style="flex:1;min-width:0;padding:var(--pad-main)">
+ 
+     <nav aria-label="Breadcrumb" style="display:flex;align-items:center;gap:7px;margin-bottom:14px;font-size:11.5px;color:#6B7280">
+-      <a href="/projects" aria-label="Lotus" style="display:inline-flex;align-items:center;padding:3px 5px;border-radius:5px">{{template "lotus_logo" (dict "ID" "bc" "Width" 20 "Height" 13)}}</a>
++      <a href="{{if .Nav.Guest}}/qa/my{{else}}/projects{{end}}" aria-label="Lotus" style="display:inline-flex;align-items:center;padding:3px 5px;border-radius:5px">{{template "lotus_logo" (dict "ID" "bc" "Width" 20 "Height" 13)}}</a>
+       <span style="color:#D1D5DB">/</span>
+-      {{if and .Org .Nav.Trail}}<a href="/projects" style="color:#6B7280"{{if .Nav.OrgDrop}} class="lotus-crumb-drop" data-drop-folder=""{{end}}>{{.Org.Name}}</a>
++      {{if and .Org .Nav.Trail}}<a href="{{if .Nav.Guest}}/qa/my{{else}}/projects{{end}}" style="color:#6B7280"{{if .Nav.OrgDrop}} class="lotus-crumb-drop" data-drop-folder=""{{end}}>{{.Org.Name}}</a>
+       {{else}}<span style="color:#6B7280">{{if .Org}}{{.Org.Name}}{{end}}</span>{{end}}
+       {{range .Nav.Trail}}<span style="color:#D1D5DB">/</span>
+       {{if .Href}}<a href="{{.Href}}" style="color:#6B7280"{{if .Drop}} class="lotus-crumb-drop" data-drop-folder="{{.DropFolder}}"{{end}}>{{.Label}}</a>
+diff --git a/web/templates/pages/project.html b/web/templates/pages/project.html
+index e52dc94..773a151 100644
+--- a/web/templates/pages/project.html
++++ b/web/templates/pages/project.html
+@@ -34,6 +34,31 @@
+   </a>
+ </header>
+ 
++{{if .Data.CanGuests}}
++{{template "lotus_card_section_open" (dict "Padding" "14px 16px" "Style" "margin-bottom:14px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px")}}
++  <div style="display:flex;flex-direction:column;gap:2px;min-width:180px">
++    <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--text-label)">Guests</span>
++    <span style="font-size:11.5px;color:#6B7280">Clients who see this project's QA, and nothing else</span>
++  </div>
++  <div style="display:flex;flex-wrap:wrap;gap:6px;flex:1;min-width:0">
++    {{range .Data.Guests.Listed}}
++    <form method="post" action="/projects/{{$.Data.Project.ID}}/guests/{{.ID}}/remove" style="display:flex;align-items:center;gap:4px;padding:3px 4px 3px 9px;border:1px solid var(--ink-200);border-radius:7px;font-size:12px;color:#374151">
++      <span>{{.Label}}</span>
++      <button type="submit" class="lotus-row-action" aria-label="Remove {{.Label}}">
++        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="transform:rotate(45deg)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
++      </button>
++    </form>
++    {{else}}<span style="font-size:12px;color:#9CA3AF">No guests.</span>{{end}}
++  </div>
++  {{if .Data.Guests.Options}}
++  <form method="post" action="/projects/{{.Data.Project.ID}}/guests" style="display:flex;gap:6px;align-items:center">
++    <div style="width:220px">{{template "lotus_select" (dict "Name" "user_id" "ID" "project-guest" "Value" "" "Label" "Guest" "Size" "sm" "Options" (selectOptions .Data.Guests.Options))}}</div>
++    <button type="submit" class="btn-lotus btn-lotus-secondary">Add guest</button>
++  </form>
++  {{end}}
++{{template "lotus_card_section_close" .}}
++{{end}}
++
+ {{if .Data.Dashboard.Empty}}
+ {{template "lotus_card_section_open" (dict "Padding" "40px 32px"
+   "Style" "display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:520px")}}
+diff --git a/web/templates/pages/qa_plan.html b/web/templates/pages/qa_plan.html
+index f3e260b..e9b0e6b 100644
+--- a/web/templates/pages/qa_plan.html
++++ b/web/templates/pages/qa_plan.html
+@@ -58,6 +58,7 @@
+     <button type="submit" class="btn-lotus btn-lotus-secondary">Close plan</button>
+   </form>
+   {{end}}
++  <a href="{{$d.Base}}/plans/{{$d.Plan.ID}}/report" class="btn-lotus btn-lotus-secondary">Report</a>
+   {{template "qa_subnav" (dict "Base" $d.Base "Active" "plans")}}
+ </header>
+ 
+@@ -94,5 +95,101 @@
+   {{template "lotus_card_section_close" .}}
+ </div>
+ 
++{{template "lotus_card_section_open" (dict "Padding" "14px" "Style" "margin-top:14px;display:flex;flex-direction:column;gap:10px")}}
++  <div style="display:flex;align-items:center;gap:10px">
++    <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">SIGN-OFF</div>
++    {{if $d.CanSignoff}}
++    <div x-data="lotusModal('signoff')" style="display:contents">
++      <button type="button" class="btn-lotus btn-lotus-secondary" style="margin-left:auto" @click="open()">Sign off…</button>
++      <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="signoff-title">
++        <div class="lotus-modal-head">
++          <div class="lotus-modal-title" id="signoff-title">Sign off</div>
++          <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
++            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
++          </button>
++        </div>
++        <div class="lotus-modal-form">
++          <form method="post" action="{{$d.Base}}/plans/{{$d.Plan.ID}}/signoffs" hx-post="{{$d.Base}}/plans/{{$d.Plan.ID}}/signoffs" hx-target="#signoff-error" hx-swap="innerHTML">
++            <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
++              <div id="signoff-error"></div>
++              <label style="display:flex;flex-direction:column;gap:6px">
++                <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">FOR</span>
++                {{template "lotus_select" (dict "Name" "scope" "ID" "signoff-scope" "Value" "plan" "Label" "Scope" "Options" (selectOptions $d.Scopes))}}
++              </label>
++              <fieldset style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">
++                <legend style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:6px">DECISION</legend>
++                <label style="display:flex;align-items:center;gap:8px;font-size:12.5px"><input type="radio" name="decision" value="accepted" required style="accent-color:var(--text-brand)"> Accepted</label>
++                <label style="display:flex;align-items:center;gap:8px;font-size:12.5px"><input type="radio" name="decision" value="accepted_with_notes" style="accent-color:var(--text-brand)"> Accepted with notes</label>
++                <label style="display:flex;align-items:center;gap:8px;font-size:12.5px"><input type="radio" name="decision" value="rejected" style="accent-color:var(--text-brand)"> Rejected</label>
++              </fieldset>
++              <label style="display:flex;flex-direction:column;gap:6px">
++                <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NOTE</span>
++                <textarea name="note" rows="4" maxlength="4000" class="lotus-textarea" placeholder="Required unless accepted as is"></textarea>
++              </label>
++            </div>
++            <div class="lotus-modal-foot">
++              <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
++              <button type="submit" class="btn-lotus btn-lotus-primary">Sign off</button>
++            </div>
++          </form>
++        </div>
++      </dialog>
++    </div>
++    {{end}}
++  </div>
++  {{range $d.Signoffs}}
++  <div data-signoff-scope="{{.Scope}}" style="display:grid;grid-template-columns:minmax(0,1fr) 150px minmax(0,2fr);gap:10px;align-items:baseline;font-size:12.5px;padding:6px 0;border-top:1px solid var(--ink-100)">
++    <span style="color:#111827;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Scope}}</span>
++    <span>{{if .Decision}}<span class="lotus-badge lotus-badge-{{.Tone}}">{{.Label}}</span>{{else}}<span style="color:#9CA3AF">Not signed off</span>{{end}}</span>
++    <span style="min-width:0;display:flex;flex-direction:column;gap:2px">
++      {{if .Note}}<span style="color:#374151;white-space:pre-wrap">{{.Note}}</span>{{end}}
++      {{if .Decision}}<span style="font-size:11px;color:#6B7280">{{.SignedBy}} · {{.SignedAt}}</span>{{end}}
++    </span>
++  </div>
++  {{end}}
++{{template "lotus_card_section_close" .}}
++
++{{if $d.CanShare}}
++{{template "lotus_card_section_open" (dict "Padding" "14px" "Style" "margin-top:14px;display:flex;flex-direction:column;gap:10px")}}
++  <div style="display:flex;align-items:center;gap:10px">
++    <div style="display:flex;flex-direction:column;gap:2px">
++      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">SHARE</span>
++      <span style="font-size:11.5px;color:#6B7280">A link opens this plan's report without signing in: progress, open issues, sign-offs. No files, no editing.</span>
++    </div>
++    <div x-data="lotusModal('share')" style="display:contents">
++      <button type="button" class="btn-lotus btn-lotus-secondary" style="margin-left:auto" @click="open()">Create link…</button>
++      <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="share-title">
++        <div class="lotus-modal-head">
++          <div class="lotus-modal-title" id="share-title">Share the report</div>
++          <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
++            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
++          </button>
++        </div>
++        <div class="lotus-modal-form" id="share-body">
++          <form method="post" action="{{$d.Base}}/plans/{{$d.Plan.ID}}/share" hx-post="{{$d.Base}}/plans/{{$d.Plan.ID}}/share" hx-target="#share-body" hx-swap="innerHTML">
++            <div class="lotus-modal-body">
++              <p style="margin:0;font-size:12.5px;color:#374151">Anyone holding the link can read the report for 30 days. You can revoke it here at any time.</p>
++            </div>
++            <div class="lotus-modal-foot">
++              <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
++              <button type="submit" class="btn-lotus btn-lotus-primary">Create link</button>
++            </div>
++          </form>
++        </div>
++      </dialog>
++    </div>
++  </div>
++  {{range $d.Shares}}
++  <div style="display:flex;align-items:center;gap:10px;font-size:12.5px;padding:6px 0;border-top:1px solid var(--ink-100)">
++    <span style="color:#374151">Created {{.CreatedAt}} by {{.CreatedBy}}</span>
++    <span style="font-size:11px;color:#6B7280">expires {{.ExpiresOn}}</span>
++    <form method="post" action="{{$d.Base}}/plans/{{$d.Plan.ID}}/share/{{.ID}}/revoke" style="margin-left:auto">
++      <button type="submit" class="btn-lotus btn-lotus-secondary">Revoke</button>
++    </form>
++  </div>
++  {{end}}
++{{template "lotus_card_section_close" .}}
++{{end}}
++
+ {{template "shell_close" .}}
+ {{end}}
+diff --git a/web/templates/pages/qa_report.html b/web/templates/pages/qa_report.html
+new file mode 100644
+index 0000000..7a358d9
+--- /dev/null
++++ b/web/templates/pages/qa_report.html
+@@ -0,0 +1,70 @@
++{{define "content"}}
++{{$d := .Data}}
++{{/* The plan report, signed in or through a share link. Standalone (no
++     sidebar) so it prints as it reads. Deliberately no forms, no files and
++     no links into the app: a share link must open this and nothing more. */}}
++<style>
++  .qa-report { max-width: 880px; margin: 0 auto; padding: 32px 16px 48px; color: #111827; }
++  .qa-report h2 { margin: 26px 0 10px; font: 600 10.5px 'IBM Plex Mono', monospace; letter-spacing: .08em; color: var(--text-label); }
++  .qa-report-row { display: grid; gap: 10px; align-items: center; padding: 7px 0; border-top: 1px solid var(--ink-100); font-size: 12.5px; }
++  .qa-report * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
++  @media print {
++    .qa-report-noprint { display: none !important; }
++    .qa-report { padding: 0; max-width: none; }
++    .qa-report-row { break-inside: avoid; }
++  }
++</style>
++<main class="qa-report">
++  <header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px">
++    <div style="flex:1;min-width:220px">
++      <div style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">{{$d.ProjectName}} · Plan report</div>
++      <h1 style="margin:4px 0 0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Plan.Name}}</h1>
++      <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.PhaseLabel}}{{if $d.Plan.Environment}} · {{$d.Plan.Environment}}{{end}}{{if $d.Plan.Build}} · <span style="font-family:'IBM Plex Mono',monospace">{{$d.Plan.Build}}</span>{{end}}{{if $d.Window}} · {{$d.Window}}{{end}}{{if $d.Plan.ClosedAt}} · closed {{$d.Plan.ClosedAt.Format "02 Jan 2006"}}{{end}}</p>
++    </div>
++    <button type="button" class="btn-lotus btn-lotus-secondary qa-report-noprint" onclick="window.print()">Print</button>
++  </header>
++
++  <h2>PROGRESS</h2>
++  <div style="max-width:320px">{{template "qa_progress" $d.Progress}}</div>
++
++  <h2>SIGN-OFF</h2>
++  {{range $d.Signoffs}}
++  <div class="qa-report-row" style="grid-template-columns:minmax(0,1fr) 150px minmax(0,2fr);align-items:baseline">
++    <span style="font-weight:600">{{.Scope}}</span>
++    <span>{{if .Decision}}<span class="lotus-badge lotus-badge-{{.Tone}}">{{.Label}}</span>{{else}}<span style="color:#9CA3AF">Not signed off</span>{{end}}</span>
++    <span style="display:flex;flex-direction:column;gap:2px">
++      {{if .Note}}<span style="white-space:pre-wrap;color:#374151">{{.Note}}</span>{{end}}
++      {{if .Decision}}<span style="font-size:11px;color:#6B7280">{{.SignedBy}} · {{.SignedAt}}</span>{{end}}
++    </span>
++  </div>
++  {{end}}
++
++  <h2>SCENARIOS</h2>
++  {{range $d.Scenarios}}
++  <div class="qa-report-row" style="grid-template-columns:minmax(0,1fr) 110px 200px">
++    <span>{{.Name}}</span><span><span class="lotus-badge lotus-badge-none">{{.PhaseLabel}}</span></span>{{template "qa_progress" .Progress}}
++  </div>
++  {{else}}<p style="font-size:12.5px;color:#6B7280">No scenarios.</p>{{end}}
++
++  <h2>RUNS</h2>
++  {{range $d.Runs}}
++  <div class="qa-report-row" style="grid-template-columns:60px minmax(0,1fr) 200px">
++    <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">{{.Cycle}}</span>
++    <span>{{.Name}}{{if .Closed}} <span class="lotus-badge lotus-badge-none">closed</span>{{end}}</span>
++    {{template "qa_progress" .Progress}}
++  </div>
++  {{else}}<p style="font-size:12.5px;color:#6B7280">No runs yet.</p>{{end}}
++
++  <h2>OPEN ISSUES · {{len $d.Issues}}</h2>
++  {{range $d.Issues}}
++  <div class="qa-report-row" style="grid-template-columns:72px minmax(0,1fr) 90px 80px">
++    <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">BUG-{{.Key}}</span>
++    <span>{{.Title}}</span>
++    <span><span class="lotus-badge lotus-badge-{{.SeverityTone}}">{{.Severity}}</span></span>
++    <span style="font:500 11px 'IBM Plex Mono',monospace;color:#374151">{{.Status}}</span>
++  </div>
++  {{else}}<p style="font-size:12.5px;color:#6B7280">No open issues.</p>{{end}}
++
++  <p style="margin-top:28px;font-size:11px;color:#9CA3AF">Generated {{$d.Generated}}{{if $d.Shared}} · shared link, valid until {{$d.ExpiresOn}}{{end}} · Lotus</p>
++</main>
++{{end}}
