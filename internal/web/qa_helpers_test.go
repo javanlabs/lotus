@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -83,4 +84,10 @@ func (e qaEnv) post(t *testing.T, raw, path string, form url.Values, hx bool) (*
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	return resp, string(body)
+}
+
+// hasText reports whether body shows text, allowing for html/template's
+// escaping of apostrophes.
+func hasText(body, text string) bool {
+	return strings.Contains(body, text) || strings.Contains(body, strings.ReplaceAll(text, "'", "&#39;"))
 }

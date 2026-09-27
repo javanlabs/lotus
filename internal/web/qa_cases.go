@@ -20,6 +20,7 @@ const qaCasesPerPage = 100
 // qaTreeRow is one section in the library's tree, in display order.
 type qaTreeRow struct {
 	ID       uuid.UUID
+	ParentID *uuid.UUID
 	Name     string
 	Path     string // "Auth / Login"
 	Depth    int    // 0 at the top level
@@ -57,7 +58,7 @@ func qaSectionTree(sections []repo.QASection, counts map[uuid.UUID]int, includeA
 		path += s.Name
 		i := len(out)
 		out = append(out, qaTreeRow{
-			ID: s.ID, Name: s.Name, Path: path, Depth: depth, Archived: s.ArchivedAt != nil,
+			ID: s.ID, ParentID: s.ParentID, Name: s.Name, Path: path, Depth: depth, Archived: s.ArchivedAt != nil,
 			Active: active != nil && *active == s.ID,
 		})
 		total := counts[s.ID]
@@ -95,6 +96,37 @@ type qaCasesData struct {
 	PrevHref    string
 	NextHref    string
 	ArchiveHref string // the same view with the archived toggle flipped
+
+	// Write controls, shown only with qa.case.write.
+	CanWrite       bool
+	SectionOptions []httpx.SelectOption // every live section, for "inside" and bulk move
+	Active         *qaTreeRow           // the chosen section, for its edit dialog
+	ParentValue    string               // the chosen section's parent, "" at the top level
+	MoveOptions    []httpx.SelectOption // where the chosen section may move: never into itself or below
+}
+
+// qaSectionOptions are the tree's live sections as picker options, minus
+// skip and everything below it (when skip is set).
+func qaSectionOptions(tree []qaTreeRow, skip *uuid.UUID) []httpx.SelectOption {
+	out := []httpx.SelectOption{}
+	skipDepth := -1
+	for _, r := range tree {
+		if skipDepth >= 0 {
+			if r.Depth > skipDepth {
+				continue
+			}
+			skipDepth = -1
+		}
+		if skip != nil && r.ID == *skip {
+			skipDepth = r.Depth
+			continue
+		}
+		if r.Archived {
+			continue
+		}
+		out = append(out, httpx.SelectOption{Value: r.ID.String(), Label: r.Path, Name: r.Name, Depth: r.Depth})
+	}
+	return out
 }
 
 // casesURL is the library URL for a section, search, archived toggle and page.
@@ -186,6 +218,17 @@ func qaCasesPage(d Deps) fiber.Handler {
 			data.NextHref = casesURL(data.Base, data.SectionID, data.Query, data.Archived, data.Page+1)
 		}
 		data.ArchiveHref = casesURL(data.Base, data.SectionID, data.Query, !data.Archived, 1)
+		if mustPrincipal(c).Can("qa.case.write") {
+			data.CanWrite = true
+			data.SectionOptions = qaSectionOptions(data.Tree, nil)
+			for i := range data.Tree {
+				if data.Tree[i].Active && !data.Tree[i].Archived {
+					data.Active = &data.Tree[i]
+					data.ParentValue = uuidString(data.Tree[i].ParentID)
+					data.MoveOptions = qaSectionOptions(data.Tree, &data.Tree[i].ID)
+				}
+			}
+		}
 
 		org, user, err := shellChrome(c, d.DB)
 		if err != nil {

@@ -66,4 +66,9 @@ func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fibe
 		authz.Require("qa.read"), qaHome(d))
 	app.Get("/projects/:id/qa", qaRoute(requireSession, loadPrincipal, "qa.read", qaProjectPage(d))...)
 	app.Get("/projects/:id/qa/cases", qaRoute(requireSession, loadPrincipal, "qa.read", qaCasesPage(d))...)
+	app.Post("/projects/:id/qa/cases/move", qaRoute(requireSession, loadPrincipal, "qa.case.write", moveQACasesUI(d))...)
+	app.Post("/projects/:id/qa/sections", qaRoute(requireSession, loadPrincipal, "qa.case.write", createQASectionUI(d))...)
+	app.Post("/projects/:id/qa/sections/:sid/rename", qaRoute(requireSession, loadPrincipal, "qa.case.write", renameQASectionUI(d))...)
+	app.Post("/projects/:id/qa/sections/:sid/move", qaRoute(requireSession, loadPrincipal, "qa.case.write", moveQASectionUI(d))...)
+	app.Post("/projects/:id/qa/sections/:sid/archive", qaRoute(requireSession, loadPrincipal, "qa.case.write", archiveQASectionUI(d))...)
 }
