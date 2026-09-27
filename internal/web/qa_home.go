@@ -110,6 +110,8 @@ func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fibe
 	app.Post("/projects/:id/qa/runs/:rid/scenario", qaRoute(requireSession, loadPrincipal, "qa.case.write", saveQARunAsScenarioUI(d))...)
 	app.Get("/projects/:id/qa/files/:aid", qaRoute(requireSession, loadPrincipal, "qa.read", qaFileUI(d))...)
 	app.Get("/projects/:id/qa/issues", qaRoute(requireSession, loadPrincipal, "qa.read", qaIssuesPage(d))...)
+	app.Get("/projects/:id/qa/issues/new", qaRoute(requireSession, loadPrincipal, "qa.issue.report", newQAIssuePage(d))...)
+	app.Post("/projects/:id/qa/issues/new", qaRoute(requireSession, loadPrincipal, "qa.issue.report", createQAIssueUI(d))...)
 	app.Post("/projects/:id/qa/sections", qaRoute(requireSession, loadPrincipal, "qa.case.write", createQASectionUI(d))...)
 	app.Post("/projects/:id/qa/sections/:sid/rename", qaRoute(requireSession, loadPrincipal, "qa.case.write", renameQASectionUI(d))...)
 	app.Post("/projects/:id/qa/sections/:sid/move", qaRoute(requireSession, loadPrincipal, "qa.case.write", moveQASectionUI(d))...)

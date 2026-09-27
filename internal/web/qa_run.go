@@ -295,7 +295,9 @@ func humanSize(n int64) string {
 
 type qaItemPanelData struct {
 	Item         qaItemRow
-	MaxFileBytes int // the browser refuses larger files before sending
+	Issues       []qaIssueRow // issues linked to this item
+	ReportHref   string       // report an issue from it (qa.issue.report)
+	MaxFileBytes int          // the browser refuses larger files before sending
 	Action       string
 	History      []qaHistoryEntry
 	CanExecute   bool
@@ -320,6 +322,17 @@ func itemPanel(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, run 
 			Assignee: personLabel(labels, item.AssigneeID), Panel: url},
 		Action: url + "/result", CanExecute: mustPrincipal(c).Can("qa.execute") && run.ClosedAt == nil,
 		MaxFileBytes: repo.MaxQAAttachmentBytes,
+	}
+	if mustPrincipal(c).Can("qa.issue.report") {
+		data.ReportHref = qaBase(project) + "/issues/new?item=" + item.ID.String()
+	}
+	linked, err := repo.ListQAIssuesForItem(c.Context(), s, item.ID)
+	if err != nil {
+		return data, err
+	}
+	for _, is := range linked {
+		data.Issues = append(data.Issues, qaIssueRow{QAIssue: is, Href: fmt.Sprintf("%s/issues/%d", qaBase(project), is.Key),
+			SeverityTone: qaSeverityTone(is.Severity)})
 	}
 	results, err := repo.ListQAResults(c.Context(), s, item.ID)
 	if err != nil {
@@ -423,26 +436,11 @@ func recordQAResultUI(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		for _, fh := range files {
-			f, err := fh.Open()
-			if err != nil {
-				return err
-			}
-			// A browser that does not know the type says octet-stream; let
-			// SaveQAAttachment sniff it instead, so a screenshot shows inline.
-			ctype := fh.Header.Get("Content-Type")
-			if ctype == "application/octet-stream" {
-				ctype = ""
-			}
-			_, err = repo.SaveQAAttachment(c.Context(), s, d.Blob, repo.QAAttachmentOwner{ResultID: &result.ID},
-				fh.Filename, ctype, f, qaActor(c))
-			f.Close()
+		if err := saveQAFiles(c, d, s, repo.QAAttachmentOwner{ResultID: &result.ID}, files); err != nil {
 			if errors.Is(err, repo.ErrQAAttachmentTooLarge) {
 				return refuse(fiber.StatusUnprocessableEntity, "Each file can be at most 20 MB.")
 			}
-			if err != nil {
-				return err
-			}
+			return err
 		}
 		if c.Get("HX-Request") == "" {
 			return c.Redirect(runURL(project, run), fiber.StatusFound)

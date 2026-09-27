@@ -1,0 +1,65 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+
+<header style="margin-bottom:18px">
+  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">Report issue</h1>
+  <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Project.Name}}{{with $d.ItemLabel}} · from {{.}}{{end}}</p>
+</header>
+
+<form method="post" action="{{$d.Base}}/issues/new" enctype="multipart/form-data" style="display:flex;flex-direction:column;gap:14px;max-width:880px">
+  {{if $d.Error}}{{template "form_error" $d.Error}}{{end}}
+  {{with $d.ItemID}}<input type="hidden" name="item_id" value="{{.}}">{{end}}
+  {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:14px")}}
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">TITLE</span>
+      <input type="text" name="title" required maxlength="500" value="{{$d.Title}}" placeholder="Submit returns 500 on the RFS form" class="lotus-input">
+    </label>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">SEVERITY</span>
+        {{template "lotus_select" (dict "Name" "severity" "ID" "issue-severity" "Value" $d.Severity "Label" "Severity" "Options" (selectOptions $d.SeverityOptions))}}
+      </label>
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">ENVIRONMENT</span>
+        <input type="text" name="environment" maxlength="200" value="{{$d.Environment}}" placeholder="UAT" class="lotus-input">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PLAN</span>
+        {{template "lotus_select" (dict "Name" "plan_id" "ID" "issue-plan" "Value" $d.PlanID "Label" "Plan" "Options" (selectOptions $d.PlanOptions))}}
+      </label>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">SECTION</span>
+        {{template "lotus_select" (dict "Name" "section_id" "ID" "issue-section" "Value" $d.SectionID "Label" "Section" "Options" (selectOptions $d.SectionOptions))}}
+      </label>
+      {{if $d.CanAssign}}
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">ASSIGNEE</span>
+        {{template "lotus_select" (dict "Name" "assignee_id" "ID" "issue-assignee" "Value" $d.AssigneeID "Label" "Assignee" "Options" (selectOptions $d.PeopleOptions))}}
+      </label>
+      {{end}}
+    </div>
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">STEPS TO REPRODUCE</span>
+      <textarea name="steps_to_reproduce" rows="5" class="lotus-textarea">{{$d.StepsToReproduce}}</textarea>
+    </label>
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">DESCRIPTION</span>
+      <textarea name="description" rows="4" class="lotus-textarea" placeholder="What happened, what was expected">{{$d.Description}}</textarea>
+    </label>
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">FILES</span>
+      <input type="file" name="file" multiple class="lotus-input" aria-label="Attach files">
+      <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">up to 20 MB per file</span>
+    </label>
+  {{template "lotus_card_section_close" .}}
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <a href="{{$d.Base}}/issues" class="btn-lotus btn-lotus-secondary">Cancel</a>
+    <button type="submit" class="btn-lotus btn-lotus-primary">Report issue</button>
+  </div>
+</form>
+
+{{template "shell_close" .}}
+{{end}}
