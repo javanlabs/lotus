@@ -153,7 +153,7 @@ func TestQACases_WriteControlsOnlyForWriters(t *testing.T) {
 	path := "/projects/" + p.String() + "/qa/cases?section=" + auth.ID.String()
 
 	_, body := e.get(t, e.owner, path)
-	for _, want := range []string{"New section", "Edit section…", `name="case_id"`, "Move to section…", `action="/projects/` + p.String() + `/qa/sections/` + auth.ID.String() + `/archive"`} {
+	for _, want := range []string{"/qa/cases/new?section=" + auth.ID.String(), "New section", "Edit section…", `name="case_id"`, "Move to section…", `action="/projects/` + p.String() + `/qa/sections/` + auth.ID.String() + `/archive"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("owner page missing %q", want)
 		}
@@ -166,7 +166,7 @@ func TestQACases_WriteControlsOnlyForWriters(t *testing.T) {
 	}
 
 	_, body = e.get(t, viewer, path)
-	for _, gone := range []string{"New section", "Edit section…", `name="case_id"`, "Move to section…"} {
+	for _, gone := range []string{"/qa/cases/new", "New section", "Edit section…", `name="case_id"`, "Move to section…"} {
 		if strings.Contains(body, gone) {
 			t.Fatalf("viewer sees %q", gone)
 		}

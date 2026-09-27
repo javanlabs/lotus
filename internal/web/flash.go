@@ -56,6 +56,10 @@ var flashMessages = map[string]struct {
 	"qa.section.moved":    {"pass", "Section %s moved"},
 	"qa.section.archived": {"pass", "Section %s archived"},
 	"qa.cases.moved":      {"pass", "%s cases moved"},
+	"qa.case.created":     {"pass", "%s created"},
+	"qa.case.saved":       {"pass", "%s saved"},
+	"qa.case.archived":    {"pass", "%s archived"},
+	"qa.case.restored":    {"pass", "%s restored"},
 }
 
 // setFlash records a message for the next render. Call it immediately

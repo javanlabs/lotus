@@ -693,3 +693,35 @@ document.addEventListener("htmx:load", (e) => {
     initSparkline(chart);
   });
 });
+
+// qaSteps drives the case editor's step list (pages/qa_case.html). The
+// saved steps arrive as JSON in a <script type="application/json"> island
+// — html/template encodes them for that context, so markup in a step can
+// never close the script — and each row posts step_action/step_expected,
+// which the server pairs by position. There is always at least one row.
+function qaSteps(sourceId) {
+  let next = 0;
+  const row = (s) => ({ id: next++, action: (s && s.action) || "", expected: (s && s.expected) || "" });
+  return {
+    steps: [],
+    init() {
+      const el = document.getElementById(sourceId);
+      const saved = el ? JSON.parse(el.textContent || "[]") : [];
+      this.steps = (saved || []).map(row);
+      if (this.steps.length === 0) this.add();
+    },
+    add() {
+      this.steps.push(row());
+    },
+    remove(i) {
+      this.steps.splice(i, 1);
+      if (this.steps.length === 0) this.add();
+    },
+    move(i, delta) {
+      const j = i + delta;
+      if (j < 0 || j >= this.steps.length) return;
+      const [s] = this.steps.splice(i, 1);
+      this.steps.splice(j, 0, s);
+    },
+  };
+}

@@ -15,6 +15,8 @@ var funcMap = template.FuncMap{
 	// selectOptions normalizes the argument shapes a dropdown's option
 	// list arrives in — see the function below.
 	"selectOptions": selectOptions,
+	// inc turns a range index into a 1-based position ("Step 1").
+	"inc": func(i int) int { return i + 1 },
 	// ternary picks yes/no by cond — for a one-line tone/class choice
 	// inline in an attribute value, where {{if}}...{{else}}...{{end}} is
 	// too heavy a construct for the surrounding markup to read cleanly.

@@ -1,0 +1,102 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+
+<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
+  <div style="flex:1;min-width:220px">
+    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{if $d.Case}}<span style="font-family:'IBM Plex Mono',monospace;font-weight:600;color:#9E2B47">TC-{{$d.Case.Key}}</span> {{$d.Case.Title}}{{else}}New case{{end}}</h1>
+    {{with $d.Case}}<p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.SectionPath}} · Version {{.Version}} · updated {{.UpdatedAt.Format "02 Jan 2006"}}{{if .ArchivedAt}} · archived{{end}}</p>{{end}}
+  </div>
+  {{if and $d.Case $d.CanWrite}}
+  <form method="post" action="{{$d.Action}}/{{if $d.Case.ArchivedAt}}restore{{else}}archive{{end}}">
+    <button type="submit" class="btn-lotus btn-lotus-secondary">{{if $d.Case.ArchivedAt}}Restore{{else}}Archive{{end}}</button>
+  </form>
+  {{end}}
+</header>
+
+{{if $d.CanWrite}}
+<form method="post" action="{{$d.Action}}" style="display:flex;flex-direction:column;gap:14px;max-width:880px">
+  {{if $d.Error}}{{template "form_error" $d.Error}}{{end}}
+  {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:14px")}}
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">TITLE</span>
+      <input type="text" name="title" required maxlength="500" value="{{$d.Title}}" placeholder="Login with valid credentials" class="lotus-input">
+    </label>
+    <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:14px;align-items:end">
+      <label style="display:flex;flex-direction:column;gap:6px;min-width:0">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">SECTION</span>
+        {{template "lotus_select" (dict "Name" "section_id" "ID" "case-section" "Value" $d.SectionID "Label" "Section" "Options" (selectOptions $d.SectionOptions))}}
+      </label>
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PRIORITY</span>
+        {{template "lotus_select" (dict "Name" "priority" "ID" "case-priority" "Value" $d.Priority "Label" "Priority" "Options" (selectOptions $d.PriorityOpts))}}
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#374151;padding-bottom:9px">
+        <input type="checkbox" name="negative" value="1"{{if $d.Negative}} checked{{end}} style="accent-color:var(--text-brand)"> Negative case
+      </label>
+    </div>
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PRECONDITION</span>
+      <textarea name="precondition" rows="2" class="lotus-textarea" placeholder="A registered user with a verified email">{{$d.Precondition}}</textarea>
+    </label>
+  {{template "lotus_card_section_close" .}}
+
+  {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:10px")}}
+    <script type="application/json" id="qa-steps-data">{{$d.Steps}}</script>
+    <div x-data="qaSteps('qa-steps-data')" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1fr) 84px;gap:10px;font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">
+        <span>#</span><span>STEP</span><span>EXPECTED</span><span></span>
+      </div>
+      <template x-for="(step, i) in steps" :key="step.id">
+        <div style="display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1fr) 84px;gap:10px;align-items:start" data-step-row>
+          <span style="font:500 11px 'IBM Plex Mono',monospace;color:#9CA3AF;padding-top:9px" x-text="i + 1"></span>
+          <textarea name="step_action" rows="2" class="lotus-textarea" x-model="step.action" :aria-label="'Step ' + (i + 1)"></textarea>
+          <textarea name="step_expected" rows="2" class="lotus-textarea" x-model="step.expected" :aria-label="'Expected result ' + (i + 1)"></textarea>
+          <span style="display:flex;gap:4px;padding-top:4px">
+            <button type="button" class="lotus-row-action" @click="move(i, -1)" :disabled="i === 0" aria-label="Move step up"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="transform:rotate(180deg)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 9s-4.419 6-6 6s-6-6-6-6"></path></svg></button>
+            <button type="button" class="lotus-row-action" @click="move(i, 1)" :disabled="i === steps.length - 1" aria-label="Move step down"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 9s-4.419 6-6 6s-6-6-6-6"></path></svg></button>
+            <button type="button" class="lotus-row-action" @click="remove(i)" aria-label="Remove step">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="transform:rotate(45deg)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+            </button>
+          </span>
+        </div>
+      </template>
+      <div><button type="button" class="btn-lotus btn-lotus-secondary" @click="add()">Add step</button></div>
+    </div>
+  {{template "lotus_card_section_close" .}}
+
+  {{template "lotus_card_section_open" (dict "Padding" "18px")}}
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NOTES</span>
+      <textarea name="notes" rows="3" class="lotus-textarea" placeholder="Links, test data, anything a tester needs">{{$d.Notes}}</textarea>
+    </label>
+  {{template "lotus_card_section_close" .}}
+
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <a href="{{$d.Base}}/cases" class="btn-lotus btn-lotus-secondary">Cancel</a>
+    <button type="submit" class="btn-lotus btn-lotus-primary">{{if $d.Case}}Save{{else}}Create case{{end}}</button>
+  </div>
+</form>
+{{else}}
+{{with $d.Case}}
+<div style="display:flex;flex-direction:column;gap:14px;max-width:880px">
+  {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:10px;font-size:12.5px;color:#374151")}}
+    <div><span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PRIORITY</span> {{if .Priority}}{{.Priority}}{{else}}—{{end}}{{if .Negative}} · negative{{end}}</div>
+    {{if .Precondition}}<div><div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:4px">PRECONDITION</div><div style="white-space:pre-wrap">{{.Precondition}}</div></div>{{end}}
+  {{template "lotus_card_section_close" .}}
+  {{template "lotus_card_section_open" (dict "Padding" "4px")}}
+    <div class="lotus-table-head" style="grid-template-columns:28px minmax(0,1fr) minmax(0,1fr);gap:10px"><div>#</div><div>STEP</div><div>EXPECTED</div></div>
+    {{range $i, $s := .Steps}}
+    <div style="display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1fr);gap:10px;padding:8px 14px;border-bottom:1px solid #F3F4F6;font-size:12.5px;color:#111827">
+      <span style="font:500 11px 'IBM Plex Mono',monospace;color:#9CA3AF">{{inc $i}}</span>
+      <span style="white-space:pre-wrap">{{$s.Action}}</span><span style="white-space:pre-wrap">{{$s.Expected}}</span>
+    </div>
+    {{else}}<p style="margin:0;padding:18px 14px;color:#9CA3AF;font-size:12.5px">No steps.</p>{{end}}
+  {{template "lotus_card_section_close" .}}
+  {{if .Notes}}{{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "font-size:12.5px;color:#374151;white-space:pre-wrap")}}{{.Notes}}{{template "lotus_card_section_close" .}}{{end}}
+</div>
+{{end}}
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}
