@@ -9,7 +9,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
-	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/jmoiron/sqlx"
 
@@ -73,7 +72,7 @@ func New(d Deps) *fiber.App {
 		BodyLimit: 25 << 20,
 	})
 	app.Use(recover.New())
-	app.Use(logger.New())
+	app.Use(requestLogger(nil))
 	// Every route below this line is guaranteed to run after the
 	// resolver — task 1.5's "no route before resolver + auth middleware"
 	// invariant holds structurally, by nothing being registered above it.
