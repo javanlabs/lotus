@@ -42,6 +42,7 @@
             <input type="checkbox" name="scenario_id" value="{{.ID}}"{{if .Checked}} checked{{end}} style="accent-color:var(--text-brand)">
             <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
             <span class="lotus-badge lotus-badge-none">{{.PhaseLabel}}</span>
+            {{if .Archived}}<span style="font-size:11px;color:#6B7280">archived · not used in new runs</span>{{end}}
           </label>
           {{end}}
         </div>

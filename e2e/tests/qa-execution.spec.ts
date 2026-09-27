@@ -71,3 +71,26 @@ test('a run is created, executed from the keyboard, and its failure retested', a
     await retireOrg(orgId);
   }
 });
+
+test('a file over the limit is refused in the browser with a message, and nothing is recorded', async ({ page, context }) => {
+  const { sessionToken, subdomain, orgId } = await seedOwnerSession('qa-exec-big-e2e', 'placeholder');
+  const origin = tenantOrigin(subdomain);
+  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+  const { projectId, planId } = await seedPlan(orgId);
+
+  try {
+    await page.goto(`${origin}/projects/${projectId}/qa/plans/${planId}/runs/new`);
+    await page.getByRole('button', { name: 'Create run' }).click();
+    const row = page.locator('[data-item-row]').first();
+    await row.getByRole('button').first().click();
+    const panel = row.locator('[id^="panel-"]');
+    await panel.getByLabel('Pass').check();
+    // 26 MB: past the server's 25 MB request limit, so only the browser can say why.
+    await panel.getByLabel('Attach files').setInputFiles({ name: 'screen.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(26 << 20) });
+    await panel.getByRole('button', { name: 'Record result' }).click();
+    await expect(panel.getByText('screen.mp4 is over 20 MB. Each file can be at most 20 MB.')).toBeVisible();
+    await expect(row.locator('[id^="item-status-"]')).toHaveText('untested');
+  } finally {
+    await retireOrg(orgId);
+  }
+});

@@ -18,9 +18,14 @@ Restart=on-failure
 RestartSec=5
 LimitNOFILE=65535
 
-# Hardening. The binary is self-contained — templates and static assets are
-# //go:embed'ed and all state lives in Postgres — so it needs no writable
-# path of its own at all.
+# Hardening. Templates and static assets are //go:embed'ed and records live
+# in Postgres. The one writable path is the blob store for uploaded files
+# (QA attachments): systemd creates /var/lib/lotuscheck owned by the
+# service user and exempts it from ProtectSystem=strict. The rendered env
+# points LOTUS_BLOB_DIR at /var/lib/lotuscheck/blob; back that directory up
+# with the database.
+StateDirectory=lotuscheck
+StateDirectoryMode=0750
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

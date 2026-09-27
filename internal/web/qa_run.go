@@ -294,13 +294,14 @@ func humanSize(n int64) string {
 }
 
 type qaItemPanelData struct {
-	Item       qaItemRow
-	Action     string
-	History    []qaHistoryEntry
-	CanExecute bool
-	Error      string
-	Progress   qaRunProgressData
-	OOB        bool // also refresh the row status and the progress header
+	Item         qaItemRow
+	MaxFileBytes int // the browser refuses larger files before sending
+	Action       string
+	History      []qaHistoryEntry
+	CanExecute   bool
+	Error        string
+	Progress     qaRunProgressData
+	OOB          bool // also refresh the row status and the progress header
 }
 
 func itemPanel(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, run *repo.QARun, item *repo.QARunItem) (qaItemPanelData, error) {
@@ -318,6 +319,7 @@ func itemPanel(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, run 
 		Item: qaItemRow{QARunItem: *item, Key: ref.Key, Changed: ref.Version > item.CaseVersion, Tone: qaStatusTone(item.Status),
 			Assignee: personLabel(labels, item.AssigneeID), Panel: url},
 		Action: url + "/result", CanExecute: mustPrincipal(c).Can("qa.execute") && run.ClosedAt == nil,
+		MaxFileBytes: repo.MaxQAAttachmentBytes,
 	}
 	results, err := repo.ListQAResults(c.Context(), s, item.ID)
 	if err != nil {

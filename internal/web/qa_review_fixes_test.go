@@ -152,3 +152,28 @@ func TestQACaseImport_ConfirmPostsMultipart(t *testing.T) {
 		t.Fatalf("multipart confirm = %v %v %s", resp.StatusCode, err, out)
 	}
 }
+
+// Phase 5 final review, Important 2: editing a plan must not drop an
+// archived scenario it holds, and runs leave archived scenarios out, as
+// they leave archived cases out.
+func TestQAPlans_ArchivedScenarioStaysOnEditAndRunsSkipIt(t *testing.T) {
+	r := newQARunEnv(t, "acme-rf-archscen")
+	ctx := context.Background()
+	scs := mustPlanScenarios(t, r.qaEnv, r.plan.ID)
+	repo.ArchiveQAScenario(ctx, r.s, scs[0])
+	path := r.base + "/plans/" + r.plan.ID.String()
+
+	_, body := r.get(t, r.member, path)
+	if !strings.Contains(body, `value="`+scs[0].String()+`" checked`) || !strings.Contains(body, "archived") {
+		t.Fatal("the edit form does not keep the plan's archived scenario ticked")
+	}
+	// The form as the browser sends it: the archived scenario still ticked.
+	r.post(t, r.member, path, url.Values{"name": {"Regression October, renamed"}, "phase": {"regression"}, "scenario_id": {scs[0].String()}}, true)
+	if got := mustPlanScenarios(t, r.qaEnv, r.plan.ID); len(got) != 1 {
+		t.Fatalf("plan scenarios after a rename = %v; want the archived one kept", got)
+	}
+	p, err := repo.PreviewQARun(ctx, r.s, r.plan.ID, repo.QARunInput{})
+	if err != nil || p.Cases != 0 {
+		t.Fatalf("preview over an archived scenario = %+v, %v; want no cases", p, err)
+	}
+}

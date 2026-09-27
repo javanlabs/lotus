@@ -740,3 +740,45 @@ function qaResultKeys(e) {
   radio.checked = true;
   radio.focus();
 }
+
+// Upload size, in the browser. A form carrying data-max-file-bytes (the
+// run item's result form) is checked before htmx sends it: a file over the
+// limit cancels the request and says which one, in the form's
+// [data-upload-error] slot. Past the server's request limit the server
+// cannot answer with a message of its own (it refuses the body with 413
+// before any handler runs, and htmx does not swap error responses), so the
+// 413 handler below says the same thing if a request gets through anyway.
+(function () {
+  const slot = (form) => form && form.querySelector("[data-upload-error]");
+  const say = (form, text) => {
+    const el = slot(form);
+    if (el) {
+      el.textContent = text;
+      el.hidden = !text;
+    }
+  };
+  const limitText = (form) => {
+    const mb = Math.round(Number(form.dataset.maxFileBytes) / (1 << 20));
+    return `Each file can be at most ${mb} MB.`;
+  };
+  document.addEventListener("htmx:beforeRequest", (e) => {
+    const form = e.detail && e.detail.elt;
+    if (!form || !form.dataset || !form.dataset.maxFileBytes) return;
+    const max = Number(form.dataset.maxFileBytes);
+    for (const input of form.querySelectorAll('input[type="file"]')) {
+      for (const f of input.files || []) {
+        if (f.size > max) {
+          e.preventDefault();
+          say(form, `${f.name} is over ${Math.round(max / (1 << 20))} MB. ${limitText(form)}`);
+          return;
+        }
+      }
+    }
+    say(form, "");
+  });
+  document.addEventListener("htmx:responseError", (e) => {
+    const form = e.detail && e.detail.elt;
+    if (!form || !form.dataset || !form.dataset.maxFileBytes) return;
+    if (e.detail.xhr && e.detail.xhr.status === 413) say(form, `The upload is too large. ${limitText(form)}`);
+  });
+})();

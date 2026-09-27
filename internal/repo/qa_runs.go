@@ -106,8 +106,9 @@ func validQADistribution(in QARunInput) error {
 }
 
 // qaRunSources is the cases a run of planID over scenarioIDs (empty: all
-// the plan's scenarios) would hold, in run order: live cases only, each
-// once, grouped by scenario and group.
+// the plan's scenarios) would hold, in run order: live scenarios and live
+// cases only, each case once, grouped by scenario and group. Asking for an
+// archived or foreign scenario is ErrInvalidInput.
 func qaRunSources(ctx context.Context, tx *sqlx.Tx, planID uuid.UUID, scenarioIDs []uuid.UUID) ([]runSource, error) {
 	var planScenarios []struct {
 		ID   uuid.UUID `db:"id"`
@@ -115,7 +116,7 @@ func qaRunSources(ctx context.Context, tx *sqlx.Tx, planID uuid.UUID, scenarioID
 	}
 	if err := tx.SelectContext(ctx, &planScenarios, `
 		SELECT sc.id, sc.name FROM qa_plan_scenarios ps JOIN qa_scenarios sc ON sc.id = ps.scenario_id
-		WHERE ps.plan_id = $1 ORDER BY lower(sc.name)`, planID); err != nil {
+		WHERE ps.plan_id = $1 AND sc.archived_at IS NULL ORDER BY lower(sc.name)`, planID); err != nil {
 		return nil, err
 	}
 	wanted := map[uuid.UUID]bool{}

@@ -52,12 +52,15 @@ type qaPlanScenarioOption struct {
 	Name       string
 	PhaseLabel string
 	Checked    bool
+	Archived   bool
 }
 
 // qaPlanScenarioOptions lists the project's live scenarios for the form,
-// ticking the ones in chosen.
+// ticking the ones in chosen. An archived scenario is listed only when it
+// is chosen: the plan still holds it, and a save must not drop it silently
+// (runs skip it; unticking it removes it).
 func qaPlanScenarioOptions(c *fiber.Ctx, s tenant.Scope, project *repo.Project, chosen []uuid.UUID) ([]qaPlanScenarioOption, error) {
-	list, err := repo.ListQAScenarios(c.Context(), s, project.ID, false)
+	list, err := repo.ListQAScenarios(c.Context(), s, project.ID, true)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +70,11 @@ func qaPlanScenarioOptions(c *fiber.Ctx, s tenant.Scope, project *repo.Project, 
 	}
 	out := make([]qaPlanScenarioOption, 0, len(list))
 	for _, sc := range list {
-		out = append(out, qaPlanScenarioOption{ID: sc.ID, Name: sc.Name, PhaseLabel: qaPhaseLabels[sc.Phase], Checked: on[sc.ID]})
+		if sc.ArchivedAt != nil && !on[sc.ID] {
+			continue
+		}
+		out = append(out, qaPlanScenarioOption{ID: sc.ID, Name: sc.Name, PhaseLabel: qaPhaseLabels[sc.Phase],
+			Checked: on[sc.ID], Archived: sc.ArchivedAt != nil})
 	}
 	return out, nil
 }

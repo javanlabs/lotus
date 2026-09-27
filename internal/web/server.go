@@ -66,7 +66,9 @@ func New(d Deps) *fiber.App {
 		// QA attachments go up to repo.MaxQAAttachmentBytes (20 MB) per
 		// file; Fiber's 4 MB default would refuse them before any handler
 		// could say why. The margin covers the multipart envelope and a
-		// comment beside the file.
+		// comment beside the file. The body is read whole before any
+		// middleware runs, so in production nginx keeps every other route
+		// at 4m (deploy/nginx-lotuscheck.conf).
 		BodyLimit: 25 << 20,
 	})
 	app.Use(recover.New())
