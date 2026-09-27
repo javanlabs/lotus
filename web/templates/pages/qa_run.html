@@ -6,9 +6,19 @@
   <div style="flex:1;min-width:220px">
     <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Run.Name}}</h1>
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Plan.Name}} · {{$d.PhaseLabel}} · cycle {{$d.Run.Cycle}}{{if $d.Plan.Environment}} · {{$d.Plan.Environment}}{{end}}{{if $d.Run.ClosedAt}} · closed {{$d.Run.ClosedAt.Format "02 Jan 2006"}}{{end}}</p>
+    {{if $d.RetestOf}}<p style="margin:4px 0 0;font-size:12px;color:#6B7280">retest of <a href="{{$d.RetestHref}}" style="color:#43284E">{{$d.RetestOf}}</a></p>{{end}}
     {{if $d.Run.Notes}}<p style="margin:6px 0 0;font-size:12px;color:#374151;white-space:pre-wrap">{{$d.Run.Notes}}</p>{{end}}
   </div>
+  {{if and $d.CanManage (not $d.Run.ClosedAt)}}
+  <form method="post" action="{{$d.URL}}/retest" hx-post="{{$d.URL}}/retest" hx-target="#run-error" hx-swap="innerHTML">
+    <button type="submit" class="btn-lotus btn-lotus-secondary">Retest failed &amp; blocked</button>
+  </form>
+  <form method="post" action="{{$d.URL}}/close">
+    <button type="submit" class="btn-lotus btn-lotus-secondary">Close run</button>
+  </form>
+  {{end}}
 </header>
+<div id="run-error" style="margin-bottom:10px;max-width:760px"></div>
 
 {{template "lotus_card_section_open" (dict "Padding" "14px" "Style" "margin-bottom:14px")}}
   {{template "qa_run_progress" $d.Progress}}
@@ -20,15 +30,26 @@
     <div style="width:150px">{{template "lotus_select" (dict "Name" "status" "ID" "run-status" "Value" $d.Status "Label" "Status" "Size" "sm" "AutoSubmit" true "Options" (selectOptions (dict "Value" "" "Label" "Any status") (dict "Value" "untested" "Label" "untested") (dict "Value" "passed" "Label" "passed") (dict "Value" "failed" "Label" "failed") (dict "Value" "blocked" "Label" "blocked") (dict "Value" "skipped" "Label" "skipped")))}}</div>
     <span style="margin-left:auto;font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{$d.Shown}} shown</span>
   </form>
+  {{if $d.CanManage}}
+  <form id="assign-items" method="post" action="{{$d.URL}}/assign" hx-post="{{$d.URL}}/assign" hx-target="#run-error" hx-swap="innerHTML"
+        style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:0 10px 8px">
+    <span style="font-size:12px;color:#6B7280">Give the ticked items to</span>
+    <div style="width:220px">{{template "lotus_select" (dict "Name" "assignee_id" "ID" "assign-who" "Value" "" "Label" "Assignee" "Size" "sm" "Options" (selectOptions $d.People))}}</div>
+    <button type="submit" class="btn-lotus btn-lotus-secondary">Assign</button>
+  </form>
+  {{end}}
   {{range $g := $d.Groups}}
   {{if $g.Items}}
-  <details open>
+  <details open x-data>
     <summary class="lotus-table-head" style="display:flex;align-items:center;gap:12px;cursor:pointer">
+      {{if $d.CanManage}}<input type="checkbox" aria-label="Select the whole group" @click.stop @change="$el.closest('details').querySelectorAll('input[name=item_id]').forEach(b => b.checked = $el.checked)" style="accent-color:var(--text-brand)">{{end}}
       <span style="flex:1">{{if $g.Name}}{{$g.Name}}{{else}}CASES{{end}}</span>
       <span style="width:170px">{{template "qa_progress" $g.Progress}}</span>
     </summary>
     {{range $g.Items}}
-    <div data-item-row x-data="{ open: false }">
+    <div data-item-row x-data="{ open: false }" style="display:flex;align-items:stretch">
+      {{if $d.CanManage}}<span class="lotus-row-select" style="padding-left:14px"><input type="checkbox" name="item_id" value="{{.ID}}" form="assign-items" aria-label="Select TC-{{.Key}}"></span>{{end}}
+      <div style="flex:1;min-width:0">
       <button type="button" class="lotus-repo-row" @click="open = !open" :aria-expanded="open"
               hx-get="{{.Panel}}" hx-trigger="click once" hx-target="#panel-{{.ID}}"
               style="display:grid;grid-template-columns:64px minmax(0,1fr) 160px 90px;gap:10px;align-items:center;padding:0 14px;width:100%;border:none;background:none;text-align:left;cursor:pointer">
@@ -38,6 +59,7 @@
         {{template "qa_status" (dict "Status" .Status "Tone" .Tone "ID" (printf "item-status-%s" .ID))}}
       </button>
       <div id="panel-{{.ID}}" x-show="open" x-cloak></div>
+      </div>
     </div>
     {{end}}
   </details>

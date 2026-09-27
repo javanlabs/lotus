@@ -132,6 +132,12 @@ type qaRunData struct {
 	GroupNames []string
 	CanExecute bool
 	URL        string
+
+	// Managing the run (qa.plan.write): assignment, retest, close.
+	CanManage  bool
+	People     []httpx.SelectOption
+	RetestOf   string
+	RetestHref string
 }
 
 // runProgress is the header: overall, then each assignee (unassigned last).
@@ -180,6 +186,22 @@ func qaRunPage(d Deps) fiber.Handler {
 			CanExecute: mustPrincipal(c).Can("qa.execute") && run.ClosedAt == nil, URL: runURL(project, run)}
 		if data.Progress, err = runProgress(c, s, run, labels); err != nil {
 			return writeRepoErr(c, err)
+		}
+		if run.RetestOf != nil {
+			if orig, err := repo.GetQARun(c.Context(), s, *run.RetestOf); err == nil {
+				data.RetestOf, data.RetestHref = orig.Name, runURL(project, orig)
+			}
+		}
+		if mustPrincipal(c).Can("qa.plan.write") {
+			data.CanManage = true
+			people, err := qaPeople(c, d, s, project)
+			if err != nil {
+				return writeRepoErr(c, err)
+			}
+			data.People = []httpx.SelectOption{{Value: "", Label: "Nobody"}}
+			for _, p := range people {
+				data.People = append(data.People, httpx.SelectOption{Value: p.ID.String(), Label: p.Label})
+			}
 		}
 		items, err := repo.ListQARunItems(c.Context(), s, run.ID, repo.QAItemFilter{})
 		if err != nil {
