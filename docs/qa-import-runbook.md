@@ -88,6 +88,15 @@ accordingly. Copying 2.8 GB of attachments adds to the import time: measure
 it in the rehearsal with `--files-dir` and add it to the read-only window
 below.
 
+**Before cut-over, rehearse once more with `--files-dir`.** The 2026-09
+rehearsal skipped every file, so the MinIO path format, missing-file handling
+and the time to copy 2.8 GB have not been exercised on real data, and
+`verify` does not count attachments or issue links. Check the report by hand:
+`attachments` must show no "files not requested", and imported + "file
+missing" + "owner not imported" must equal the legacy file count
+(12,734 in the 2026-09 dump). Look into every "file missing" warning before
+going further.
+
 The report of the rehearsal import is kept as evidence in
 `docs/qa-import/rehearsal-2026-09.json`.
 

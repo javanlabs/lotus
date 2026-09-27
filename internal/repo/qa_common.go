@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/uyab/lotus/internal/tenant"
 )
 
 const (
@@ -113,6 +116,18 @@ func sectionInProject(ctx context.Context, tx *sqlx.Tx, sectionID, projectID uui
 	return nil
 }
 
+func planInProject(ctx context.Context, tx *sqlx.Tx, planID, projectID uuid.UUID) error {
+	var ok bool
+	if err := tx.GetContext(ctx, &ok,
+		`SELECT EXISTS (SELECT 1 FROM qa_plans WHERE id = $1 AND project_id = $2)`, planID, projectID); err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func qaWriteErr(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
@@ -129,4 +144,57 @@ func qaWriteErr(err error) error {
 		return ErrNotFound
 	}
 	return err
+}
+
+// QAKind names a QA row type for QAProjectOf.
+type QAKind string
+
+const (
+	QAKindSection       QAKind = "section"
+	QAKindCase          QAKind = "case"
+	QAKindScenario      QAKind = "scenario"
+	QAKindScenarioGroup QAKind = "scenario_group"
+	QAKindPlan          QAKind = "plan"
+	QAKindRun           QAKind = "run"
+	QAKindItem          QAKind = "item"
+	QAKindResult        QAKind = "result"
+	QAKindIssue         QAKind = "issue"
+	QAKindEvent         QAKind = "issue_event"
+)
+
+// qaProjectOfQueries resolve one row's project. Each takes the row id as $1.
+var qaProjectOfQueries = map[QAKind]string{
+	QAKindSection:       `SELECT project_id FROM qa_sections WHERE id = $1`,
+	QAKindCase:          `SELECT project_id FROM qa_cases WHERE id = $1`,
+	QAKindScenario:      `SELECT project_id FROM qa_scenarios WHERE id = $1`,
+	QAKindScenarioGroup: `SELECT sc.project_id FROM qa_scenario_groups g JOIN qa_scenarios sc ON sc.id = g.scenario_id WHERE g.id = $1`,
+	QAKindPlan:          `SELECT project_id FROM qa_plans WHERE id = $1`,
+	QAKindRun:           `SELECT p.project_id FROM qa_runs r JOIN qa_plans p ON p.id = r.plan_id WHERE r.id = $1`,
+	QAKindItem: `SELECT p.project_id FROM qa_run_items i JOIN qa_runs r ON r.id = i.run_id
+		JOIN qa_plans p ON p.id = r.plan_id WHERE i.id = $1`,
+	QAKindResult: `SELECT p.project_id FROM qa_results res JOIN qa_run_items i ON i.id = res.item_id
+		JOIN qa_runs r ON r.id = i.run_id JOIN qa_plans p ON p.id = r.plan_id WHERE res.id = $1`,
+	QAKindIssue: `SELECT project_id FROM qa_issues WHERE id = $1`,
+	QAKindEvent: `SELECT iss.project_id FROM qa_issue_events e JOIN qa_issues iss ON iss.id = e.issue_id WHERE e.id = $1`,
+}
+
+// QAProjectOf returns the project a QA row belongs to. RLS confines every
+// query to the organization, not to a project, and the by-id functions in
+// this package look rows up by id alone; a handler serving
+// /projects/:id/qa/... must compare this against :id (and answer 404 on a
+// mismatch) for every id it takes from the URL or the form.
+// Attachments have their own resolver, QAAttachmentProjectID.
+func QAProjectOf(ctx context.Context, s tenant.Scope, kind QAKind, id uuid.UUID) (uuid.UUID, error) {
+	q, ok := qaProjectOfQueries[kind]
+	if !ok {
+		return uuid.Nil, ErrInvalidInput
+	}
+	var projectID uuid.UUID
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.GetContext(ctx, &projectID, q, id)
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return uuid.Nil, ErrNotFound
+	}
+	return projectID, err
 }

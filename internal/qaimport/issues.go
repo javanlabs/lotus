@@ -204,17 +204,14 @@ func (im *Importer) importFiles(ctx context.Context, w *repo.QAImportWriter, leg
 				return fmt.Errorf("copy %s: %w", f.Path, err)
 			}
 		}
-		name := f.Name
-		if name == "" {
-			name = filepath.Base(f.Path)
-		}
+		name := AttachmentName(f.Name, f.Path)
 		ctype := mime.TypeByExtension(strings.ToLower(filepath.Ext(name)))
 		if ctype == "" {
 			ctype = "application/octet-stream"
 		}
 		id, err := w.InsertAttachment(repo.QAAttachment{
 			ResultID: owner.ResultID, IssueID: owner.IssueID, EventID: owner.EventID,
-			FileName: TruncateRunes(name, 255), ContentType: ctype, SizeBytes: size, StorageKey: key, CreatedAt: f.CreatedAt,
+			FileName: name, ContentType: ctype, SizeBytes: size, StorageKey: key, CreatedAt: f.CreatedAt,
 		})
 		if err != nil {
 			return err

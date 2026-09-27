@@ -2,6 +2,8 @@ package repo
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -92,6 +94,22 @@ func itemPlanInProject(ctx context.Context, tx *sqlx.Tx, itemID, projectID uuid.
 	return row.PlanID, nil
 }
 
+// issueRefsInProject rejects a plan or section of another project in the
+// same organization; the composite foreign keys only pin the organization.
+func issueRefsInProject(ctx context.Context, tx *sqlx.Tx, projectID uuid.UUID, in QAIssueInput) error {
+	if in.PlanID != nil {
+		if err := planInProject(ctx, tx, *in.PlanID, projectID); err != nil {
+			return err
+		}
+	}
+	if in.SectionID != nil {
+		if err := sectionInProject(ctx, tx, *in.SectionID, projectID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func CreateQAIssue(ctx context.Context, s tenant.Scope, projectID uuid.UUID, in QAIssueInput, reportedBy *uuid.UUID, fromItem *uuid.UUID) (*QAIssue, error) {
 	in, err := in.normalized()
 	if err != nil {
@@ -107,6 +125,9 @@ func CreateQAIssue(ctx context.Context, s tenant.Scope, projectID uuid.UUID, in 
 			if in.PlanID == nil {
 				in.PlanID = &planID
 			}
+		}
+		if err := issueRefsInProject(ctx, tx, projectID, in); err != nil {
+			return err
 		}
 		key, err := nextQAKey(ctx, tx, "qa_issues", projectID)
 		if err != nil {
@@ -189,6 +210,16 @@ func UpdateQAIssue(ctx context.Context, s tenant.Scope, id uuid.UUID, in QAIssue
 		return err
 	}
 	err = s.Tx(ctx, func(tx *sqlx.Tx) error {
+		var projectID uuid.UUID
+		if err := tx.GetContext(ctx, &projectID, `SELECT project_id FROM qa_issues WHERE id = $1`, id); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if err := issueRefsInProject(ctx, tx, projectID, in); err != nil {
+			return err
+		}
 		res, err := tx.ExecContext(ctx, `
 			UPDATE qa_issues SET title = $2, description = $3, steps_to_reproduce = $4, severity = $5,
 				environment = $6, plan_id = $7, section_id = $8, assignee_id = $9, updated_at = now()

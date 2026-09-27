@@ -70,8 +70,10 @@ func ListProjectMemberUserIDs(ctx context.Context, s tenant.Scope, projectID uui
 	return ids, err
 }
 
+// ListProjectIDsForMember never returns a nil slice: callers pass the result
+// to ListMyQAItems, where nil means "every project".
 func ListProjectIDsForMember(ctx context.Context, s tenant.Scope, userID uuid.UUID) ([]uuid.UUID, error) {
-	var ids []uuid.UUID
+	ids := []uuid.UUID{}
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.SelectContext(ctx, &ids,
 			`SELECT project_id FROM project_members WHERE user_id = $1 ORDER BY created_at`, userID)

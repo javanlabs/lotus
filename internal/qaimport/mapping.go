@@ -3,6 +3,7 @@
 package qaimport
 
 import (
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -209,4 +210,18 @@ func TruncateRunes(s string, max int) string {
 	}
 	r := []rune(s)
 	return string(r[:max-1]) + "…"
+}
+
+// AttachmentName is the file name an imported attachment gets: the legacy
+// name, else the last element of its storage path, else "file". A blank name
+// would fail qa_attachments' non-empty check and abort the whole project.
+func AttachmentName(name, storagePath string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = strings.TrimSpace(path.Base(strings.ReplaceAll(storagePath, `\`, "/")))
+	}
+	if name == "" || name == "." || name == "/" {
+		name = "file"
+	}
+	return TruncateRunes(name, 255)
 }

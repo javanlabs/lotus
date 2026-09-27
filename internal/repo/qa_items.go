@@ -200,6 +200,9 @@ type QAMyItem struct {
 	ProjectName string    `db:"project_name"`
 }
 
+// ListMyQAItems lists untested items assigned to userID in open runs of open
+// plans. projectIDs nil means every project (members and above); a guest
+// passes its project list, and an empty list returns nothing.
 func ListMyQAItems(ctx context.Context, s tenant.Scope, userID uuid.UUID, projectIDs []uuid.UUID) ([]QAMyItem, error) {
 	var out []QAMyItem
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {

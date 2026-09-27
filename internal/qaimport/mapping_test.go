@@ -96,3 +96,19 @@ func TestAllocateKeys(t *testing.T) {
 		t.Fatalf("AllocateKeys = %v; want %v", got, want)
 	}
 }
+
+func TestAttachmentName(t *testing.T) {
+	cases := []struct{ name, path, want string }{
+		{"shot.png", "public/2026-09-01/x.png", "shot.png"},
+		{"  shot.png ", "public/x.png", "shot.png"},
+		{"   ", "public/2026-09-01/log.txt", "log.txt"},
+		{"", "public/2026-09-01/log.txt", "log.txt"},
+		{" ", "", "file"},
+		{"", "/", "file"},
+	}
+	for _, c := range cases {
+		if got := AttachmentName(c.name, c.path); got != c.want {
+			t.Errorf("AttachmentName(%q, %q) = %q; want %q", c.name, c.path, got, c.want)
+		}
+	}
+}
