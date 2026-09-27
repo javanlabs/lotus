@@ -97,3 +97,12 @@ func (e qaEnv) post(t *testing.T, raw, path string, form url.Values, hx bool) (*
 func hasText(body, text string) bool {
 	return strings.Contains(body, text) || strings.Contains(body, strings.ReplaceAll(text, "'", "&#39;"))
 }
+
+// relogin gives userID a fresh session. Accepting an invitation or changing
+// a role bumps the organization's perm_epoch; the server then rotates an
+// older session to a new cookie (and revokes the old one), which a test
+// holding the old cookie would see as 401.
+func (e qaEnv) relogin(t *testing.T, userID uuid.UUID) string {
+	t.Helper()
+	return seedSession(t, e.db, e.orgID, userID)
+}

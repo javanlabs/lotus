@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
+	"github.com/uyab/lotus/internal/authn"
 	"github.com/uyab/lotus/internal/authz"
 	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/repo"
@@ -53,6 +54,10 @@ func settingsMembersPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
+		inviteForm := buildInviteForm("", "member", "")
+		if inviteForm.Projects, err = inviteProjects(c, nil); err != nil {
+			return writeRepoErr(c, err)
+		}
 		invRows := make([]invitationRow, 0, len(invitations))
 		for _, inv := range invitations {
 			invRows = append(invRows, invitationRow{
@@ -79,8 +84,8 @@ func settingsMembersPage(d Deps) fiber.Handler {
 				InviteForm    inviteFormView
 			}{
 				SettingsNav: buildSettingsNav("members"), Members: members, Invitations: invRows,
-				InviteForm: buildInviteForm("", "member", ""),
-				Roles:      []string{"admin", "member", "viewer"},
+				InviteForm: inviteForm,
+				Roles:      []string{"admin", "member", "viewer", "guest"},
 				CanInvite:  chrome.Principal.Can("member.invite"), CanChangeRole: chrome.Principal.Can("member.role.change"),
 				CanRemove: chrome.Principal.Can("member.remove"), Self: chrome.Principal.UserID, ActorRole: chrome.Principal.Role,
 			},
@@ -97,16 +102,44 @@ func settingsMembersPage(d Deps) fiber.Handler {
 // connection's form it never changes shape, so it exists only so a
 // rejected submit can come back with the address already typed.
 type inviteFormView struct {
-	Email string
-	Role  string
-	Error string
+	Email    string
+	Role     string
+	Error    string
+	Projects []inviteProjectOption // offered for a guest
+	Link     string                // set once the invitation exists: the link to share
 }
 
+type inviteProjectOption struct {
+	ID      uuid.UUID
+	Name    string
+	Checked bool
+}
+
+var inviteRoles = map[string]bool{"admin": true, "member": true, "viewer": true, "guest": true}
+
 func buildInviteForm(email, role, errMsg string) inviteFormView {
-	if role != "admin" && role != "member" && role != "viewer" {
+	if !inviteRoles[role] {
 		role = "member"
 	}
 	return inviteFormView{Email: email, Role: role, Error: errMsg}
+}
+
+// inviteProjects lists the organization's live projects for the guest
+// picker, ticking chosen.
+func inviteProjects(c *fiber.Ctx, chosen map[uuid.UUID]bool) ([]inviteProjectOption, error) {
+	s, err := mustScope(c)
+	if err != nil {
+		return nil, err
+	}
+	projects, err := repo.ListProjects(c.Context(), s, false)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]inviteProjectOption, 0, len(projects))
+	for _, p := range projects {
+		out = append(out, inviteProjectOption{ID: p.ID, Name: p.Name, Checked: chosen[p.ID]})
+	}
+	return out, nil
 }
 
 // rejectInviteForm mirrors rejectConnectionForm: htmx gets the form back
@@ -116,42 +149,77 @@ func rejectInviteForm(c *fiber.Ctx, d Deps, email, role, msg string, status int)
 	if c.Get("HX-Request") == "" {
 		return fiber.NewError(status, msg)
 	}
+	f := buildInviteForm(email, role, msg)
+	chosen := map[uuid.UUID]bool{}
+	for _, raw := range c.Context().PostArgs().PeekMulti("project_id") {
+		if id, err := uuid.Parse(string(raw)); err == nil {
+			chosen[id] = true
+		}
+	}
+	projects, err := inviteProjects(c, chosen)
+	if err != nil {
+		return writeRepoErr(c, err)
+	}
+	f.Projects = projects
 	c.Type("html")
-	return d.Renderer.RenderNamed(c, "invite_form", buildInviteForm(email, role, msg))
+	return d.Renderer.RenderNamed(c, "invite_form", f)
 }
 
+// inviteMemberUI invites someone into this organization through
+// authn.SendInvitation — the same escalation guard, rate limits and email
+// as onboarding's invite screen. The answer shows the invitation link, so
+// it can be shared even where no mail is configured (a client doing UAT).
+// A guest invitation names at least one project of this organization.
 func inviteMemberUI(d Deps) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		chrome, err := loadSettingsChrome(c)
 		if err != nil {
 			return err
 		}
+		s, err := mustScope(c)
+		if err != nil {
+			return err
+		}
 		email := strings.ToLower(strings.TrimSpace(c.FormValue("email")))
 		role := c.FormValue("role")
-		if email == "" || (role != "admin" && role != "member" && role != "viewer") {
+		if email == "" || !inviteRoles[role] {
 			return rejectInviteForm(c, d, email, role, "A valid email and role are required.", fiber.StatusUnprocessableEntity)
 		}
-		since := time.Now().Add(-24 * time.Hour)
-		if n, err := global.CountRecentInvitationsByOrg(c.Context(), d.DB, chrome.OrgID, since); err != nil {
-			return writeRepoErr(c, err)
-		} else if n >= 50 {
-			return rejectInviteForm(c, d, email, role, "Too many invitations sent recently.", fiber.StatusTooManyRequests)
-		}
-
-		token, hash, err := newInvitationToken()
-		if err != nil {
-			return writeRepoErr(c, err)
-		}
-		if _, err := global.CreateInvitation(c.Context(), d.DB, global.NewInvitation{
-			OrgID: chrome.OrgID, Email: email, RoleKey: role, InvitedBy: chrome.Principal.UserID,
-			TokenHash: hash, ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
-		}); err != nil {
-			if errors.Is(err, global.ErrInvitationPending) {
-				return rejectInviteForm(c, d, email, role, "An invitation to this email is already pending.", fiber.StatusConflict)
+		var projects []uuid.UUID
+		if role == "guest" {
+			for _, raw := range c.Context().PostArgs().PeekMulti("project_id") {
+				id, err := uuid.Parse(string(raw))
+				if err == nil {
+					_, err = repo.ProjectByID(c.Context(), s, id)
+				}
+				if err != nil {
+					return rejectInviteForm(c, d, email, role, "Choose projects of this organization.", fiber.StatusUnprocessableEntity)
+				}
+				projects = append(projects, id)
 			}
+			if len(projects) == 0 {
+				return rejectInviteForm(c, d, email, role, "Choose at least one project for a guest.", fiber.StatusUnprocessableEntity)
+			}
+		}
+		org, _ := tenant.OrgFromContext(c)
+		link, err := authn.SendInvitation(c.Context(), authn.Deps{DB: d.DB, Cfg: d.Cfg, Mailer: d.Mailer}, authn.SendInvitationParams{
+			OrgID: chrome.OrgID, OrgName: org.Name, ActorID: chrome.Principal.UserID, ActorRole: chrome.Principal.Role,
+			Email: email, RoleKey: role, ProjectIDs: projects,
+		})
+		switch {
+		case errors.Is(err, global.ErrInvitationPending):
+			return rejectInviteForm(c, d, email, role, "An invitation to this email is already pending.", fiber.StatusConflict)
+		case errors.Is(err, authn.ErrInviteRateLimited):
+			return rejectInviteForm(c, d, email, role, "Too many invitations sent recently.", fiber.StatusTooManyRequests)
+		case errors.Is(err, authn.ErrCannotInviteOwner):
+			return rejectInviteForm(c, d, email, role, "Only an owner can invite an owner.", fiber.StatusForbidden)
+		case err != nil:
 			return writeRepoErr(c, err)
 		}
-		_ = token // sent by email in the onboarding flow (task 1.6); this settings-page path has no mailer wiring yet, matching resend's own scope below
+		if c.Get("HX-Request") != "" {
+			c.Type("html")
+			return d.Renderer.RenderNamed(c, "invite_form", inviteFormView{Email: email, Role: role, Link: link})
+		}
 		setFlash(c, "member.invited", email)
 		return redirectAfterMutation(c, "/settings/members")
 	}
@@ -215,7 +283,7 @@ func changeMemberRoleUI(d Deps) fiber.Handler {
 			return fiber.ErrNotFound
 		}
 		newRole := c.FormValue("role")
-		if newRole != "owner" && newRole != "admin" && newRole != "member" && newRole != "viewer" {
+		if newRole != "owner" && !inviteRoles[newRole] {
 			return fiber.NewError(fiber.StatusBadRequest, "unknown role")
 		}
 		target, err := global.ActiveMembership(c.Context(), d.DB, targetID, chrome.OrgID)

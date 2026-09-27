@@ -43,6 +43,8 @@ type SendInvitationParams struct {
 	ActorRole string // the inviter's current role, for the escalation guard
 	Email     string
 	RoleKey   string
+	// ProjectIDs: the projects a guest will see (ignored for other roles).
+	ProjectIDs []uuid.UUID
 }
 
 // SendInvitation creates an invitation (enforcing the escalation guard and
@@ -67,12 +69,13 @@ func SendInvitation(ctx context.Context, deps Deps, p SendInvitationParams) (str
 
 	raw := randToken(32)
 	_, err := global.CreateInvitation(ctx, deps.DB, global.NewInvitation{
-		OrgID:     p.OrgID,
-		Email:     p.Email,
-		RoleKey:   p.RoleKey,
-		InvitedBy: p.ActorID,
-		TokenHash: sha256Hex(raw),
-		ExpiresAt: time.Now().Add(invitationTTL),
+		OrgID:      p.OrgID,
+		Email:      p.Email,
+		RoleKey:    p.RoleKey,
+		InvitedBy:  p.ActorID,
+		TokenHash:  sha256Hex(raw),
+		ExpiresAt:  time.Now().Add(invitationTTL),
+		ProjectIDs: p.ProjectIDs,
 	})
 	if err != nil {
 		return "", err

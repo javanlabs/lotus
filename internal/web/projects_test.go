@@ -65,10 +65,13 @@ func seedMember(t *testing.T, db *sqlx.DB, subdomain, roleKey string) (orgID, us
 
 func seedSession(t *testing.T, db *sqlx.DB, orgID, userID uuid.UUID) string {
 	t.Helper()
-	raw := "test-session-" + userID.String()
+	raw := "test-session-" + userID.String() + "-" + uuid.NewString()[:8]
+	// perm_epoch is the organization's current one: a session seeded after
+	// a role change or an accepted invitation is current, not rotated (and
+	// its cookie revoked) on first use.
 	_, err := db.Exec(`
-		INSERT INTO sessions (id, user_id, org_id, host, expires_at)
-		VALUES ($1, $2, $3, 'acme.test', now() + interval '1 day')`,
+		INSERT INTO sessions (id, user_id, org_id, host, expires_at, perm_epoch)
+		VALUES ($1, $2, $3, 'acme.test', now() + interval '1 day', (SELECT perm_epoch FROM organizations WHERE id = $3))`,
 		sha256HexForProjectsTest(raw), userID, orgID)
 	if err != nil {
 		t.Fatalf("insert session: %v", err)

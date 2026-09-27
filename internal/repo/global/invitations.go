@@ -40,6 +40,9 @@ type NewInvitation struct {
 	InvitedBy uuid.UUID
 	TokenHash string
 	ExpiresAt time.Time
+	// ProjectIDs are the projects a guest will see once it accepts. Ignored
+	// for other roles, who see every project.
+	ProjectIDs []uuid.UUID
 }
 
 // CreateInvitation is the invite-creation path both task 1.6's onboarding
@@ -47,11 +50,11 @@ type NewInvitation struct {
 func CreateInvitation(ctx context.Context, db *sqlx.DB, in NewInvitation) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := sqlx.GetContext(ctx, db, &id, `
-		INSERT INTO invitations (org_id, email, role_id, invited_by, token_hash, expires_at)
-		SELECT $1, $2, r.id, $3, $4, $5
+		INSERT INTO invitations (org_id, email, role_id, invited_by, token_hash, expires_at, project_ids)
+		SELECT $1, $2, r.id, $3, $4, $5, $7
 		FROM roles r WHERE r.key = $6 AND r.org_id IS NULL
 		RETURNING id`,
-		in.OrgID, in.Email, in.InvitedBy, in.TokenHash, in.ExpiresAt, in.RoleKey)
+		in.OrgID, in.Email, in.InvitedBy, in.TokenHash, in.ExpiresAt, in.RoleKey, projectIDs(in.ProjectIDs))
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -86,11 +89,21 @@ func InvitationByTokenHash(ctx context.Context, db *sqlx.DB, tokenHash string) (
 	return &out, nil
 }
 
+// projectIDs never hands Postgres a NULL array for the NOT NULL column.
+func projectIDs(ids []uuid.UUID) []uuid.UUID {
+	if ids == nil {
+		return []uuid.UUID{}
+	}
+	return ids
+}
+
 // AcceptInvitation marks the invitation accepted and creates the
 // membership, in one transaction. If the invitee is already a member (a
 // second invite accepted, or they joined some other way in the meantime),
 // this is a no-op on the membership — accepting an invitation can only
-// ever add access, never silently downgrade an existing role.
+// ever add access, never silently downgrade an existing role. A guest
+// invitation also lists the invitee on its projects (those still in the
+// organization), under the organization's row-level security.
 func AcceptInvitation(ctx context.Context, db *sqlx.DB, invitationID, userID uuid.UUID) error {
 	tx, err := db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -109,6 +122,18 @@ func AcceptInvitation(ctx context.Context, db *sqlx.DB, invitationID, userID uui
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO memberships (org_id, user_id, role_id) VALUES ($1, $2, $3)
 		ON CONFLICT (org_id, user_id) DO NOTHING`, orgID, userID, roleID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `SELECT set_config('app.org_id', $1, true)`, orgID.String()); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO project_members (org_id, project_id, user_id)
+		SELECT $1, p.id, $3 FROM projects p
+		JOIN invitations i ON i.id = $2 AND p.id = ANY(i.project_ids)
+		JOIN roles r ON r.id = i.role_id AND r.key = 'guest'
+		WHERE p.org_id = $1
+		ON CONFLICT (project_id, user_id) DO NOTHING`, orgID, invitationID, userID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE organizations SET perm_epoch = perm_epoch + 1 WHERE id = $1`, orgID); err != nil {
@@ -161,9 +186,9 @@ func ResendInvitation(ctx context.Context, db *sqlx.DB, oldInvitationID uuid.UUI
 
 	var newID uuid.UUID
 	err = tx.QueryRowxContext(ctx, `
-		INSERT INTO invitations (org_id, email, role_id, invited_by, token_hash, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id`, orgID, email, roleID, invitedBy, newTokenHash, newExpiresAt).Scan(&newID)
+		INSERT INTO invitations (org_id, email, role_id, invited_by, token_hash, expires_at, project_ids)
+		SELECT $1, $2, $3, $4, $5, $6, project_ids FROM invitations WHERE id = $7
+		RETURNING id`, orgID, email, roleID, invitedBy, newTokenHash, newExpiresAt, oldInvitationID).Scan(&newID)
 	if err != nil {
 		return uuid.Nil, err
 	}
