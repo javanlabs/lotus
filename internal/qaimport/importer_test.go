@@ -170,3 +170,156 @@ func TestImport_UsersProjectsLibrary(t *testing.T) {
 		t.Fatalf("report = %+v", rep)
 	}
 }
+
+func TestImport_Execution(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.run(t)
+	p := e.portal(t)
+
+	plans, _ := repo.ListQAPlans(ctx, e.s, p.ID)
+	byName := map[string]repo.QAPlan{}
+	for _, pl := range plans {
+		byName[pl.Name] = pl
+	}
+	if len(plans) != 3 || byName["UAT Plan SIT"].Phase != "uat" || byName["Regresi - September"].Phase != "regression" ||
+		byName["Unplanned (imported)"].Phase != "other" {
+		t.Fatalf("plans = %+v", plans)
+	}
+	uat := byName["UAT Plan SIT"]
+	if uat.StartsOn == nil || uat.StartsOn.Format("2006-01-02") != "2026-08-31" || uat.ClosedAt != nil {
+		t.Fatalf("uat plan = %+v", uat)
+	}
+	runs, _ := repo.ListQARuns(ctx, e.s, uat.ID)
+	if len(runs) != 1 || runs[0].Name != "[UAT] Portal" || runs[0].Notes != "UAT env\nBuild: 1.2\nBrowser: Chrome" || runs[0].Cycle != 1 {
+		t.Fatalf("uat runs = %+v", runs)
+	}
+	items, _ := repo.ListQARunItems(ctx, e.s, runs[0].ID, repo.QAItemFilter{})
+	statuses := map[string]string{}
+	for _, it := range items {
+		statuses[it.Title] = it.Status
+	}
+	if len(items) != 3 || statuses["Login valid"] != "passed" || statuses[`Login <b>invalid</b> "é" 🚀`] != "blocked" ||
+		statuses["Deleted but referenced"] != "failed" {
+		t.Fatalf("items = %+v", items)
+	}
+	if items[0].GroupName != "Auth / Login" {
+		t.Fatalf("group name = %q; want the section path", items[0].GroupName)
+	}
+	admin, _ := global.UserByEmail(ctx, e.db, "admin@javan.co.id")
+	for _, it := range items {
+		if it.Title == "Deleted but referenced" {
+			if it.ExecutedBy == nil || *it.ExecutedBy != admin.ID || it.StatusAt == nil {
+				t.Fatalf("failed item executor/time = %v %v; want the alias-merged admin", it.ExecutedBy, it.StatusAt)
+			}
+			hist, _ := repo.ListQAResults(ctx, e.s, it.ID)
+			if len(hist) != 1 || hist[0].Comment != "500 on submit" {
+				t.Fatalf("history = %+v", hist)
+			}
+		}
+	}
+	counts, _ := repo.QACountsForProject(ctx, e.s, p.ID)
+	if counts.Runs != 3 || counts.Items != 5 || counts.Results != 2 ||
+		counts.ItemStatus["skipped"] != 1 || counts.ItemStatus["untested"] != 1 {
+		t.Fatalf("counts = %+v", counts)
+	}
+}
+
+func TestImport_IsIdempotentAndResumable(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.run(t)
+	p := e.portal(t)
+	before, _ := repo.QACountsForProject(ctx, e.s, p.ID)
+	rep := e.run(t) // second run: everything already there
+	after, _ := repo.QACountsForProject(ctx, e.s, p.ID)
+	if before.Items != after.Items || before.Cases != after.Cases || before.Results != after.Results {
+		t.Fatalf("second run changed counts: %+v -> %+v", before, after)
+	}
+	if rep.Tables["projects"].SkipReasons["already imported"] != 1 {
+		t.Fatalf("report = %+v", rep.Tables["projects"])
+	}
+	// A project is written in one transaction whose last write is its done
+	// marker, so it is either fully present with exactly one marker or absent.
+	// (The kill-and-resume behaviour on real data is checked in Task 19.)
+	var markers int
+	withOrg(t, e, func(tx *sqlx.Tx) {
+		tx.Get(&markers, `SELECT count(*) FROM qa_legacy_ids WHERE legacy_table = 'project_done'`)
+	})
+	if markers != 1 {
+		t.Fatalf("done markers = %d; want 1", markers)
+	}
+}
+
+func TestImport_ConcurrentRunsDoNotDuplicate(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.run(t) // users exist, so the two runs below only race on projects
+	withOrg(t, e, func(tx *sqlx.Tx) {
+		tx.Exec(`DELETE FROM qa_legacy_ids WHERE legacy_table = 'project_done'`)
+		tx.Exec(`DELETE FROM projects`)
+	})
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			_, err := qaimport.New(e.db, e.legacy, e.store, e.opt).Run(ctx)
+			errs <- err
+		}()
+	}
+	for i := 0; i < 2; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent run: %v", err)
+		}
+	}
+	ps, _ := repo.ListProjects(ctx, e.s, true)
+	if len(ps) != 1 {
+		t.Fatalf("projects after two concurrent runs = %d; want 1", len(ps))
+	}
+}
+
+func TestImport_DryRunWritesNothing(t *testing.T) {
+	e := newEnv(t)
+	e.opt.DryRun = true
+	rep := e.run(t)
+	if rep.ProjectsImported != 1 || rep.Tables["cases"].Imported != 4 ||
+		rep.Tables["users"].Imported != 4 || rep.Tables["memberships"].Imported != 3 {
+		t.Fatalf("dry-run report = %+v", rep)
+	}
+	if r, err := e.store.Open(context.Background(), "qa/"+e.orgID.String()+"/legacy/"+lid("f1").String()); err == nil {
+		r.Close()
+		t.Fatal("dry run copied an attachment into the blob store")
+	}
+	ps, _ := repo.ListProjects(context.Background(), e.s, true)
+	if len(ps) != 0 {
+		t.Fatalf("dry run created projects: %+v", ps)
+	}
+	if u, _ := global.UserByEmail(context.Background(), e.db, "admin@javan.co.id"); u != nil {
+		t.Fatal("dry run created users")
+	}
+}
+
+func TestImport_ClosesIdlePlans(t *testing.T) {
+	e := newEnv(t)
+	e.opt.CloseIdleBefore = time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	e.run(t)
+	p := e.portal(t)
+	plans, _ := repo.ListQAPlans(context.Background(), e.s, p.ID)
+	for _, pl := range plans {
+		if pl.ClosedAt == nil {
+			t.Errorf("plan %q still open", pl.Name)
+		}
+		runs, _ := repo.ListQARuns(context.Background(), e.s, pl.ID)
+		for _, r := range runs {
+			if r.ClosedAt == nil {
+				t.Errorf("run %q still open", r.Name)
+			}
+		}
+	}
+}
+
+func withOrg(t *testing.T, e env, fn func(tx *sqlx.Tx)) {
+	t.Helper()
+	if err := e.s.Tx(context.Background(), func(tx *sqlx.Tx) error { fn(tx); return nil }); err != nil {
+		t.Fatal(err)
+	}
+}

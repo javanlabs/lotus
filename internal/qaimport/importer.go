@@ -337,10 +337,6 @@ func (im *Importer) importGuests(ctx context.Context, w *repo.QAImportWriter, le
 	return nil
 }
 
-func (im *Importer) importExecution(context.Context, *repo.QAImportWriter, uuid.UUID, *projectState, *Report) error {
-	return nil
-}
-
 func (im *Importer) importIssues(context.Context, *repo.QAImportWriter, uuid.UUID, *projectState, *Report) error {
 	return nil
 }
