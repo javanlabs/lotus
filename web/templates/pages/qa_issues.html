@@ -1,0 +1,57 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+
+<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
+  <div style="flex:1;min-width:220px">
+    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Project.Name}}</h1>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">Issues · {{$d.Total}} {{$d.Status}}</p>
+  </div>
+  {{if $d.CanReport}}
+  <a href="{{$d.Base}}/issues/new" class="btn-lotus btn-lotus-primary">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Report issue
+  </a>
+  {{end}}
+  {{template "qa_subnav" (dict "Base" $d.Base "Active" "issues")}}
+</header>
+
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
+  <form method="get" action="{{$d.Base}}/issues" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px">
+    <input type="search" name="q" value="{{$d.Query}}" placeholder="Search titles" aria-label="Search titles" class="lotus-input" style="flex:1;min-width:180px">
+    <div style="width:120px">{{template "lotus_select" (dict "Name" "status" "ID" "issues-status" "Value" $d.Status "Label" "Status" "Size" "sm" "AutoSubmit" true "Options" (selectOptions $d.StatusOptions))}}</div>
+    <div style="width:140px">{{template "lotus_select" (dict "Name" "severity" "ID" "issues-severity" "Value" $d.Severity "Label" "Severity" "Size" "sm" "AutoSubmit" true "Options" (selectOptions $d.SeverityOptions))}}</div>
+    <div style="width:130px">{{template "lotus_select" (dict "Name" "source" "ID" "issues-source" "Value" $d.Source "Label" "Source" "Size" "sm" "AutoSubmit" true "Options" (selectOptions $d.SourceOptions))}}</div>
+    <div style="width:180px">{{template "lotus_select" (dict "Name" "plan" "ID" "issues-plan" "Value" $d.Plan "Label" "Plan" "Size" "sm" "AutoSubmit" true "Options" (selectOptions $d.PlanOptions))}}</div>
+  </form>
+  {{if not $d.Rows}}
+  <p style="margin:0;padding:28px 14px;text-align:center;font-size:12.5px;color:#6B7280">No issues match.</p>
+  {{else}}
+  <div class="lotus-table-head" style="grid-template-columns:70px minmax(0,1fr) 80px 80px 140px minmax(0,150px) 90px;gap:10px">
+    <div>KEY</div><div>TITLE</div><div>SEVERITY</div><div>STATUS</div><div>ASSIGNEE</div><div>PLAN</div><div>UPDATED</div>
+  </div>
+  {{range $d.Rows}}
+  <a href="{{.Href}}" data-issue-row class="lotus-repo-row" style="display:grid;grid-template-columns:70px minmax(0,1fr) 80px 80px 140px minmax(0,150px) 90px;gap:10px;align-items:center;padding:0 14px;text-decoration:none;color:inherit">
+    <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">BUG-{{.Key}}</span>
+    <span style="font-size:12.5px;color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Title}}{{if eq .Source "client"}} <span class="lotus-badge lotus-badge-none" data-source="client">client</span>{{end}}</span>
+    <span><span class="lotus-badge lotus-badge-{{.SeverityTone}}">{{.Severity}}</span></span>
+    <span style="font:500 11px 'IBM Plex Mono',monospace;color:#374151">{{.Status}}</span>
+    <span style="font-size:11.5px;color:#6B7280;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{if .Assignee}}{{.Assignee}}{{else}}—{{end}}</span>
+    <span style="font-size:11.5px;color:#6B7280;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{if .PlanName}}{{.PlanName}}{{else}}—{{end}}</span>
+    <span style="font:400 11px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.UpdatedAt.Format "02 Jan 2006"}}</span>
+  </a>
+  {{end}}
+  {{if gt $d.Pages 1}}
+  <div class="lotus-pager">
+    <span>{{$d.From}}–{{$d.To}} of {{$d.Total}} issues</span>
+    <span class="lotus-pager-spacer">
+      {{if $d.PrevHref}}<a href="{{$d.PrevHref}}" rel="prev">← Previous</a>{{else}}<span aria-disabled="true">← Previous</span>{{end}}
+      <span style="align-self:center;font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{$d.Page}} / {{$d.Pages}}</span>
+      {{if $d.NextHref}}<a href="{{$d.NextHref}}" rel="next">Next →</a>{{else}}<span aria-disabled="true">Next →</span>{{end}}
+    </span>
+  </div>
+  {{end}}
+  {{end}}
+{{template "lotus_card_section_close" .}}
+
+{{template "shell_close" .}}
+{{end}}

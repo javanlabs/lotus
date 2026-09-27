@@ -177,31 +177,49 @@ func GetQAIssueByKey(ctx context.Context, s tenant.Scope, projectID uuid.UUID, k
 }
 
 type QAIssueFilter struct {
-	Statuses   []string
-	Severity   string
-	Source     string
-	PlanID     *uuid.UUID
-	AssigneeID *uuid.UUID
+	Statuses      []string
+	Severity      string
+	Source        string
+	PlanID        *uuid.UUID
+	AssigneeID    *uuid.UUID
+	Query         string // matches title, case-insensitive, literally
+	Limit, Offset int    // Limit 0 = every row
 }
 
-func ListQAIssues(ctx context.Context, s tenant.Scope, projectID uuid.UUID, f QAIssueFilter) ([]QAIssue, error) {
+const qaIssueWhere = `
+	FROM qa_issues
+	WHERE project_id = $1
+	  AND ($2::text[] IS NULL OR status = ANY($2))
+	  AND ($3 = '' OR severity = $3)
+	  AND ($4 = '' OR source = $4)
+	  AND ($5::uuid IS NULL OR plan_id = $5)
+	  AND ($6::uuid IS NULL OR assignee_id = $6)
+	  AND ($7 = '' OR title ILIKE '%' || $7 || '%' ESCAPE '\')`
+
+func (f QAIssueFilter) args(projectID uuid.UUID) []any {
 	var statuses any
 	if len(f.Statuses) > 0 {
 		statuses = f.Statuses
 	}
+	return []any{projectID, statuses, f.Severity, f.Source, f.PlanID, f.AssigneeID, likeEscape(strings.TrimSpace(f.Query))}
+}
+
+// ListQAIssues lists the project's issues newest first.
+func ListQAIssues(ctx context.Context, s tenant.Scope, projectID uuid.UUID, f QAIssueFilter) ([]QAIssue, error) {
 	var out []QAIssue
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		return tx.SelectContext(ctx, &out, `
-			SELECT `+qaIssueCols+` FROM qa_issues
-			WHERE project_id = $1
-			  AND ($2::text[] IS NULL OR status = ANY($2))
-			  AND ($3 = '' OR severity = $3)
-			  AND ($4 = '' OR source = $4)
-			  AND ($5::uuid IS NULL OR plan_id = $5)
-			  AND ($6::uuid IS NULL OR assignee_id = $6)
-			ORDER BY created_at DESC, key DESC`, projectID, statuses, f.Severity, f.Source, f.PlanID, f.AssigneeID)
+		return tx.SelectContext(ctx, &out, `SELECT `+qaIssueCols+qaIssueWhere+`
+			ORDER BY created_at DESC, key DESC LIMIT NULLIF($8, 0) OFFSET $9`, append(f.args(projectID), f.Limit, f.Offset)...)
 	})
 	return out, err
+}
+
+func CountQAIssues(ctx context.Context, s tenant.Scope, projectID uuid.UUID, f QAIssueFilter) (int, error) {
+	var n int
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.GetContext(ctx, &n, `SELECT count(*)`+qaIssueWhere, f.args(projectID)...)
+	})
+	return n, err
 }
 
 func UpdateQAIssue(ctx context.Context, s tenant.Scope, id uuid.UUID, in QAIssueInput) error {
