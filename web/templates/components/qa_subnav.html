@@ -1,11 +1,13 @@
 {{/* qa_subnav is the segmented control across a project's QA area:
-     Overview · Cases · Scenarios. Links, not buttons: each is its own
-     page. Takes (dict "Base" "/projects/<id>/qa" "Active" "overview"|"cases"|"scenarios"). */}}
+     Overview · Cases · Scenarios · Plans. Links, not buttons: each is its
+     own page. Takes (dict "Base" "/projects/<id>/qa" "Active"
+     "overview"|"cases"|"scenarios"|"plans"). */}}
 {{define "qa_subnav"}}
 <nav aria-label="QA" style="display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:var(--radius-group);padding:3px;box-shadow:var(--shadow-segment-track)">
   {{template "qa_subnav_link" (dict "Href" .Base "Label" "Overview" "On" (eq .Active "overview"))}}
   {{template "qa_subnav_link" (dict "Href" (printf "%s/cases" .Base) "Label" "Cases" "On" (eq .Active "cases"))}}
   {{template "qa_subnav_link" (dict "Href" (printf "%s/scenarios" .Base) "Label" "Scenarios" "On" (eq .Active "scenarios"))}}
+  {{template "qa_subnav_link" (dict "Href" (printf "%s/plans" .Base) "Label" "Plans" "On" (eq .Active "plans"))}}
 </nav>
 {{end}}
 

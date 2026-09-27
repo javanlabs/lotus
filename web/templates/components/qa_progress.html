@@ -1,0 +1,20 @@
+{{/* qa_progress is a run's or plan's progress: one stacked bar (passed,
+     failed and blocked, skipped, untested) and a count line. Takes
+     repo.QAProgress. With nothing to count it says so instead of drawing
+     an empty bar. */}}
+{{define "qa_progress"}}
+{{if .Total}}
+<div style="display:flex;flex-direction:column;gap:4px;min-width:0" title="{{.Passed}} passed · {{.Failed}} failed · {{.Blocked}} blocked · {{.Skipped}} skipped · {{.Untested}} untested">
+  <div style="display:flex;gap:1px;height:5px;border-radius:3px;overflow:hidden;background:var(--ink-100)">
+    {{if .Passed}}<div class="lotus-bar-pass" style="flex:{{.Passed}}"></div>{{end}}
+    {{if .Failed}}<div class="lotus-bar-fail" style="flex:{{.Failed}}"></div>{{end}}
+    {{if .Blocked}}<div class="lotus-bar-fail" style="flex:{{.Blocked}};opacity:.5"></div>{{end}}
+    {{if .Skipped}}<div class="lotus-bar-none" style="flex:{{.Skipped}}"></div>{{end}}
+    {{if .Untested}}<div style="flex:{{.Untested}}"></div>{{end}}
+  </div>
+  <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#6B7280;white-space:nowrap">{{.Done}}/{{.Total}} done{{if .Failed}} · <span style="color:var(--status-fail)">{{.Failed}} failed</span>{{end}}{{if .Blocked}} · {{.Blocked}} blocked{{end}}</div>
+</div>
+{{else}}
+<span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">—</span>
+{{end}}
+{{end}}

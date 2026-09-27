@@ -13,7 +13,7 @@
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">
   {{template "qa_tile" (dict "Label" "CASES" "Key" "cases" "Value" $d.Summary.Cases "Href" (printf "%s/cases" $d.Base))}}
   {{template "qa_tile" (dict "Label" "SCENARIOS" "Key" "scenarios" "Value" $d.Summary.Scenarios "Href" (printf "%s/scenarios" $d.Base))}}
-  {{template "qa_tile" (dict "Label" "OPEN PLANS" "Key" "plans" "Value" $d.Summary.OpenPlans "Href" "")}}
+  {{template "qa_tile" (dict "Label" "OPEN PLANS" "Key" "plans" "Value" $d.Summary.OpenPlans "Href" (printf "%s/plans" $d.Base))}}
   {{template "qa_tile" (dict "Label" "OPEN ISSUES" "Key" "issues" "Value" $d.Summary.OpenIssues "Href" "")}}
 </div>
 
@@ -21,7 +21,7 @@
 {{end}}
 
 {{/* qa_tile is one count on the QA landing. Tiles whose screen exists
-     link to it; plans and issues get theirs in later phases. */}}
+     link to it; issues get theirs in Phase 6. */}}
 {{define "qa_tile"}}
 {{if .Href}}<a href="{{.Href}}" style="text-decoration:none;color:inherit;display:block">{{end}}
 {{template "lotus_card_open" (dict "Padding" "13px 14px" "Style" "display:flex;flex-direction:column")}}

@@ -1,0 +1,42 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+
+<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
+  <div style="flex:1;min-width:220px">
+    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Project.Name}}</h1>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">Plans · {{len $d.Rows}}{{if $d.Phase}} in this phase{{end}}</p>
+  </div>
+  {{if $d.CanWrite}}
+  {{template "lotus_modal_open" (dict "Name" "new-plan" "Title" "New plan" "Trigger" "New plan")}}
+    {{template "qa_plan_form" $d.Form}}
+  {{template "lotus_modal_close" .}}
+  {{end}}
+  {{template "qa_subnav" (dict "Base" $d.Base "Active" "plans")}}
+</header>
+
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
+  <form method="get" action="{{$d.Base}}/plans" style="display:flex;justify-content:flex-end;padding:8px 10px">
+    <div style="width:180px">{{template "lotus_select" (dict "Name" "phase" "ID" "plans-phase" "Value" $d.Phase "Label" "Phase" "Size" "sm" "AutoSubmit" true "Options" (selectOptions $d.Filters))}}</div>
+  </form>
+  {{if not $d.Rows}}
+  <p style="margin:0;padding:28px 14px;text-align:center;font-size:12.5px;color:#6B7280">No plans{{if $d.Phase}} in this phase{{end}} yet. A plan says which scenarios are tested, where and when; runs belong to it.</p>
+  {{else}}
+  <div class="lotus-table-head" style="grid-template-columns:minmax(0,1.4fr) 100px minmax(0,1fr) 150px 60px 170px;gap:10px">
+    <div>PLAN</div><div>PHASE</div><div>ENVIRONMENT · BUILD</div><div>WINDOW</div><div style="text-align:right">RUNS</div><div>PROGRESS</div>
+  </div>
+  {{range $d.Rows}}
+  <a href="{{.Href}}" class="lotus-repo-row" style="display:grid;grid-template-columns:minmax(0,1.4fr) 100px minmax(0,1fr) 150px 60px 170px;gap:10px;align-items:center;padding:0 14px;text-decoration:none;color:inherit{{if .ClosedAt}};opacity:.6{{end}}">
+    <span style="font-size:12.5px;font-weight:600;color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}{{if .ClosedAt}} <span class="lotus-badge lotus-badge-none">closed</span>{{end}}</span>
+    <span><span class="lotus-badge lotus-badge-none">{{.PhaseLabel}}</span></span>
+    <span style="font-size:11.5px;color:#6B7280;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{if .Environment}}{{.Environment}}{{else}}—{{end}}{{if .Build}} · <span style="font-family:'IBM Plex Mono',monospace">{{.Build}}</span>{{end}}</span>
+    <span style="font:400 11px 'IBM Plex Mono',monospace;color:#6B7280">{{if .Window}}{{.Window}}{{else}}—{{end}}</span>
+    <span style="font:500 11.5px 'IBM Plex Mono',monospace;color:#374151;text-align:right">{{.Runs}}</span>
+    {{template "qa_progress" .Progress}}
+  </a>
+  {{end}}
+  {{end}}
+{{template "lotus_card_section_close" .}}
+
+{{template "shell_close" .}}
+{{end}}

@@ -1,0 +1,56 @@
+{{/* qa_plan_form is the body of the New plan and Edit plan dialogs.
+     Takes qaPlanFormData. */}}
+{{define "qa_plan_form"}}
+<div class="lotus-modal-form">
+  <form method="post" action="{{.Action}}" hx-post="{{.Action}}" hx-target="#{{.Err}}" hx-swap="innerHTML">
+    <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px;min-width:min(520px,80vw)">
+      <div id="{{.Err}}"></div>
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
+        <input type="text" name="name" required maxlength="200" value="{{.Name}}" placeholder="Regresi Oktober" class="lotus-input">
+      </label>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+        <label style="display:flex;flex-direction:column;gap:6px">
+          <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PHASE</span>
+          {{template "lotus_select" (dict "Name" "phase" "ID" (printf "%s-phase" .Err) "Value" .Phase "Label" "Phase" "Options" (selectOptions .PhaseOptions))}}
+        </label>
+        <label style="display:flex;flex-direction:column;gap:6px">
+          <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">ENVIRONMENT</span>
+          <input type="text" name="environment" maxlength="200" value="{{.Environment}}" placeholder="UAT" class="lotus-input">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:6px">
+          <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">BUILD</span>
+          <input type="text" name="build" maxlength="200" value="{{.Build}}" placeholder="1.4.2" class="lotus-input lotus-input-mono">
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+        <label style="display:flex;flex-direction:column;gap:6px">
+          <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">STARTS</span>
+          <input type="date" name="starts_on" value="{{.StartsOn}}" class="lotus-input">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:6px">
+          <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">ENDS</span>
+          <input type="date" name="ends_on" value="{{.EndsOn}}" class="lotus-input">
+        </label>
+      </div>
+      <fieldset style="border:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">
+        <legend style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:6px">SCENARIOS</legend>
+        {{if not .Scenarios}}<p style="margin:0;font-size:12px;color:#6B7280">No scenarios yet. Runs take their cases from the plan's scenarios.</p>{{end}}
+        <div style="display:flex;flex-direction:column;max-height:220px;overflow:auto">
+          {{range .Scenarios}}
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:12.5px;color:#111827">
+            <input type="checkbox" name="scenario_id" value="{{.ID}}"{{if .Checked}} checked{{end}} style="accent-color:var(--text-brand)">
+            <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
+            <span class="lotus-badge lotus-badge-none">{{.PhaseLabel}}</span>
+          </label>
+          {{end}}
+        </div>
+      </fieldset>
+    </div>
+    <div class="lotus-modal-foot">
+      <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn-lotus btn-lotus-primary">{{.Submit}}</button>
+    </div>
+  </form>
+</div>
+{{end}}
