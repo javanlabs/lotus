@@ -323,3 +323,43 @@ func withOrg(t *testing.T, e env, fn func(tx *sqlx.Tx)) {
 		t.Fatal(err)
 	}
 }
+
+func TestImport_IssuesAndFiles(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	rep := e.run(t)
+	p := e.portal(t)
+
+	i1, err := repo.GetQAIssueByKey(ctx, e.s, p.ID, 1)
+	if err != nil || i1.Title != "Submit returns 500" || i1.Severity != "blocker" || i1.Status != "open" ||
+		i1.Environment != "UAT (linknet-uati)" || i1.PlanID == nil || i1.SectionID == nil {
+		t.Fatalf("issue 1 = %+v, %v", i1, err)
+	}
+	i2, err := repo.GetQAIssueByKey(ctx, e.s, p.ID, 2)
+	if err != nil || i2.Severity != "minor" || i2.Status != "closed" || i2.PlanID != nil || i2.Description != "Legacy code: D0001" {
+		t.Fatalf("issue 2 (renumbered, release deleted) = %+v, %v", i2, err)
+	}
+	items, _ := repo.ListQAItemsForIssue(ctx, e.s, i1.ID)
+	if len(items) != 1 || items[0].Title != "Deleted but referenced" {
+		t.Fatalf("linked items = %+v", items)
+	}
+	events, _ := repo.ListQAIssueEvents(ctx, e.s, i1.ID)
+	if len(events) != 2 || events[0].Kind != "status" || *events[0].StatusTo != "open" ||
+		events[1].Kind != "comment" || events[1].Body != "Still failing on staging" {
+		t.Fatalf("events = %+v", events)
+	}
+
+	// Files: the result screenshot and the comment log are copied; the issue file is missing.
+	commentFiles, _ := repo.ListQAAttachments(ctx, e.s, repo.QAAttachmentOwner{EventID: &events[1].ID})
+	if len(commentFiles) != 1 || commentFiles[0].FileName != "log.txt" || commentFiles[0].ContentType != "text/plain; charset=utf-8" {
+		t.Fatalf("comment files = %+v", commentFiles)
+	}
+	r, err := e.store.Open(ctx, commentFiles[0].StorageKey)
+	if err != nil {
+		t.Fatalf("blob: %v", err)
+	}
+	r.Close()
+	if rep.Tables["attachments"].Imported != 2 || rep.Tables["attachments"].SkipReasons["file missing"] != 1 {
+		t.Fatalf("attachments report = %+v", rep.Tables["attachments"])
+	}
+}
