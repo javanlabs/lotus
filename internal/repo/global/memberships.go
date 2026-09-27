@@ -84,8 +84,10 @@ func ListMembersForOrg(ctx context.Context, db *sqlx.DB, orgID uuid.UUID) ([]Mem
 	return out, err
 }
 
-// RemoveMembership deletes a membership and bumps the org's perm_epoch in
-// the same transaction. Blocked by the database if this would remove the
+// RemoveMembership deletes a membership, the user's project listings in
+// the org (a guest's projects: a later invitation starts from its own
+// list, not the old one) and bumps the org's perm_epoch, in one
+// transaction. Blocked by the database if this would remove the
 // organization's last Owner (task 0.2's trigger).
 func RemoveMembership(ctx context.Context, db *sqlx.DB, orgID, userID uuid.UUID) error {
 	tx, err := db.BeginTxx(ctx, nil)
@@ -94,6 +96,13 @@ func RemoveMembership(ctx context.Context, db *sqlx.DB, orgID, userID uuid.UUID)
 	}
 	defer tx.Rollback() //nolint:errcheck
 	if _, err := tx.ExecContext(ctx, `DELETE FROM memberships WHERE org_id = $1 AND user_id = $2`, orgID, userID); err != nil {
+		return err
+	}
+	// project_members is under RLS: scope the transaction to the org.
+	if _, err := tx.ExecContext(ctx, `SELECT set_config('app.org_id', $1, true)`, orgID.String()); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM project_members WHERE org_id = $1 AND user_id = $2`, orgID, userID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE organizations SET perm_epoch = perm_epoch + 1 WHERE id = $1`, orgID); err != nil {

@@ -123,3 +123,36 @@ func TestGuests_AdminChangesGuestToMemberAndBack(t *testing.T) {
 		t.Fatal("members page does not offer the guest role")
 	}
 }
+
+// Removing a guest from the organization ends its project listings: invited
+// back later to one project, it sees that project only.
+func TestGuests_RemovedFromTheOrganizationLosesItsProjects(t *testing.T) {
+	e := newQAEnv(t, "acme-guest-removed")
+	admin, adminID := e.session(t, "admin@acme.example", "admin")
+	a, b, c := e.project(t, "Portal"), e.project(t, "Mobile"), e.project(t, "Billing")
+	_, guestID, _ := inviteAndAccept(t, e, admin, "client@bank.example", a, b)
+
+	admin = e.relogin(t, adminID)
+	if resp, _ := e.post(t, admin, "/settings/members/"+guestID.String()+"/remove", nil, false); resp.StatusCode != http.StatusFound {
+		t.Fatalf("remove guest = %d", resp.StatusCode)
+	}
+	admin = e.relogin(t, adminID)
+	_, body := e.post(t, admin, "/settings/members/invite", url.Values{"email": {"client@bank.example"}, "role": {"guest"}, "project_id": {c.String()}}, true)
+	m := regexp.MustCompile(`/invite/([A-Za-z0-9_-]+)`).FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("re-invite shows no link:\n%s", body)
+	}
+	inv, err := global.InvitationByTokenHash(context.Background(), e.db, sha256HexForProjectsTest(m[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := global.AcceptInvitation(context.Background(), e.db, inv.ID, guestID); err != nil {
+		t.Fatal(err)
+	}
+	guest := seedSession(t, e.db, e.orgID, guestID)
+	for project, want := range map[uuid.UUID]int{a: http.StatusNotFound, b: http.StatusNotFound, c: http.StatusOK} {
+		if status, _ := e.get(t, guest, "/projects/"+project.String()+"/qa"); status != want {
+			t.Errorf("re-invited guest on %s = %d; want %d", project, status, want)
+		}
+	}
+}
