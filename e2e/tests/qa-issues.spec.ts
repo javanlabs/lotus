@@ -1,30 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { retireOrg, seedOwnerSession, withDB } from './helpers/db';
+import { retireOrg, seedOwnerSession } from './helpers/db';
+import { seedPlan } from './helpers/qa';
 
 const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
 const BASE_DOMAIN = process.env.LOTUS_BASE_DOMAIN ?? 'lotus.localhost';
 const tenantOrigin = (s: string) => `http://${s}.${BASE_DOMAIN}:${PORT}`;
-
-// seedPlan inserts a project with two cases, a scenario holding both and a
-// plan over that scenario, straight into Postgres.
-async function seedPlan(orgId: string): Promise<{ projectId: string; planId: string }> {
-  return withDB(async (c) => {
-    const p = await c.query(`INSERT INTO projects (org_id, slug, name) VALUES ($1, 'portal', 'Portal') RETURNING id`, [orgId]);
-    const projectId = p.rows[0].id as string;
-    const sec = await c.query(`INSERT INTO qa_sections (org_id, project_id, name) VALUES ($1, $2, 'Auth') RETURNING id`, [orgId, projectId]);
-    const sc = await c.query(`INSERT INTO qa_scenarios (org_id, project_id, name, phase) VALUES ($1, $2, 'Regression core', 'regression') RETURNING id`, [orgId, projectId]);
-    for (const [i, title] of ['Login valid', 'Login invalid'].entries()) {
-      const cs = await c.query(
-        `INSERT INTO qa_cases (org_id, project_id, section_id, key, title, steps) VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id`,
-        [orgId, projectId, sec.rows[0].id, i + 1, title, JSON.stringify([{ action: 'Open the portal', expected: 'Login page' }])]);
-      await c.query(`INSERT INTO qa_scenario_items (org_id, scenario_id, case_id, position) VALUES ($1, $2, $3, $4)`,
-        [orgId, sc.rows[0].id, cs.rows[0].id, i + 1]);
-    }
-    const plan = await c.query(`INSERT INTO qa_plans (org_id, project_id, name, phase) VALUES ($1, $2, 'Regression October', 'regression') RETURNING id`, [orgId, projectId]);
-    await c.query(`INSERT INTO qa_plan_scenarios (org_id, plan_id, scenario_id) VALUES ($1, $2, $3)`, [orgId, plan.rows[0].id, sc.rows[0].id]);
-    return { projectId, planId: plan.rows[0].id as string };
-  });
-}
 
 test('a failure is reported as an issue from its run item and triaged', async ({ page, context }) => {
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('qa-issue-e2e', 'placeholder');

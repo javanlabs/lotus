@@ -20,6 +20,7 @@ function tenantOrigin(subdomain: string): string {
 
 test('a dropdown submits the value a native select would have submitted', async ({ page, context }) => {
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('dropdown-value-e2e', 'placeholder');
+  const invitee = `dropdown-invitee-${subdomain}@example.com`; // invitations are capped per address per day
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
 
@@ -36,14 +37,15 @@ test('a dropdown submits the value a native select would have submitted', async 
   expect(await dropdownValue(page, 'role')).toBe('admin');
   await expect(dropdownTrigger(page, 'role')).toHaveValue(/Admin/);
 
-  await page.locator('input[name="email"]').fill('dropdown-invitee@example.com');
+  await page.locator('input[name="email"]').fill(invitee);
   await page.getByRole('button', { name: 'Send invite' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
 
   // The value chosen in the dropdown is what reached the server: the
   // pending invite is for an Admin, not the default Member.
   // Scoped to <main>: the toast sits outside it and repeats the address,
   // so an unscoped text locator would match the toast too.
-  const row = page.locator('main').locator('div', { hasText: 'dropdown-invitee@example.com' }).last();
+  const row = page.locator('main').locator('div', { hasText: invitee }).last();
   await expect(row).toContainText(/admin/i);
 
   await retireOrg(orgId);

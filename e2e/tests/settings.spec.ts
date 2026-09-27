@@ -48,23 +48,29 @@ test('creating a connection through the settings form appears in the list, real 
 
 test('inviting a member shows it as pending, and revoke removes it, real browser round-trip', async ({ page, context }) => {
   const { sessionToken, subdomain } = await seedOwnerSession('settings-member-e2e', 'placeholder');
+  // Unique per run: invitations are capped per address per day, and the
+  // e2e database outlives a run.
+  const invitee = `newteammate-${subdomain}@example.com`;
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
 
   await page.goto(`${origin}/settings/members`);
   await page.getByRole('button', { name: 'Invite a member' }).click();
-  await page.locator('input[name="email"]').fill('newteammate@example.com');
+  await page.locator('input[name="email"]').fill(invitee);
   await chooseFromDropdown(page, 'role', 'Member');
   expect(await dropdownValue(page, 'role')).toBe('member');
   await page.getByRole('button', { name: 'Send invite' }).click();
+  // Without mail set up the link is the only way in, so the dialog shows it.
+  await expect(page.getByLabel('Invitation link')).toHaveValue(/\/invite\/[A-Za-z0-9_-]{43}$/);
+  await page.getByRole('button', { name: 'Done' }).click();
 
   await expect(page).toHaveURL(`${origin}/settings/members`);
-  await expect(page.locator('.toaster .toast')).toContainText('Invitation sent to newteammate@example.com');
-  await expect(page.locator('main').getByText('newteammate@example.com')).toBeVisible();
+  await expect(page.locator('.toaster .toast')).toContainText(`Invitation sent to ${invitee}`);
+  await expect(page.locator('main').getByText(invitee)).toBeVisible();
 
   page.once('dialog', (d) => d.accept());
   await page.getByRole('button', { name: 'Revoke' }).click();
-  await expect(page.locator('main').getByText('newteammate@example.com')).not.toBeVisible();
+  await expect(page.locator('main').getByText(invitee)).not.toBeVisible();
 });
 
 test('organization danger zone requires typing the exact subdomain to delete', async ({ page, context }) => {

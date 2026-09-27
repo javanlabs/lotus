@@ -216,11 +216,11 @@ func inviteMemberUI(d Deps) fiber.Handler {
 		case err != nil:
 			return writeRepoErr(c, err)
 		}
+		setFlash(c, "member.invited", email) // shown once the dialog's Done reloads the page
 		if c.Get("HX-Request") != "" {
 			c.Type("html")
 			return d.Renderer.RenderNamed(c, "invite_form", inviteFormView{Email: email, Role: role, Link: link})
 		}
-		setFlash(c, "member.invited", email)
 		return redirectAfterMutation(c, "/settings/members")
 	}
 }
