@@ -2,7 +2,9 @@ package repo
 
 import (
 	"context"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -102,8 +104,9 @@ func CreateQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARun
 	}
 	var out *QARun
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		// Under lock: a CloseQAPlan in flight finishes first, and this sees it.
 		var closed *time.Time
-		if err := tx.GetContext(ctx, &closed, `SELECT closed_at FROM qa_plans WHERE id = $1`, planID); err != nil {
+		if err := tx.GetContext(ctx, &closed, `SELECT closed_at FROM qa_plans WHERE id = $1 FOR UPDATE`, planID); err != nil {
 			return err
 		}
 		if closed != nil {
@@ -207,7 +210,7 @@ func CreateQARetest(ctx context.Context, s tenant.Scope, runID uuid.UUID, create
 			return err
 		}
 		var closed *time.Time
-		if err := tx.GetContext(ctx, &closed, `SELECT closed_at FROM qa_plans WHERE id = $1`, orig.PlanID); err != nil {
+		if err := tx.GetContext(ctx, &closed, `SELECT closed_at FROM qa_plans WHERE id = $1 FOR UPDATE`, orig.PlanID); err != nil {
 			return err
 		}
 		if closed != nil {
@@ -230,7 +233,7 @@ func CreateQARetest(ctx context.Context, s tenant.Scope, runID uuid.UUID, create
 			items[i] = r.runSource
 			items[i].Assignee = r.Executor
 		}
-		run, err := insertQARun(ctx, tx, s.OrgID(), orig.PlanID, orig.Name+" — retest", "", &runID, createdBy, items)
+		run, err := insertQARun(ctx, tx, s.OrgID(), orig.PlanID, qaRetestName(orig.Name), "", &runID, createdBy, items)
 		out = run
 		return err
 	})
@@ -268,4 +271,18 @@ func CloseQARun(ctx context.Context, s tenant.Scope, id uuid.UUID) error {
 		return checkRowsAffected(res)
 	})
 	return qaWriteErr(err)
+}
+
+const qaRetestSuffix = " — retest"
+
+// qaRetestName names a retest after the run it retests: "Cycle 1" and
+// "Cycle 1 — retest" both give "Cycle 1 — retest", so a chain of retests
+// does not grow its name, and a long name is cut to fit MaxQANameLength.
+func qaRetestName(name string) string {
+	base := []rune(strings.TrimSuffix(name, qaRetestSuffix))
+	room := MaxQANameLength - utf8.RuneCountInString(qaRetestSuffix)
+	if len(base) > room {
+		base = append(base[:room-1], '…')
+	}
+	return string(base) + qaRetestSuffix
 }

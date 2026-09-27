@@ -16,6 +16,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/uyab/lotus/internal/authn"
+	"github.com/uyab/lotus/internal/blob"
 	"github.com/uyab/lotus/internal/config"
 	"github.com/uyab/lotus/internal/crypto"
 	"github.com/uyab/lotus/internal/dbtest"
@@ -56,7 +57,12 @@ func newDashboardTestApp(t *testing.T) (*fiber.App, *sqlx.DB) {
 	renderer := httpx.NewRenderer(os.DirFS("../../web/templates"), true)
 	db := dbtest.Open(t)
 	resolver := tenant.NewResolver(config.Config{BaseDomain: dashboardTestDomain, Dev: true}, db)
+	store, err := blob.NewFS(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	app := New(Deps{
+		Blob:             store,
 		Renderer:         renderer,
 		StaticFS:         os.DirFS("../../web/static"),
 		Resolver:         resolver,

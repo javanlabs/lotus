@@ -15,6 +15,7 @@ import (
 
 	"github.com/uyab/lotus/internal/authn"
 	"github.com/uyab/lotus/internal/authz"
+	"github.com/uyab/lotus/internal/blob"
 	"github.com/uyab/lotus/internal/config"
 	"github.com/uyab/lotus/internal/crypto"
 	"github.com/uyab/lotus/internal/httpx"
@@ -34,6 +35,8 @@ type Deps struct {
 	CookieSecure   bool
 	Mailer         *mailer.Mailer
 	KEK            *crypto.KEK
+	// Blob stores uploaded files (QA attachments); config LOTUS_BLOB_DIR.
+	Blob blob.Store
 
 	// NetguardResolver overrides task 2.2's SSRF-guarded HTTP client's DNS
 	// resolution. Nil in every real deployment (real DNS). Tests set this
@@ -60,6 +63,11 @@ type Deps struct {
 func New(d Deps) *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName: "lotus",
+		// QA attachments go up to repo.MaxQAAttachmentBytes (20 MB) per
+		// file; Fiber's 4 MB default would refuse them before any handler
+		// could say why. The margin covers the multipart envelope and a
+		// comment beside the file.
+		BodyLimit: 25 << 20,
 	})
 	app.Use(recover.New())
 	app.Use(logger.New())

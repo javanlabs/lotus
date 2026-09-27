@@ -109,15 +109,15 @@ func RecordQAResult(ctx context.Context, s tenant.Scope, in QAResultInput) (*QAR
 		var closed bool
 		if err := tx.GetContext(ctx, &closed, `
 			SELECT r.closed_at IS NOT NULL FROM qa_run_items i JOIN qa_runs r ON r.id = i.run_id
-			WHERE i.id = $1 FOR UPDATE OF i`, in.ItemID); err != nil {
+			WHERE i.id = $1 FOR UPDATE OF i FOR SHARE OF r`, in.ItemID); err != nil {
 			return err
 		}
 		if closed {
 			return ErrQAClosed
 		}
 		if err := tx.GetContext(ctx, &out, `
-			INSERT INTO qa_results (org_id, item_id, status, comment, created_by)
-			VALUES ($1, $2, $3, $4, $5)
+			INSERT INTO qa_results (org_id, item_id, status, comment, created_by, created_at)
+			VALUES ($1, $2, $3, $4, $5, clock_timestamp())
 			RETURNING id, org_id, item_id, status, comment, created_by, created_at`,
 			s.OrgID(), in.ItemID, in.Status, strings.TrimSpace(in.Comment), in.CreatedBy); err != nil {
 			return err

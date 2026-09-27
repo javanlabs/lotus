@@ -57,7 +57,7 @@ func QASummaryForProject(ctx context.Context, s tenant.Scope, projectID uuid.UUI
 }
 
 // QAScenarioCount is how many cases a scenario holds, and how many of those
-// are archived (they still count: runs created from it will include them).
+// are archived (CreateQARun leaves archived cases out of a new run).
 type QAScenarioCount struct {
 	Cases    int `db:"cases"`
 	Archived int `db:"archived"`

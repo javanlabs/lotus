@@ -16,6 +16,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/uyab/lotus/internal/authn"
+	"github.com/uyab/lotus/internal/blob"
 	"github.com/uyab/lotus/internal/config"
 	"github.com/uyab/lotus/internal/crypto"
 	"github.com/uyab/lotus/internal/db"
@@ -135,6 +136,10 @@ func runServe(cfg config.Config) {
 	templatesFS, staticFS := assetFilesystems(cfg.Dev)
 	renderer := httpx.NewRenderer(templatesFS, cfg.Dev)
 	resolver := tenant.NewResolver(cfg, sqlDB)
+	blobStore, err := blob.NewFS(cfg.BlobDir)
+	if err != nil {
+		log.Fatalf("blob store %s: %v", cfg.BlobDir, err)
+	}
 	app := web.New(web.Deps{
 		Renderer:       renderer,
 		StaticFS:       staticFS,
@@ -145,6 +150,7 @@ func runServe(cfg config.Config) {
 		CookieSecure:   cfg.CookieSecure,
 		Mailer:         mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom),
 		KEK:            kek,
+		Blob:           blobStore,
 	})
 
 	go sweepExpiredSessions(sqlDB)

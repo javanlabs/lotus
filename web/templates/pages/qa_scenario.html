@@ -64,7 +64,7 @@
 {{if $d.Scenario.Description}}<p style="margin:0 0 14px;max-width:760px;font-size:12.5px;color:#374151;white-space:pre-wrap">{{$d.Scenario.Description}}</p>{{end}}
 {{if $d.ArchivedCase}}
 <div role="note" style="margin-bottom:14px;max-width:760px;padding:9px 11px;border-radius:var(--radius-petal-sm);background:var(--status-fail-bg);color:var(--status-fail);font-size:12.5px">
-  {{$d.ArchivedCase}} case{{if ne $d.ArchivedCase 1}}s are{{else}} is{{end}} archived and will still be copied into new runs. Remove {{if ne $d.ArchivedCase 1}}them{{else}}it{{end}} or restore the case.
+  {{$d.ArchivedCase}} case{{if ne $d.ArchivedCase 1}}s are archived and are{{else}} is archived and is{{end}} skipped when a run is created. Remove {{if ne $d.ArchivedCase 1}}them{{else}}it{{end}} or restore the case.
 </div>
 {{end}}
 
