@@ -149,6 +149,9 @@ internal/dbtest           per-test isolated-schema Postgres harness
 internal/tenant           subdomain resolver + Scope type (task 0.4/0.5)
 internal/repo              tenant-scoped queries only (task 0.4) — Project & Component (2.1), Connection & audit (2.2), Metric binding (2.3), Discovery (2.4)
 internal/repo/global       the one exception: control-plane queries (no org scope) — per-org DEK storage (2.2), the sync queue + connection rate-limit state (3.2, deliberately unscoped — see below)
+internal/repo/legacyqa     read-only reader for the legacy QA Tools database (QA import)
+internal/qaimport          `lotus import-qa`: legacy QA Tools → one organization, plus `verify`
+internal/blob              blob store for uploaded files (QA attachments)
 internal/collector          Collector/Session/Ingestor interface, Result/Fact/Headline, error class taxonomy, registry + persister registry (task 3.1)
 internal/collector/gitlab    GitLab Collector: FetchHealth → Headline/Facts/Warnings, gitlab_snapshots persistence (task 3.3)
 internal/collector/sonarqube SonarQube Collector: measures → Headline/Facts, sonar_snapshots persistence (task 3.3)
@@ -169,6 +172,16 @@ e2e                         Playwright end-to-end tests
 scripts                     CI guardrail scripts
 deploy                      production deploy (bootstrap/deploy/update scripts, nginx, systemd) + local dev docker-compose
 ```
+
+### QA import
+
+```sh
+lotus import-qa --legacy-dsn='postgres://ro@host/qa_tools_dbs' --org=javan \
+  --users-map=users.csv --files-dir=/srv/qa-minio-mirror --dry-run --report=dry.json
+lotus import-qa verify --legacy-dsn='…' --org=javan
+```
+
+Full procedure: `docs/qa-import-runbook.md`.
 
 ## Production
 
