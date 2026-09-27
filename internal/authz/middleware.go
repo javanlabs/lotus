@@ -2,6 +2,7 @@ package authz
 
 import (
 	"reflect"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -72,7 +73,8 @@ func LoadPrincipal(db *sqlx.DB) fiber.Handler {
 // in diffs, and the thing task 1.5's route-coverage test checks every
 // route has one of (this or authz.Public). A principal that exists but
 // lacks perm gets 403 — they're a known, authenticated member of this org,
-// just not allowed to do this. That's a different failure than the
+// just not allowed to do this. A guest is the exception outside QA: it
+// gets 404 there (Phase 7's guest shell). That's a different failure than the
 // object-level "does this resource even belong to your org" check (see
 // CheckOwnership), which is 404 specifically to avoid confirming a
 // cross-org object's existence to someone who can't see it.
@@ -83,6 +85,12 @@ func Require(perm string) fiber.Handler {
 			return fiber.NewError(fiber.StatusUnauthorized, "no principal")
 		}
 		if !p.Can(perm) {
+			// A guest only ever sees QA: outside it, a page answers as if
+			// it did not exist, so the chrome of the internal product
+			// (metrics, settings, integrations) is not even confirmed.
+			if IsProjectScoped(p) && !strings.HasPrefix(perm, "qa.") {
+				return fiber.ErrNotFound
+			}
 			return fiber.NewError(fiber.StatusForbidden, "missing permission: "+perm)
 		}
 		return c.Next()

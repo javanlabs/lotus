@@ -153,3 +153,30 @@ func sha256HexForAuthzTest(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
 }
+
+// A guest is told a page outside QA does not exist (404); inside QA a
+// missing permission is still 403, and everyone else keeps 403 throughout.
+func TestRequire_GuestOutsideQAIsNotFound(t *testing.T) {
+	for _, tc := range []struct {
+		role, perm string
+		want       int
+	}{
+		{"guest", "dashboard.read", http.StatusNotFound},
+		{"guest", "qa.case.write", http.StatusForbidden},
+		{"guest", "qa.execute", http.StatusOK},
+		{"viewer", "sync.trigger", http.StatusForbidden},
+	} {
+		app := fiber.New()
+		app.Get("/x", func(c *fiber.Ctx) error {
+			authz.SetPrincipal(c, authz.Principal{Kind: authz.KindSession, Role: tc.role})
+			return c.Next()
+		}, authz.Require(tc.perm), func(c *fiber.Ctx) error { return c.SendString("ok") })
+		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/x", nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != tc.want {
+			t.Errorf("%s on %s = %d, want %d", tc.role, tc.perm, resp.StatusCode, tc.want)
+		}
+	}
+}

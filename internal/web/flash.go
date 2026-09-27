@@ -161,6 +161,7 @@ func redirectAfterMutation(c *fiber.Ctx, to string) error {
 func renderPage(c *fiber.Ctx, d Deps, page string, vd httpx.ViewData) error {
 	vd.Flash = takeFlash(c)
 	if vd.Nav != nil {
+		guestNav(c, vd.Nav)
 		qaNavCount(c, vd.Nav)
 	}
 	return d.Renderer.Render(c, page, vd)

@@ -92,6 +92,9 @@ type Nav struct {
 	// page and stays plain. A single-element Trail is the common case
 	// (Settings), a project page adds one level, a component two.
 	Trail []NavCrumb
+	// Guest trims the chrome for a guest: the logo and the organization
+	// crumb lead to /qa/my, and the user menu has no Settings.
+	Guest bool
 	// Below the top level (whenever Trail is set) the organization's name
 	// is the first link, back to its projects. OrgDrop also makes it a
 	// drag-and-drop target on the folder view, meaning "the top level".

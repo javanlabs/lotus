@@ -102,7 +102,7 @@ func registerDashboardRoutes(app *fiber.App, d Deps, requireSession, loadPrincip
 	// handler for the same path — so the browser gets HTML. See AGENTS.md
 	// on the shadowed JSON endpoints.
 	app.Get("/projects", tenant.RequireTenant(), requireSession, loadPrincipal,
-		authz.Require("dashboard.read"), dashboardPage(d))
+		guestHome, authz.Require("dashboard.read"), dashboardPage(d))
 
 	// Kept so links and bookmarks made while this lived at /dashboard keep
 	// working. Public: it only forwards, and the page it forwards to
