@@ -149,3 +149,26 @@ func QAPlanRunCounts(ctx context.Context, s tenant.Scope, planIDs []uuid.UUID) (
 	}
 	return out, err
 }
+
+// QACaseRef is what a run shows about the live case behind an item: its
+// key, and its current version (newer than the item's case_version means
+// the case changed after the run was created).
+type QACaseRef struct {
+	Key     int `db:"key"`
+	Version int `db:"version"`
+}
+
+func QACaseRefs(ctx context.Context, s tenant.Scope, caseIDs []uuid.UUID) (map[uuid.UUID]QACaseRef, error) {
+	var rows []struct {
+		ID uuid.UUID `db:"id"`
+		QACaseRef
+	}
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &rows, `SELECT id, key, version FROM qa_cases WHERE id = ANY($1)`, caseIDs)
+	})
+	out := make(map[uuid.UUID]QACaseRef, len(rows))
+	for _, r := range rows {
+		out[r.ID] = r.QACaseRef
+	}
+	return out, err
+}

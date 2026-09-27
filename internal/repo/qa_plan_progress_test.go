@@ -38,3 +38,14 @@ func TestQAPlanProgress_LatestCycleWinsPerCase(t *testing.T) {
 		t.Fatalf("run progress = %+v", runs)
 	}
 }
+
+func TestQACaseRefs_KeyAndCurrentVersion(t *testing.T) {
+	f := newRunFixture(t, "acme-case-refs")
+	ctx := context.Background()
+	in := repo.QACaseInput{SectionID: f.login.SectionID, Title: "Login, reworded", Steps: f.login.Steps}
+	repo.UpdateQACase(ctx, f.s, f.login.ID, in)
+	refs, err := repo.QACaseRefs(ctx, f.s, []uuid.UUID{f.login.ID, f.rfs.ID})
+	if err != nil || refs[f.login.ID].Key != f.login.Key || refs[f.login.ID].Version != 2 || refs[f.rfs.ID].Version != 1 {
+		t.Fatalf("refs = %+v, %v", refs, err)
+	}
+}

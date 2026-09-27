@@ -725,3 +725,18 @@ function qaSteps(sourceId) {
     },
   };
 }
+
+// qaResultKeys picks a result in a run item's panel (components/
+// qa_item_panel.html) from the keyboard: p, f, b or s ticks Pass, Fail,
+// Blocked or Skip. Keys typed into the comment or any other field are
+// left alone.
+function qaResultKeys(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const tag = (e.target && e.target.tagName) || "";
+  if (tag === "TEXTAREA" || (tag === "INPUT" && e.target.type !== "radio")) return;
+  const radio = e.currentTarget.querySelector(`input[name="status"][data-key="${e.key}"]`);
+  if (!radio) return;
+  e.preventDefault();
+  radio.checked = true;
+  radio.focus();
+}

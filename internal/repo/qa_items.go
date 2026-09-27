@@ -149,6 +149,9 @@ type QAProgress struct {
 
 func (p QAProgress) Done() int { return p.Total - p.Untested }
 
+// Count adds one item or case with status.
+func (p *QAProgress) Count(status string) { p.add(status, 1) }
+
 func (p *QAProgress) add(status string, n int) {
 	p.Total += n
 	switch status {

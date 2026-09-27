@@ -1,0 +1,61 @@
+{{/* qa_item_panel is one run item opened: the case as the run copied it,
+     the result form and the history. Returned alone as an htmx fragment;
+     after a result it also refreshes the row's status and the progress
+     header out of band. Takes qaItemPanelData. */}}
+{{define "qa_item_panel"}}
+{{$i := .Item}}
+<div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;padding:12px 14px 16px 14px;background:var(--ink-50);border-bottom:1px solid var(--ink-200)">
+  <div style="display:flex;flex-direction:column;gap:10px;min-width:0;font-size:12.5px;color:#374151">
+    {{if $i.Changed}}<div style="font-size:11.5px;color:#9E2B47">Case changed since this run. This run keeps the text it was created with.</div>{{end}}
+    {{if $i.Precondition}}<div><div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:3px">PRECONDITION</div><div style="white-space:pre-wrap">{{$i.Precondition}}</div></div>{{end}}
+    <div>
+      <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:3px">STEPS</div>
+      {{range $n, $s := $i.Steps}}
+      <div style="display:grid;grid-template-columns:22px minmax(0,1fr) minmax(0,1fr);gap:8px;padding:4px 0;border-bottom:1px solid var(--ink-200)">
+        <span style="font:500 11px 'IBM Plex Mono',monospace;color:#9CA3AF">{{inc $n}}</span>
+        <span style="white-space:pre-wrap">{{$s.Action}}</span><span style="white-space:pre-wrap;color:#6B7280">{{$s.Expected}}</span>
+      </div>
+      {{else}}<div style="color:#9CA3AF">No steps.</div>{{end}}
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+    {{with .Error}}{{template "form_error" .}}{{end}}
+    {{if .CanExecute}}
+    <form method="post" action="{{.Action}}" enctype="multipart/form-data" hx-post="{{.Action}}" hx-encoding="multipart/form-data"
+          hx-target="#panel-{{$i.ID}}" hx-swap="innerHTML" x-data @keydown="qaResultKeys($event)"
+          style="display:flex;flex-direction:column;gap:8px">
+      <div role="radiogroup" aria-label="Result" style="display:flex;gap:6px;flex-wrap:wrap">
+        {{range $opt := (selectOptions (dict "Value" "passed" "Label" "Pass") (dict "Value" "failed" "Label" "Fail") (dict "Value" "blocked" "Label" "Blocked") (dict "Value" "skipped" "Label" "Skip"))}}
+        <label class="btn-lotus btn-lotus-secondary" style="gap:6px;cursor:pointer">
+          <input type="radio" name="status" value="{{$opt.Value}}" required data-key="{{slice $opt.Value 0 1}}" style="accent-color:var(--text-brand)">{{$opt.Label}}
+        </label>
+        {{end}}
+      </div>
+      <textarea name="comment" rows="2" class="lotus-textarea" placeholder="What happened, if not a plain pass" aria-label="Comment"></textarea>
+      <input type="file" name="file" multiple class="lotus-input" aria-label="Attach files">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">p · f · b · s picks a result · up to 20 MB per file</span>
+        <button type="submit" class="btn-lotus btn-lotus-primary">Record result</button>
+      </div>
+    </form>
+    {{end}}
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">HISTORY</div>
+      {{range .History}}
+      <div style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:#374151">
+        <div style="display:flex;align-items:center;gap:8px">
+          {{template "qa_status" (dict "Status" .Status "Tone" .Tone)}}
+          <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.CreatedAt.Format "02 Jan 2006 15:04"}}{{if .By}} · {{.By}}{{end}}</span>
+        </div>
+        {{if .Comment}}<div style="white-space:pre-wrap">{{.Comment}}</div>{{end}}
+        {{range .Files}}<a href="{{.Href}}" style="font-size:11.5px;color:#43284E">{{.Name}}</a> <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.Size}}</span>{{end}}
+      </div>
+      {{else}}<div style="font-size:12px;color:#9CA3AF">No results yet.</div>{{end}}
+    </div>
+  </div>
+</div>
+{{if .OOB}}
+{{template "qa_status" (dict "Status" $i.Status "Tone" $i.Tone "ID" (printf "item-status-%s" $i.ID) "OOB" true)}}
+{{template "qa_run_progress" .Progress}}
+{{end}}
+{{end}}

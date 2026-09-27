@@ -1,0 +1,19 @@
+{{/* qa_run_progress is the run header's progress: overall, then each
+     assignee. Swapped out of band after a result is recorded. Takes
+     qaRunProgressData. */}}
+{{define "qa_run_progress"}}
+<div id="run-progress"{{if .OOB}} hx-swap-oob="true"{{end}} style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,2fr);gap:18px;align-items:start">
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PROGRESS</div>
+    {{template "qa_progress" .Total}}
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px 16px">
+    {{range .Testers}}
+    <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+      <div style="font-size:12px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Label}}</div>
+      {{template "qa_progress" .Progress}}
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

@@ -1,0 +1,50 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+
+<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:14px">
+  <div style="flex:1;min-width:220px">
+    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Run.Name}}</h1>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Plan.Name}} · {{$d.PhaseLabel}} · cycle {{$d.Run.Cycle}}{{if $d.Plan.Environment}} · {{$d.Plan.Environment}}{{end}}{{if $d.Run.ClosedAt}} · closed {{$d.Run.ClosedAt.Format "02 Jan 2006"}}{{end}}</p>
+    {{if $d.Run.Notes}}<p style="margin:6px 0 0;font-size:12px;color:#374151;white-space:pre-wrap">{{$d.Run.Notes}}</p>{{end}}
+  </div>
+</header>
+
+{{template "lotus_card_section_open" (dict "Padding" "14px" "Style" "margin-bottom:14px")}}
+  {{template "qa_run_progress" $d.Progress}}
+{{template "lotus_card_section_close" .}}
+
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
+  <form method="get" action="{{$d.URL}}" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px">
+    <div style="width:150px">{{template "lotus_select" (dict "Name" "who" "ID" "run-who" "Value" $d.Who "Label" "Who" "Size" "sm" "AutoSubmit" true "Options" (selectOptions (dict "Value" "" "Label" "Everyone") (dict "Value" "mine" "Label" "Mine") (dict "Value" "unassigned" "Label" "Unassigned")))}}</div>
+    <div style="width:150px">{{template "lotus_select" (dict "Name" "status" "ID" "run-status" "Value" $d.Status "Label" "Status" "Size" "sm" "AutoSubmit" true "Options" (selectOptions (dict "Value" "" "Label" "Any status") (dict "Value" "untested" "Label" "untested") (dict "Value" "passed" "Label" "passed") (dict "Value" "failed" "Label" "failed") (dict "Value" "blocked" "Label" "blocked") (dict "Value" "skipped" "Label" "skipped")))}}</div>
+    <span style="margin-left:auto;font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{$d.Shown}} shown</span>
+  </form>
+  {{range $g := $d.Groups}}
+  {{if $g.Items}}
+  <details open>
+    <summary class="lotus-table-head" style="display:flex;align-items:center;gap:12px;cursor:pointer">
+      <span style="flex:1">{{if $g.Name}}{{$g.Name}}{{else}}CASES{{end}}</span>
+      <span style="width:170px">{{template "qa_progress" $g.Progress}}</span>
+    </summary>
+    {{range $g.Items}}
+    <div data-item-row x-data="{ open: false }">
+      <button type="button" class="lotus-repo-row" @click="open = !open" :aria-expanded="open"
+              hx-get="{{.Panel}}" hx-trigger="click once" hx-target="#panel-{{.ID}}"
+              style="display:grid;grid-template-columns:64px minmax(0,1fr) 160px 90px;gap:10px;align-items:center;padding:0 14px;width:100%;border:none;background:none;text-align:left;cursor:pointer">
+        <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">TC-{{.Key}}</span>
+        <span style="font-size:12.5px;color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Title}}{{if .Changed}} <span class="lotus-badge lotus-badge-none" title="The case was edited after this run was created">Case changed since this run</span>{{end}}</span>
+        <span style="font-size:11.5px;color:#6B7280;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{if .Assignee}}{{.Assignee}}{{else}}—{{end}}</span>
+        {{template "qa_status" (dict "Status" .Status "Tone" .Tone "ID" (printf "item-status-%s" .ID))}}
+      </button>
+      <div id="panel-{{.ID}}" x-show="open" x-cloak></div>
+    </div>
+    {{end}}
+  </details>
+  {{end}}
+  {{end}}
+  {{if not $d.Shown}}<p style="margin:0;padding:28px 14px;text-align:center;font-size:12.5px;color:#6B7280">No items match.</p>{{end}}
+{{template "lotus_card_section_close" .}}
+
+{{template "shell_close" .}}
+{{end}}

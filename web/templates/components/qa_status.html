@@ -1,0 +1,5 @@
+{{/* qa_status is an item or result status as a badge. Takes (dict
+     "Status" "Tone" "ID" optional element id "OOB" swap it out of band). */}}
+{{define "qa_status"}}
+<span{{with .ID}} id="{{.}}"{{end}}{{if .OOB}} hx-swap-oob="true"{{end}} class="lotus-badge lotus-badge-{{.Tone}}">{{.Status}}</span>
+{{end}}
