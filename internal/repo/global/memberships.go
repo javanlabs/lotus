@@ -101,3 +101,18 @@ func RemoveMembership(ctx context.Context, db *sqlx.DB, orgID, userID uuid.UUID)
 	}
 	return tx.Commit()
 }
+
+// EnsureMembership gives userID a membership in orgID with roleKey and
+// status, unless the user already has one — an existing membership is never
+// changed, so re-running an import cannot downgrade anybody.
+func EnsureMembership(ctx context.Context, db *sqlx.DB, orgID, userID uuid.UUID, roleKey, status string) (bool, error) {
+	res, err := db.ExecContext(ctx, `
+		INSERT INTO memberships (org_id, user_id, role_id, status)
+		SELECT $1, $2, r.id, $4 FROM roles r WHERE r.org_id IS NULL AND r.key = $3
+		ON CONFLICT (org_id, user_id) DO NOTHING`, orgID, userID, roleKey, status)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}

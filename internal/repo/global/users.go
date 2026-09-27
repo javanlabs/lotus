@@ -2,6 +2,8 @@ package global
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"strings"
 	"time"
 
@@ -149,4 +151,19 @@ func lowerOrNil(s *string) *string {
 	}
 	v := strings.ToLower(strings.TrimSpace(*s))
 	return &v
+}
+
+// UserByEmail finds a user by email regardless of verification, or returns
+// nil, nil. Used by the QA importer, which creates verified users itself.
+func UserByEmail(ctx context.Context, db *sqlx.DB, email string) (*User, error) {
+	var out User
+	err := sqlx.GetContext(ctx, db, &out, `
+		SELECT id, email, name, avatar_url, email_verified_at, status FROM users WHERE email = lower($1)`, email)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
