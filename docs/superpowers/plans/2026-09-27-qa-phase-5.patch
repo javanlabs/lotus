@@ -1,0 +1,3865 @@
+diff --git a/cmd/lotus/main.go b/cmd/lotus/main.go
+index 06c7543..3f2af12 100644
+--- a/cmd/lotus/main.go
++++ b/cmd/lotus/main.go
+@@ -16,6 +16,7 @@ import (
+ 	"github.com/jmoiron/sqlx"
+ 
+ 	"github.com/uyab/lotus/internal/authn"
++	"github.com/uyab/lotus/internal/blob"
+ 	"github.com/uyab/lotus/internal/config"
+ 	"github.com/uyab/lotus/internal/crypto"
+ 	"github.com/uyab/lotus/internal/db"
+@@ -135,6 +136,10 @@ func runServe(cfg config.Config) {
+ 	templatesFS, staticFS := assetFilesystems(cfg.Dev)
+ 	renderer := httpx.NewRenderer(templatesFS, cfg.Dev)
+ 	resolver := tenant.NewResolver(cfg, sqlDB)
++	blobStore, err := blob.NewFS(cfg.BlobDir)
++	if err != nil {
++		log.Fatalf("blob store %s: %v", cfg.BlobDir, err)
++	}
+ 	app := web.New(web.Deps{
+ 		Renderer:       renderer,
+ 		StaticFS:       staticFS,
+@@ -145,6 +150,7 @@ func runServe(cfg config.Config) {
+ 		CookieSecure:   cfg.CookieSecure,
+ 		Mailer:         mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom),
+ 		KEK:            kek,
++		Blob:           blobStore,
+ 	})
+ 
+ 	go sweepExpiredSessions(sqlDB)
+diff --git a/e2e/tests/qa-execution.spec.ts b/e2e/tests/qa-execution.spec.ts
+new file mode 100644
+index 0000000..9364a12
+--- /dev/null
++++ b/e2e/tests/qa-execution.spec.ts
+@@ -0,0 +1,73 @@
++import { expect, test } from '@playwright/test';
++import { retireOrg, seedOwnerSession, withDB } from './helpers/db';
++
++const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
++const BASE_DOMAIN = process.env.LOTUS_BASE_DOMAIN ?? 'lotus.localhost';
++const tenantOrigin = (s: string) => `http://${s}.${BASE_DOMAIN}:${PORT}`;
++
++// seedPlan inserts a project with two cases, a scenario holding both and a
++// plan over that scenario, straight into Postgres.
++async function seedPlan(orgId: string): Promise<{ projectId: string; planId: string }> {
++  return withDB(async (c) => {
++    const p = await c.query(`INSERT INTO projects (org_id, slug, name) VALUES ($1, 'portal', 'Portal') RETURNING id`, [orgId]);
++    const projectId = p.rows[0].id as string;
++    const sec = await c.query(`INSERT INTO qa_sections (org_id, project_id, name) VALUES ($1, $2, 'Auth') RETURNING id`, [orgId, projectId]);
++    const sc = await c.query(`INSERT INTO qa_scenarios (org_id, project_id, name, phase) VALUES ($1, $2, 'Regression core', 'regression') RETURNING id`, [orgId, projectId]);
++    for (const [i, title] of ['Login valid', 'Login invalid'].entries()) {
++      const cs = await c.query(
++        `INSERT INTO qa_cases (org_id, project_id, section_id, key, title, steps) VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id`,
++        [orgId, projectId, sec.rows[0].id, i + 1, title, JSON.stringify([{ action: 'Open the portal', expected: 'Login page' }])]);
++      await c.query(`INSERT INTO qa_scenario_items (org_id, scenario_id, case_id, position) VALUES ($1, $2, $3, $4)`,
++        [orgId, sc.rows[0].id, cs.rows[0].id, i + 1]);
++    }
++    const plan = await c.query(`INSERT INTO qa_plans (org_id, project_id, name, phase) VALUES ($1, $2, 'Regression October', 'regression') RETURNING id`, [orgId, projectId]);
++    await c.query(`INSERT INTO qa_plan_scenarios (org_id, plan_id, scenario_id) VALUES ($1, $2, $3)`, [orgId, plan.rows[0].id, sc.rows[0].id]);
++    return { projectId, planId: plan.rows[0].id as string };
++  });
++}
++
++test('a run is created, executed from the keyboard, and its failure retested', async ({ page, context }) => {
++  const { sessionToken, subdomain, orgId } = await seedOwnerSession('qa-exec-e2e', 'placeholder');
++  const origin = tenantOrigin(subdomain);
++  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
++  const { projectId, planId } = await seedPlan(orgId);
++
++  try {
++    await page.goto(`${origin}/projects/${projectId}/qa/plans/${planId}`);
++    await page.getByRole('link', { name: 'New run' }).click();
++    await expect(page.locator('#run-preview')).toContainText('2 cases');
++    await page.locator('input[name="tester_id"]').first().check();
++    await page.getByLabel('One by one, in turn').check();
++    await expect(page.locator('#run-preview [data-preview-count="2"]')).toBeVisible();
++    await page.getByRole('button', { name: 'Create run' }).click();
++    await expect(page.getByRole('heading', { level: 1, name: 'Cycle 1' })).toBeVisible();
++
++    // Pass the first item with the p key, without leaving the page.
++    const rows = page.locator('[data-item-row]');
++    await rows.nth(0).getByRole('button').first().click();
++    const panel1 = rows.nth(0).locator('[id^="panel-"]');
++    await expect(panel1.getByRole('button', { name: 'Record result' })).toBeVisible();
++    await panel1.getByRole('radiogroup', { name: 'Result' }).locator('input').last().focus(); // Skip: p must move the choice to Pass
++    await page.keyboard.press('p');
++    await panel1.getByRole('button', { name: 'Record result' }).click();
++    await expect(rows.nth(0).locator('[id^="item-status-"]')).toHaveText('passed');
++    await expect(page.locator('#run-progress')).toContainText('1/2 done');
++
++    // Fail the second with a comment and a file.
++    await rows.nth(1).getByRole('button').first().click();
++    const panel2 = rows.nth(1).locator('[id^="panel-"]');
++    await panel2.getByLabel('Fail').check();
++    await panel2.getByLabel('Comment').fill('500 on submit');
++    await panel2.getByLabel('Attach files').setInputFiles({ name: 'trace.txt', mimeType: 'text/plain', buffer: Buffer.from('stack trace') });
++    await panel2.getByRole('button', { name: 'Record result' }).click();
++    await expect(rows.nth(1).locator('[id^="item-status-"]')).toHaveText('failed');
++    await expect(panel2.getByRole('link', { name: 'trace.txt' })).toBeVisible();
++
++    await page.getByRole('button', { name: 'Retest failed & blocked' }).click();
++    await expect(page.getByRole('heading', { level: 1, name: 'Cycle 1 — retest' })).toBeVisible();
++    await expect(page.locator('[data-item-row]')).toHaveCount(1);
++    await expect(page.getByText('retest of')).toBeVisible();
++  } finally {
++    await retireOrg(orgId);
++  }
++});
+diff --git a/internal/repo/qa_common.go b/internal/repo/qa_common.go
+index dd5e3ca..d5b6eb0 100644
+--- a/internal/repo/qa_common.go
++++ b/internal/repo/qa_common.go
+@@ -218,3 +218,13 @@ func QAProjectOf(ctx context.Context, s tenant.Scope, kind QAKind, id uuid.UUID)
+ 	}
+ 	return projectID, err
+ }
++
++// truncateQAName cuts a derived name (a run's "Scenario / Group" label
++// turned into a group name) to MaxQANameLength, ending it with "…".
++func truncateQAName(s string) string {
++	r := []rune(s)
++	if len(r) <= MaxQANameLength {
++		return s
++	}
++	return string(r[:MaxQANameLength-1]) + "…"
++}
+diff --git a/internal/repo/qa_hardening_test.go b/internal/repo/qa_hardening_test.go
+new file mode 100644
+index 0000000..acc5329
+--- /dev/null
++++ b/internal/repo/qa_hardening_test.go
+@@ -0,0 +1,96 @@
++package repo_test
++
++import (
++	"context"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/jmoiron/sqlx"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++// A run started while its plan is being closed must not land in the closed
++// plan: the plan row is read under lock, so the create waits and then sees
++// closed_at.
++func TestQARuns_CreateWaitsForAConcurrentPlanClose(t *testing.T) {
++	f := newRunFixture(t, "acme-close-race")
++	ctx := context.Background()
++	done := make(chan error, 1)
++	err := f.s.Tx(ctx, func(tx *sqlx.Tx) error {
++		if _, err := tx.Exec(`SELECT 1 FROM qa_plans WHERE id = $1 FOR UPDATE`, f.plan.ID); err != nil {
++			return err
++		}
++		go func() {
++			_, err := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "C1"}, nil)
++			done <- err
++		}()
++		time.Sleep(200 * time.Millisecond)
++		_, err := tx.Exec(`UPDATE qa_plans SET closed_at = now() WHERE id = $1`, f.plan.ID)
++		return err
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := <-done; err != repo.ErrQAClosed {
++		t.Fatalf("run created during the close = %v; want ErrQAClosed", err)
++	}
++}
++
++// Likewise a result recorded while its run is being closed.
++func TestQAItems_ResultWaitsForAConcurrentRunClose(t *testing.T) {
++	f := newRunFixture(t, "acme-result-race")
++	ctx := context.Background()
++	run, _ := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "C1"}, nil)
++	items, _ := repo.ListQARunItems(ctx, f.s, run.ID, repo.QAItemFilter{})
++	done := make(chan error, 1)
++	err := f.s.Tx(ctx, func(tx *sqlx.Tx) error {
++		if _, err := tx.Exec(`SELECT 1 FROM qa_runs WHERE id = $1 FOR UPDATE`, run.ID); err != nil {
++			return err
++		}
++		go func() {
++			_, err := repo.RecordQAResult(ctx, f.s, repo.QAResultInput{ItemID: items[0].ID, Status: "passed"})
++			done <- err
++		}()
++		time.Sleep(200 * time.Millisecond)
++		_, err := tx.Exec(`UPDATE qa_runs SET closed_at = now() WHERE id = $1`, run.ID)
++		return err
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := <-done; err != repo.ErrQAClosed {
++		t.Fatalf("result recorded during the close = %v; want ErrQAClosed", err)
++	}
++}
++
++func TestQARuns_RetestNameStaysWithinLimitAndDoesNotStack(t *testing.T) {
++	f := newRunFixture(t, "acme-retest-name")
++	ctx := context.Background()
++	long := strings.Repeat("r", 195)
++	run, err := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: long}, nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	items, _ := repo.ListQARunItems(ctx, f.s, run.ID, repo.QAItemFilter{})
++	repo.RecordQAResult(ctx, f.s, repo.QAResultInput{ItemID: items[0].ID, Status: "failed"})
++	retest, err := repo.CreateQARetest(ctx, f.s, run.ID, nil)
++	if err != nil {
++		t.Fatalf("retest of a long name = %v", err)
++	}
++	if len([]rune(retest.Name)) > repo.MaxQANameLength || !strings.HasSuffix(retest.Name, " — retest") {
++		t.Fatalf("retest name = %q", retest.Name)
++	}
++
++	short, _ := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "Cycle 1"}, nil)
++	its, _ := repo.ListQARunItems(ctx, f.s, short.ID, repo.QAItemFilter{})
++	repo.RecordQAResult(ctx, f.s, repo.QAResultInput{ItemID: its[0].ID, Status: "failed"})
++	r1, _ := repo.CreateQARetest(ctx, f.s, short.ID, nil)
++	r1items, _ := repo.ListQARunItems(ctx, f.s, r1.ID, repo.QAItemFilter{})
++	repo.RecordQAResult(ctx, f.s, repo.QAResultInput{ItemID: r1items[0].ID, Status: "blocked"})
++	r2, err := repo.CreateQARetest(ctx, f.s, r1.ID, nil)
++	if err != nil || r2.Name != "Cycle 1 — retest" {
++		t.Fatalf("retest of a retest = %v, %q; want %q", err, r2.Name, "Cycle 1 — retest")
++	}
++}
+diff --git a/internal/repo/qa_items.go b/internal/repo/qa_items.go
+index 6784061..1e9adad 100644
+--- a/internal/repo/qa_items.go
++++ b/internal/repo/qa_items.go
+@@ -109,15 +109,15 @@ func RecordQAResult(ctx context.Context, s tenant.Scope, in QAResultInput) (*QAR
+ 		var closed bool
+ 		if err := tx.GetContext(ctx, &closed, `
+ 			SELECT r.closed_at IS NOT NULL FROM qa_run_items i JOIN qa_runs r ON r.id = i.run_id
+-			WHERE i.id = $1 FOR UPDATE OF i`, in.ItemID); err != nil {
++			WHERE i.id = $1 FOR UPDATE OF i FOR SHARE OF r`, in.ItemID); err != nil {
+ 			return err
+ 		}
+ 		if closed {
+ 			return ErrQAClosed
+ 		}
+ 		if err := tx.GetContext(ctx, &out, `
+-			INSERT INTO qa_results (org_id, item_id, status, comment, created_by)
+-			VALUES ($1, $2, $3, $4, $5)
++			INSERT INTO qa_results (org_id, item_id, status, comment, created_by, created_at)
++			VALUES ($1, $2, $3, $4, $5, clock_timestamp())
+ 			RETURNING id, org_id, item_id, status, comment, created_by, created_at`,
+ 			s.OrgID(), in.ItemID, in.Status, strings.TrimSpace(in.Comment), in.CreatedBy); err != nil {
+ 			return err
+@@ -149,6 +149,9 @@ type QAProgress struct {
+ 
+ func (p QAProgress) Done() int { return p.Total - p.Untested }
+ 
++// Count adds one item or case with status.
++func (p *QAProgress) Count(status string) { p.add(status, 1) }
++
+ func (p *QAProgress) add(status string, n int) {
+ 	p.Total += n
+ 	switch status {
+@@ -203,6 +206,21 @@ type QAMyItem struct {
+ // ListMyQAItems lists untested items assigned to userID in open runs of open
+ // plans. projectIDs nil means every project (members and above); a guest
+ // passes its project list, and an empty list returns nothing.
++// CountMyQAItems is len(ListMyQAItems(...)) without reading the items: the
++// sidebar's count on every page.
++func CountMyQAItems(ctx context.Context, s tenant.Scope, userID uuid.UUID, projectIDs []uuid.UUID) (int, error) {
++	var n int
++	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
++		return tx.GetContext(ctx, &n, `
++			SELECT count(*) FROM qa_run_items i
++			JOIN qa_runs r ON r.id = i.run_id AND r.closed_at IS NULL
++			JOIN qa_plans p ON p.id = r.plan_id AND p.closed_at IS NULL
++			WHERE i.assignee_id = $1 AND i.status = 'untested'
++			  AND ($2::uuid[] IS NULL OR p.project_id = ANY($2))`, userID, projectIDs)
++	})
++	return n, err
++}
++
+ func ListMyQAItems(ctx context.Context, s tenant.Scope, userID uuid.UUID, projectIDs []uuid.UUID) ([]QAMyItem, error) {
+ 	var out []QAMyItem
+ 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+diff --git a/internal/repo/qa_plan_progress_test.go b/internal/repo/qa_plan_progress_test.go
+new file mode 100644
+index 0000000..f936b24
+--- /dev/null
++++ b/internal/repo/qa_plan_progress_test.go
+@@ -0,0 +1,51 @@
++package repo_test
++
++import (
++	"context"
++	"testing"
++
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++// A plan's progress is where each of its cases stands now: the case's item
++// in the latest cycle that holds it.
++func TestQAPlanProgress_LatestCycleWinsPerCase(t *testing.T) {
++	f := newRunFixture(t, "acme-plan-progress")
++	ctx := context.Background()
++	run, _ := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "C1"}, nil) // 3 cases
++	items, _ := repo.ListQARunItems(ctx, f.s, run.ID, repo.QAItemFilter{})
++	repo.RecordQAResult(ctx, f.s, repo.QAResultInput{ItemID: items[0].ID, Status: "passed"})
++	repo.RecordQAResult(ctx, f.s, repo.QAResultInput{ItemID: items[1].ID, Status: "failed"})
++	retest, _ := repo.CreateQARetest(ctx, f.s, run.ID, nil)
++	rItems, _ := repo.ListQARunItems(ctx, f.s, retest.ID, repo.QAItemFilter{})
++	repo.RecordQAResult(ctx, f.s, repo.QAResultInput{ItemID: rItems[0].ID, Status: "passed"})
++
++	other, _ := repo.CreateQAPlan(ctx, f.s, f.projectID, repo.QAPlanInput{Name: "Empty", Phase: "sit"}, nil)
++	got, err := repo.QAPlanProgress(ctx, f.s, []uuid.UUID{f.plan.ID, other.ID})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if p := got[f.plan.ID]; p.Total != 3 || p.Passed != 2 || p.Untested != 1 || p.Failed != 0 {
++		t.Fatalf("plan progress = %+v; want 3 cases: 2 passed (one after retest), 1 untested", p)
++	}
++	if p := got[other.ID]; p.Total != 0 {
++		t.Fatalf("plan without runs = %+v", p)
++	}
++	runs, _ := repo.QARunProgressFor(ctx, f.s, []uuid.UUID{run.ID, retest.ID})
++	if runs[run.ID].Failed != 1 || runs[retest.ID].Passed != 1 || runs[retest.ID].Total != 1 {
++		t.Fatalf("run progress = %+v", runs)
++	}
++}
++
++func TestQACaseRefs_KeyAndCurrentVersion(t *testing.T) {
++	f := newRunFixture(t, "acme-case-refs")
++	ctx := context.Background()
++	in := repo.QACaseInput{SectionID: f.login.SectionID, Title: "Login, reworded", Steps: f.login.Steps}
++	repo.UpdateQACase(ctx, f.s, f.login.ID, in)
++	refs, err := repo.QACaseRefs(ctx, f.s, []uuid.UUID{f.login.ID, f.rfs.ID})
++	if err != nil || refs[f.login.ID].Key != f.login.Key || refs[f.login.ID].Version != 2 || refs[f.rfs.ID].Version != 1 {
++		t.Fatalf("refs = %+v, %v", refs, err)
++	}
++}
+diff --git a/internal/repo/qa_run_preview_test.go b/internal/repo/qa_run_preview_test.go
+new file mode 100644
+index 0000000..3173cdd
+--- /dev/null
++++ b/internal/repo/qa_run_preview_test.go
+@@ -0,0 +1,37 @@
++package repo_test
++
++import (
++	"context"
++	"testing"
++
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++func TestPreviewQARun_CountsWhoGetsWhatAndWritesNothing(t *testing.T) {
++	f := newRunFixture(t, "acme-run-preview") // 3 distinct cases across UAT (2) and Regression (2, one shared)
++	ctx := context.Background()
++	a, b := mustUser(t, f.db, "a@acme.example"), mustUser(t, f.db, "b@acme.example")
++
++	p, err := repo.PreviewQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Testers: []uuid.UUID{a, b}, Distribution: repo.DistributeRoundRobin})
++	if err != nil || p.Cases != 3 || p.PerTester[a] != 2 || p.PerTester[b] != 1 || p.Unassigned != 0 {
++		t.Fatalf("round robin preview = %+v, %v", p, err)
++	}
++	p, _ = repo.PreviewQARun(ctx, f.s, f.plan.ID, repo.QARunInput{})
++	if p.Cases != 3 || p.Unassigned != 3 {
++		t.Fatalf("no distribution = %+v", p)
++	}
++	p, _ = repo.PreviewQARun(ctx, f.s, f.plan.ID, repo.QARunInput{ScenarioIDs: []uuid.UUID{f.uat.ID}, Testers: []uuid.UUID{a, b}, Distribution: repo.DistributeByGroup})
++	if p.Cases != 2 || p.PerTester[a] != 1 || p.PerTester[b] != 1 {
++		t.Fatalf("by group preview = %+v; the UAT scenario has an ungrouped case and a Day 2 case", p)
++	}
++	if runs, _ := repo.ListQARuns(ctx, f.s, f.plan.ID); len(runs) != 0 {
++		t.Fatal("preview created a run")
++	}
++
++	empty, _ := repo.CreateQAPlan(ctx, f.s, f.projectID, repo.QAPlanInput{Name: "Empty", Phase: "sit"}, nil)
++	if p, err := repo.PreviewQARun(ctx, f.s, empty.ID, repo.QARunInput{}); err != nil || p.Cases != 0 {
++		t.Fatalf("empty plan preview = %+v, %v", p, err)
++	}
++}
+diff --git a/internal/repo/qa_runs.go b/internal/repo/qa_runs.go
+index c655c83..e9540e6 100644
+--- a/internal/repo/qa_runs.go
++++ b/internal/repo/qa_runs.go
+@@ -2,7 +2,9 @@ package repo
+ 
+ import (
+ 	"context"
++	"strings"
+ 	"time"
++	"unicode/utf8"
+ 
+ 	"github.com/google/uuid"
+ 	"github.com/jmoiron/sqlx"
+@@ -90,78 +92,97 @@ func insertQARun(ctx context.Context, tx *sqlx.Tx, orgID, planID uuid.UUID, name
+ 	return &run, nil
+ }
+ 
+-func CreateQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARunInput, createdBy *uuid.UUID) (*QARun, error) {
++func validQADistribution(in QARunInput) error {
+ 	switch in.Distribution {
+ 	case "", DistributeNone:
+ 	case DistributeRoundRobin, DistributeByGroup:
+ 		if len(in.Testers) == 0 {
+-			return nil, ErrInvalidInput
++			return ErrInvalidInput
+ 		}
+ 	default:
+-		return nil, ErrInvalidInput
++		return ErrInvalidInput
++	}
++	return nil
++}
++
++// qaRunSources is the cases a run of planID over scenarioIDs (empty: all
++// the plan's scenarios) would hold, in run order: live cases only, each
++// once, grouped by scenario and group.
++func qaRunSources(ctx context.Context, tx *sqlx.Tx, planID uuid.UUID, scenarioIDs []uuid.UUID) ([]runSource, error) {
++	var planScenarios []struct {
++		ID   uuid.UUID `db:"id"`
++		Name string    `db:"name"`
++	}
++	if err := tx.SelectContext(ctx, &planScenarios, `
++		SELECT sc.id, sc.name FROM qa_plan_scenarios ps JOIN qa_scenarios sc ON sc.id = ps.scenario_id
++		WHERE ps.plan_id = $1 ORDER BY lower(sc.name)`, planID); err != nil {
++		return nil, err
++	}
++	wanted := map[uuid.UUID]bool{}
++	for _, id := range scenarioIDs {
++		wanted[id] = true
++	}
++	chosen := planScenarios[:0:0]
++	for _, sc := range planScenarios {
++		if len(wanted) == 0 || wanted[sc.ID] {
++			chosen = append(chosen, sc)
++			delete(wanted, sc.ID)
++		}
++	}
++	if len(wanted) > 0 {
++		return nil, ErrInvalidInput // asked for a scenario the plan does not cover
++	}
++	multi := len(chosen) > 1
++	seen := map[uuid.UUID]bool{}
++	var items []runSource
++	for _, sc := range chosen {
++		var rows []runSource
++		if err := tx.SelectContext(ctx, &rows, `
++			SELECT c.id AS case_id, COALESCE(g.name, '') AS group_name,
++				c.title, c.precondition, c.steps, c.version
++			FROM qa_scenario_items i
++			JOIN qa_cases c ON c.id = i.case_id
++			LEFT JOIN qa_scenario_groups g ON g.id = i.group_id
++			WHERE i.scenario_id = $1 AND c.archived_at IS NULL
++			ORDER BY COALESCE(g.position, 0), i.position, c.key`, sc.ID); err != nil {
++			return nil, err
++		}
++		for _, r := range rows {
++			if seen[r.CaseID] {
++				continue
++			}
++			seen[r.CaseID] = true
++			if multi {
++				if r.GroupName == "" {
++					r.GroupName = sc.Name
++				} else {
++					r.GroupName = sc.Name + " / " + r.GroupName
++				}
++			}
++			items = append(items, r)
++		}
++	}
++	return items, nil
++}
++
++func CreateQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARunInput, createdBy *uuid.UUID) (*QARun, error) {
++	if err := validQADistribution(in); err != nil {
++		return nil, err
+ 	}
+ 	var out *QARun
+ 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
++		// Under lock: a CloseQAPlan in flight finishes first, and this sees it.
+ 		var closed *time.Time
+-		if err := tx.GetContext(ctx, &closed, `SELECT closed_at FROM qa_plans WHERE id = $1`, planID); err != nil {
++		if err := tx.GetContext(ctx, &closed, `SELECT closed_at FROM qa_plans WHERE id = $1 FOR UPDATE`, planID); err != nil {
+ 			return err
+ 		}
+ 		if closed != nil {
+ 			return ErrQAClosed
+ 		}
+-		var planScenarios []struct {
+-			ID   uuid.UUID `db:"id"`
+-			Name string    `db:"name"`
+-		}
+-		if err := tx.SelectContext(ctx, &planScenarios, `
+-			SELECT sc.id, sc.name FROM qa_plan_scenarios ps JOIN qa_scenarios sc ON sc.id = ps.scenario_id
+-			WHERE ps.plan_id = $1 ORDER BY lower(sc.name)`, planID); err != nil {
++		items, err := qaRunSources(ctx, tx, planID, in.ScenarioIDs)
++		if err != nil {
+ 			return err
+ 		}
+-		wanted := map[uuid.UUID]bool{}
+-		for _, id := range in.ScenarioIDs {
+-			wanted[id] = true
+-		}
+-		chosen := planScenarios[:0:0]
+-		for _, sc := range planScenarios {
+-			if len(wanted) == 0 || wanted[sc.ID] {
+-				chosen = append(chosen, sc)
+-				delete(wanted, sc.ID)
+-			}
+-		}
+-		if len(wanted) > 0 {
+-			return ErrInvalidInput // asked for a scenario the plan does not cover
+-		}
+-		multi := len(chosen) > 1
+-		seen := map[uuid.UUID]bool{}
+-		var items []runSource
+-		for _, sc := range chosen {
+-			var rows []runSource
+-			if err := tx.SelectContext(ctx, &rows, `
+-				SELECT c.id AS case_id, COALESCE(g.name, '') AS group_name,
+-					c.title, c.precondition, c.steps, c.version
+-				FROM qa_scenario_items i
+-				JOIN qa_cases c ON c.id = i.case_id
+-				LEFT JOIN qa_scenario_groups g ON g.id = i.group_id
+-				WHERE i.scenario_id = $1 AND c.archived_at IS NULL
+-				ORDER BY COALESCE(g.position, 0), i.position, c.key`, sc.ID); err != nil {
+-				return err
+-			}
+-			for _, r := range rows {
+-				if seen[r.CaseID] {
+-					continue
+-				}
+-				seen[r.CaseID] = true
+-				if multi {
+-					if r.GroupName == "" {
+-						r.GroupName = sc.Name
+-					} else {
+-						r.GroupName = sc.Name + " / " + r.GroupName
+-					}
+-				}
+-				items = append(items, r)
+-			}
+-		}
+ 		distribute(items, in.Testers, in.Distribution)
+ 		run, err := insertQARun(ctx, tx, s.OrgID(), planID, in.Name, in.Notes, nil, createdBy, items)
+ 		out = run
+@@ -173,6 +194,40 @@ func CreateQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARun
+ 	return out, nil
+ }
+ 
++// QARunPreview is what CreateQARun would do with the same input: how many
++// cases, and how many each tester would get.
++type QARunPreview struct {
++	Cases      int
++	PerTester  map[uuid.UUID]int
++	Unassigned int
++}
++
++// PreviewQARun computes CreateQARun's case list and distribution without
++// writing anything. A plan with nothing to run previews as zero cases.
++func PreviewQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARunInput) (QARunPreview, error) {
++	out := QARunPreview{PerTester: map[uuid.UUID]int{}}
++	if err := validQADistribution(in); err != nil {
++		return out, err
++	}
++	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
++		items, err := qaRunSources(ctx, tx, planID, in.ScenarioIDs)
++		if err != nil {
++			return err
++		}
++		distribute(items, in.Testers, in.Distribution)
++		out.Cases = len(items)
++		for _, it := range items {
++			if it.Assignee == nil {
++				out.Unassigned++
++			} else {
++				out.PerTester[*it.Assignee]++
++			}
++		}
++		return nil
++	})
++	return out, qaWriteErr(err)
++}
++
+ // distribute sets Assignee on items in place.
+ func distribute(items []runSource, testers []uuid.UUID, mode string) {
+ 	n := len(testers)
+@@ -207,7 +262,7 @@ func CreateQARetest(ctx context.Context, s tenant.Scope, runID uuid.UUID, create
+ 			return err
+ 		}
+ 		var closed *time.Time
+-		if err := tx.GetContext(ctx, &closed, `SELECT closed_at FROM qa_plans WHERE id = $1`, orig.PlanID); err != nil {
++		if err := tx.GetContext(ctx, &closed, `SELECT closed_at FROM qa_plans WHERE id = $1 FOR UPDATE`, orig.PlanID); err != nil {
+ 			return err
+ 		}
+ 		if closed != nil {
+@@ -230,7 +285,7 @@ func CreateQARetest(ctx context.Context, s tenant.Scope, runID uuid.UUID, create
+ 			items[i] = r.runSource
+ 			items[i].Assignee = r.Executor
+ 		}
+-		run, err := insertQARun(ctx, tx, s.OrgID(), orig.PlanID, orig.Name+" — retest", "", &runID, createdBy, items)
++		run, err := insertQARun(ctx, tx, s.OrgID(), orig.PlanID, qaRetestName(orig.Name), "", &runID, createdBy, items)
+ 		out = run
+ 		return err
+ 	})
+@@ -269,3 +324,17 @@ func CloseQARun(ctx context.Context, s tenant.Scope, id uuid.UUID) error {
+ 	})
+ 	return qaWriteErr(err)
+ }
++
++const qaRetestSuffix = " — retest"
++
++// qaRetestName names a retest after the run it retests: "Cycle 1" and
++// "Cycle 1 — retest" both give "Cycle 1 — retest", so a chain of retests
++// does not grow its name, and a long name is cut to fit MaxQANameLength.
++func qaRetestName(name string) string {
++	base := []rune(strings.TrimSuffix(name, qaRetestSuffix))
++	room := MaxQANameLength - utf8.RuneCountInString(qaRetestSuffix)
++	if len(base) > room {
++		base = append(base[:room-1], '…')
++	}
++	return string(base) + qaRetestSuffix
++}
+diff --git a/internal/repo/qa_scenarios.go b/internal/repo/qa_scenarios.go
+index 17d1c80..b527e12 100644
+--- a/internal/repo/qa_scenarios.go
++++ b/internal/repo/qa_scenarios.go
+@@ -279,3 +279,62 @@ func SetQAScenarioItemsGroup(ctx context.Context, s tenant.Scope, scenarioID uui
+ 	})
+ 	return int(n), qaWriteErr(err)
+ }
++
++// CreateQAScenarioFromRun saves a run's case set as a new scenario of the
++// same project: the cases in run order, one group per group name the run
++// used ("" stays ungrouped). Cases archived since the run are left out.
++func CreateQAScenarioFromRun(ctx context.Context, s tenant.Scope, runID uuid.UUID, name, phase string, createdBy *uuid.UUID) (*QAScenario, error) {
++	name, err := normalizeQAName(name, MaxQANameLength)
++	if err != nil {
++		return nil, err
++	}
++	if !validQAPhase(phase) {
++		return nil, ErrInvalidInput
++	}
++	var out QAScenario
++	err = s.Tx(ctx, func(tx *sqlx.Tx) error {
++		var projectID uuid.UUID
++		if err := tx.GetContext(ctx, &projectID, `
++			SELECT p.project_id FROM qa_runs r JOIN qa_plans p ON p.id = r.plan_id WHERE r.id = $1`, runID); err != nil {
++			return err
++		}
++		if err := tx.GetContext(ctx, &out, `
++			INSERT INTO qa_scenarios (org_id, project_id, name, phase, created_by)
++			VALUES ($1, $2, $3, $4, $5) RETURNING `+qaScenarioCols, s.OrgID(), projectID, name, phase, createdBy); err != nil {
++			return err
++		}
++		var items []struct {
++			CaseID    uuid.UUID `db:"case_id"`
++			GroupName string    `db:"group_name"`
++		}
++		if err := tx.SelectContext(ctx, &items, `
++			SELECT i.case_id, i.group_name FROM qa_run_items i JOIN qa_cases c ON c.id = i.case_id
++			WHERE i.run_id = $1 AND c.archived_at IS NULL ORDER BY i.position`, runID); err != nil {
++			return err
++		}
++		groups := map[string]*uuid.UUID{"": nil}
++		for pos, it := range items {
++			g, ok := groups[it.GroupName]
++			if !ok {
++				var id uuid.UUID
++				if err := tx.GetContext(ctx, &id, `
++					INSERT INTO qa_scenario_groups (org_id, scenario_id, name, position) VALUES ($1, $2, $3, $4) RETURNING id`,
++					s.OrgID(), out.ID, truncateQAName(it.GroupName), len(groups)); err != nil {
++					return err
++				}
++				g = &id
++				groups[it.GroupName] = g
++			}
++			if _, err := tx.ExecContext(ctx, `
++				INSERT INTO qa_scenario_items (org_id, scenario_id, group_id, case_id, position) VALUES ($1, $2, $3, $4, $5)`,
++				s.OrgID(), out.ID, g, it.CaseID, pos+1); err != nil {
++				return err
++			}
++		}
++		return nil
++	})
++	if err != nil {
++		return nil, qaWriteErr(err)
++	}
++	return &out, nil
++}
+diff --git a/internal/repo/qa_scenarios_test.go b/internal/repo/qa_scenarios_test.go
+index be24312..6672733 100644
+--- a/internal/repo/qa_scenarios_test.go
++++ b/internal/repo/qa_scenarios_test.go
+@@ -142,3 +142,25 @@ func mustGroup(t *testing.T, f runFixture, name string) uuid.UUID {
+ 	t.Fatalf("no group %q", name)
+ 	return uuid.Nil
+ }
++
++func TestCreateQAScenarioFromRun_KeepsOrderAndGroups(t *testing.T) {
++	f := newRunFixture(t, "acme-scenario-from-run")
++	ctx := context.Background()
++	run, _ := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "C1", ScenarioIDs: []uuid.UUID{f.uat.ID}}, nil)
++	repo.ArchiveQACase(ctx, f.s, f.login.ID) // archived since the run: left out
++
++	sc, err := repo.CreateQAScenarioFromRun(ctx, f.s, run.ID, "UAT RFS again", "uat", nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if sc.ProjectID != f.projectID || sc.Phase != "uat" {
++		t.Fatalf("scenario = %+v", sc)
++	}
++	entries, _ := repo.ListQAScenarioEntries(ctx, f.s, sc.ID)
++	if len(entries) != 1 || entries[0].CaseID != f.rfs.ID || entries[0].GroupName != "Day 2" {
++		t.Fatalf("entries = %+v; want Create RFS in Day 2 (Login is archived)", entries)
++	}
++	if _, err := repo.CreateQAScenarioFromRun(ctx, f.s, run.ID, " ", "uat", nil); err != repo.ErrInvalidInput {
++		t.Fatalf("blank name = %v", err)
++	}
++}
+diff --git a/internal/repo/qa_summary.go b/internal/repo/qa_summary.go
+index 0117058..3b48ffe 100644
+--- a/internal/repo/qa_summary.go
++++ b/internal/repo/qa_summary.go
+@@ -57,7 +57,7 @@ func QASummaryForProject(ctx context.Context, s tenant.Scope, projectID uuid.UUI
+ }
+ 
+ // QAScenarioCount is how many cases a scenario holds, and how many of those
+-// are archived (they still count: runs created from it will include them).
++// are archived (CreateQARun leaves archived cases out of a new run).
+ type QAScenarioCount struct {
+ 	Cases    int `db:"cases"`
+ 	Archived int `db:"archived"`
+@@ -83,3 +83,92 @@ func QAScenarioCaseCounts(ctx context.Context, s tenant.Scope, projectID uuid.UU
+ 	}
+ 	return out, err
+ }
++
++// QAPlanProgress is, per plan, where each of its cases stands now: the
++// status of the case's item in the latest cycle that holds it. So a retest
++// that passes a failed case moves the plan forward, and a case never run
++// yet does not appear. Plans with no runs map to a zero QAProgress.
++func QAPlanProgress(ctx context.Context, s tenant.Scope, planIDs []uuid.UUID) (map[uuid.UUID]QAProgress, error) {
++	var rows []struct {
++		PlanID uuid.UUID `db:"plan_id"`
++		Status string    `db:"status"`
++		N      int       `db:"n"`
++	}
++	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
++		return tx.SelectContext(ctx, &rows, `
++			SELECT plan_id, status, count(*) AS n FROM (
++				SELECT DISTINCT ON (r.plan_id, i.case_id) r.plan_id, i.status
++				FROM qa_run_items i JOIN qa_runs r ON r.id = i.run_id
++				WHERE r.plan_id = ANY($1)
++				ORDER BY r.plan_id, i.case_id, r.cycle DESC
++			) latest GROUP BY plan_id, status`, planIDs)
++	})
++	out := make(map[uuid.UUID]QAProgress, len(planIDs))
++	for _, r := range rows {
++		p := out[r.PlanID]
++		p.add(r.Status, r.N)
++		out[r.PlanID] = p
++	}
++	return out, err
++}
++
++// QARunProgressFor is QARunProgress's total for several runs at once.
++func QARunProgressFor(ctx context.Context, s tenant.Scope, runIDs []uuid.UUID) (map[uuid.UUID]QAProgress, error) {
++	var rows []struct {
++		RunID  uuid.UUID `db:"run_id"`
++		Status string    `db:"status"`
++		N      int       `db:"n"`
++	}
++	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
++		return tx.SelectContext(ctx, &rows, `
++			SELECT run_id, status, count(*) AS n FROM qa_run_items
++			WHERE run_id = ANY($1) GROUP BY run_id, status`, runIDs)
++	})
++	out := make(map[uuid.UUID]QAProgress, len(runIDs))
++	for _, r := range rows {
++		p := out[r.RunID]
++		p.add(r.Status, r.N)
++		out[r.RunID] = p
++	}
++	return out, err
++}
++
++// QAPlanRunCounts is how many runs each plan has.
++func QAPlanRunCounts(ctx context.Context, s tenant.Scope, planIDs []uuid.UUID) (map[uuid.UUID]int, error) {
++	var rows []struct {
++		PlanID uuid.UUID `db:"plan_id"`
++		N      int       `db:"n"`
++	}
++	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
++		return tx.SelectContext(ctx, &rows, `
++			SELECT plan_id, count(*) AS n FROM qa_runs WHERE plan_id = ANY($1) GROUP BY plan_id`, planIDs)
++	})
++	out := make(map[uuid.UUID]int, len(rows))
++	for _, r := range rows {
++		out[r.PlanID] = r.N
++	}
++	return out, err
++}
++
++// QACaseRef is what a run shows about the live case behind an item: its
++// key, and its current version (newer than the item's case_version means
++// the case changed after the run was created).
++type QACaseRef struct {
++	Key     int `db:"key"`
++	Version int `db:"version"`
++}
++
++func QACaseRefs(ctx context.Context, s tenant.Scope, caseIDs []uuid.UUID) (map[uuid.UUID]QACaseRef, error) {
++	var rows []struct {
++		ID uuid.UUID `db:"id"`
++		QACaseRef
++	}
++	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
++		return tx.SelectContext(ctx, &rows, `SELECT id, key, version FROM qa_cases WHERE id = ANY($1)`, caseIDs)
++	})
++	out := make(map[uuid.UUID]QACaseRef, len(rows))
++	for _, r := range rows {
++		out[r.ID] = r.QACaseRef
++	}
++	return out, err
++}
+diff --git a/internal/web/dashboard_test.go b/internal/web/dashboard_test.go
+index b46a9ec..30cbd83 100644
+--- a/internal/web/dashboard_test.go
++++ b/internal/web/dashboard_test.go
+@@ -16,6 +16,7 @@ import (
+ 	"github.com/jmoiron/sqlx"
+ 
+ 	"github.com/uyab/lotus/internal/authn"
++	"github.com/uyab/lotus/internal/blob"
+ 	"github.com/uyab/lotus/internal/config"
+ 	"github.com/uyab/lotus/internal/crypto"
+ 	"github.com/uyab/lotus/internal/dbtest"
+@@ -56,7 +57,12 @@ func newDashboardTestApp(t *testing.T) (*fiber.App, *sqlx.DB) {
+ 	renderer := httpx.NewRenderer(os.DirFS("../../web/templates"), true)
+ 	db := dbtest.Open(t)
+ 	resolver := tenant.NewResolver(config.Config{BaseDomain: dashboardTestDomain, Dev: true}, db)
++	store, err := blob.NewFS(t.TempDir())
++	if err != nil {
++		t.Fatal(err)
++	}
+ 	app := New(Deps{
++		Blob:             store,
+ 		Renderer:         renderer,
+ 		StaticFS:         os.DirFS("../../web/static"),
+ 		Resolver:         resolver,
+diff --git a/internal/web/flash.go b/internal/web/flash.go
+index 4e70c2b..fc293e1 100644
+--- a/internal/web/flash.go
++++ b/internal/web/flash.go
+@@ -64,6 +64,12 @@ var flashMessages = map[string]struct {
+ 	"qa.scenario.created":  {"pass", "Scenario %s created"},
+ 	"qa.scenario.saved":    {"pass", "Scenario %s saved"},
+ 	"qa.scenario.archived": {"pass", "Scenario %s archived"},
++	"qa.plan.created":      {"pass", "Plan %s created"},
++	"qa.plan.saved":        {"pass", "Plan %s saved"},
++	"qa.plan.closed":       {"pass", "Plan %s closed"},
++	"qa.run.created":       {"pass", "Run %s created"},
++	"qa.run.closed":        {"pass", "Run %s closed"},
++	"qa.items.assigned":    {"pass", "%s items assigned"},
+ }
+ 
+ // setFlash records a message for the next render. Call it immediately
+@@ -150,5 +156,8 @@ func redirectAfterMutation(c *fiber.Ctx, to string) error {
+ // Renderer.RenderPartial directly.
+ func renderPage(c *fiber.Ctx, d Deps, page string, vd httpx.ViewData) error {
+ 	vd.Flash = takeFlash(c)
++	if vd.Nav != nil {
++		qaNavCount(c, vd.Nav)
++	}
+ 	return d.Renderer.Render(c, page, vd)
+ }
+diff --git a/internal/web/qa_foundation_test.go b/internal/web/qa_foundation_test.go
+new file mode 100644
+index 0000000..945ca25
+--- /dev/null
++++ b/internal/web/qa_foundation_test.go
+@@ -0,0 +1,37 @@
++package web
++
++import (
++	"context"
++	"net/http"
++	"strings"
++	"testing"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++// Attachments go up to 20 MB (repo.MaxQAAttachmentBytes), so the server
++// must take a request of that size to the handler rather than refusing it
++// as 413 first.
++func TestServer_TakesRequestsLargerThanFiberDefault(t *testing.T) {
++	e := newQAEnv(t, "acme-bodylimit")
++	p := e.project(t, "Portal")
++	big := strings.Repeat("x", 6<<20) // over Fiber's 4 MB default
++	resp, _ := e.upload(t, e.owner, "/projects/"+p.String()+"/qa/cases/import", "not,a,header\n"+big)
++	if resp.StatusCode != http.StatusUnprocessableEntity {
++		t.Fatalf("6 MB upload = %d; want the handler's 422, not 413", resp.StatusCode)
++	}
++}
++
++// Runs leave archived cases out; the scenario page says so.
++func TestQAScenario_SaysArchivedCasesAreSkipped(t *testing.T) {
++	e := newQAEnv(t, "acme-archived-copy")
++	ctx := context.Background()
++	p := e.project(t, "Portal")
++	_, cases := seedQALibrary(t, e, p)
++	repo.ArchiveQACase(ctx, e.s, cases[1].ID)
++	list, _ := repo.ListQAScenarios(ctx, e.s, p, false)
++	_, body := e.get(t, e.owner, "/projects/"+p.String()+"/qa/scenarios/"+list[0].ID.String())
++	if !strings.Contains(body, "1 case is archived and is skipped when a run is created.") || strings.Contains(body, "copied into new runs") {
++		t.Fatalf("archived-case note is wrong:\n%s", body)
++	}
++}
+diff --git a/internal/web/qa_home.go b/internal/web/qa_home.go
+index a3e242b..b9d4fd5 100644
+--- a/internal/web/qa_home.go
++++ b/internal/web/qa_home.go
+@@ -64,6 +64,8 @@ func qaHome(d Deps) fiber.Handler {
+ func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
+ 	app.Get("/qa", tenant.RequireTenant(), requireSession, loadPrincipal,
+ 		authz.Require("qa.read"), qaHome(d))
++	app.Get("/qa/my", tenant.RequireTenant(), requireSession, loadPrincipal,
++		authz.Require("qa.read"), qaMyPage(d))
+ 	app.Get("/projects/:id/qa", qaRoute(requireSession, loadPrincipal, "qa.read", qaProjectPage(d))...)
+ 	app.Get("/projects/:id/qa/cases", qaRoute(requireSession, loadPrincipal, "qa.read", qaCasesPage(d))...)
+ 	app.Post("/projects/:id/qa/cases/move", qaRoute(requireSession, loadPrincipal, "qa.case.write", moveQACasesUI(d))...)
+@@ -90,6 +92,23 @@ func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fibe
+ 	app.Post("/projects/:id/qa/scenarios/:sid/cases/remove", qaRoute(requireSession, loadPrincipal, "qa.case.write", removeQAScenarioCasesUI(d))...)
+ 	app.Post("/projects/:id/qa/scenarios/:sid/items/group", qaRoute(requireSession, loadPrincipal, "qa.case.write", regroupQAScenarioItemsUI(d))...)
+ 	app.Post("/projects/:id/qa/scenarios/:sid/items/:iid/move", qaRoute(requireSession, loadPrincipal, "qa.case.write", moveQAScenarioItemUI(d))...)
++	app.Get("/projects/:id/qa/plans", qaRoute(requireSession, loadPrincipal, "qa.read", qaPlansPage(d))...)
++	app.Post("/projects/:id/qa/plans", qaRoute(requireSession, loadPrincipal, "qa.plan.write", createQAPlanUI(d))...)
++	app.Get("/projects/:id/qa/plans/:pid", qaRoute(requireSession, loadPrincipal, "qa.read", qaPlanPage(d))...)
++	app.Post("/projects/:id/qa/plans/:pid", qaRoute(requireSession, loadPrincipal, "qa.plan.write", updateQAPlanUI(d))...)
++	app.Post("/projects/:id/qa/plans/:pid/duplicate", qaRoute(requireSession, loadPrincipal, "qa.plan.write", duplicateQAPlanUI(d))...)
++	app.Post("/projects/:id/qa/plans/:pid/close", qaRoute(requireSession, loadPrincipal, "qa.plan.write", closeQAPlanUI())...)
++	app.Get("/projects/:id/qa/plans/:pid/runs/new", qaRoute(requireSession, loadPrincipal, "qa.plan.write", newQARunPage(d))...)
++	app.Post("/projects/:id/qa/plans/:pid/runs", qaRoute(requireSession, loadPrincipal, "qa.plan.write", createQARunUI(d))...)
++	app.Post("/projects/:id/qa/plans/:pid/runs/preview", qaRoute(requireSession, loadPrincipal, "qa.plan.write", previewQARunUI(d))...)
++	app.Get("/projects/:id/qa/runs/:rid", qaRoute(requireSession, loadPrincipal, "qa.read", qaRunPage(d))...)
++	app.Get("/projects/:id/qa/runs/:rid/items/:iid", qaRoute(requireSession, loadPrincipal, "qa.read", qaItemPanelUI(d))...)
++	app.Post("/projects/:id/qa/runs/:rid/items/:iid/result", qaRoute(requireSession, loadPrincipal, "qa.execute", recordQAResultUI(d))...)
++	app.Post("/projects/:id/qa/runs/:rid/assign", qaRoute(requireSession, loadPrincipal, "qa.plan.write", assignQAItemsUI(d))...)
++	app.Post("/projects/:id/qa/runs/:rid/retest", qaRoute(requireSession, loadPrincipal, "qa.plan.write", retestQARunUI(d))...)
++	app.Post("/projects/:id/qa/runs/:rid/close", qaRoute(requireSession, loadPrincipal, "qa.plan.write", closeQARunUI())...)
++	app.Post("/projects/:id/qa/runs/:rid/scenario", qaRoute(requireSession, loadPrincipal, "qa.case.write", saveQARunAsScenarioUI(d))...)
++	app.Get("/projects/:id/qa/files/:aid", qaRoute(requireSession, loadPrincipal, "qa.read", qaFileUI(d))...)
+ 	app.Post("/projects/:id/qa/sections", qaRoute(requireSession, loadPrincipal, "qa.case.write", createQASectionUI(d))...)
+ 	app.Post("/projects/:id/qa/sections/:sid/rename", qaRoute(requireSession, loadPrincipal, "qa.case.write", renameQASectionUI(d))...)
+ 	app.Post("/projects/:id/qa/sections/:sid/move", qaRoute(requireSession, loadPrincipal, "qa.case.write", moveQASectionUI(d))...)
+diff --git a/internal/web/qa_my.go b/internal/web/qa_my.go
+new file mode 100644
+index 0000000..cbd3e48
+--- /dev/null
++++ b/internal/web/qa_my.go
+@@ -0,0 +1,115 @@
++package web
++
++import (
++	"strconv"
++
++	"github.com/gofiber/fiber/v2"
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/authz"
++	"github.com/uyab/lotus/internal/httpx"
++	"github.com/uyab/lotus/internal/repo"
++	"github.com/uyab/lotus/internal/tenant"
++)
++
++// qaNavCount puts the number of untested items assigned to the viewer on
++// the sidebar's QA Tools entry. It runs for every full page (renderPage);
++// a failure only leaves the count off.
++func qaNavCount(c *fiber.Ctx, nav *httpx.Nav) {
++	p, ok := authz.CurrentPrincipal(c)
++	if !ok || !p.Can("qa.read") {
++		return
++	}
++	s, ok := tenant.FromContext(c)
++	if !ok {
++		return
++	}
++	ids, err := qaProjectScope(c, s)
++	if err != nil {
++		return
++	}
++	n, err := repo.CountMyQAItems(c.Context(), s, p.UserID, ids)
++	if err != nil || n == 0 {
++		return
++	}
++	for i := range nav.Items {
++		if nav.Items[i].Key == "qa_tools" {
++			nav.Items[i].Count = strconv.Itoa(n)
++		}
++	}
++}
++
++type qaMyRun struct {
++	Name  string
++	Href  string
++	Items []repo.QAMyItem
++}
++
++type qaMyPlan struct {
++	Name string
++	Href string
++	Runs []qaMyRun
++}
++
++type qaMyProject struct {
++	Name  string
++	Href  string
++	Plans []qaMyPlan
++}
++
++type qaMyData struct {
++	Projects []qaMyProject
++	Total    int
++}
++
++// qaMyPage is GET /qa/my: the untested items assigned to the viewer in open
++// runs of open plans, by project, plan and run.
++func qaMyPage(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, err := mustScope(c)
++		if err != nil {
++			return err
++		}
++		ids, err := qaProjectScope(c, s)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		items, err := repo.ListMyQAItems(c.Context(), s, mustPrincipal(c).UserID, ids)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		data := qaMyData{Total: len(items)}
++		var lastProject, lastPlan, lastRun uuid.UUID
++		for _, it := range items {
++			base := "/projects/" + it.ProjectID.String() + "/qa"
++			if it.ProjectID != lastProject {
++				data.Projects = append(data.Projects, qaMyProject{Name: it.ProjectName, Href: base})
++				lastProject, lastPlan, lastRun = it.ProjectID, uuid.Nil, uuid.Nil
++			}
++			pr := &data.Projects[len(data.Projects)-1]
++			if it.PlanID != lastPlan {
++				pr.Plans = append(pr.Plans, qaMyPlan{Name: it.PlanName, Href: base + "/plans/" + it.PlanID.String()})
++				lastPlan, lastRun = it.PlanID, uuid.Nil
++			}
++			pl := &pr.Plans[len(pr.Plans)-1]
++			if it.RunID != lastRun {
++				pl.Runs = append(pl.Runs, qaMyRun{Name: it.RunName, Href: base + "/runs/" + it.RunID.String() + "?who=mine"})
++				lastRun = it.RunID
++			}
++			ru := &pl.Runs[len(pl.Runs)-1]
++			ru.Items = append(ru.Items, it)
++		}
++		org, user, err := shellChrome(c, d.DB)
++		if err != nil {
++			return err
++		}
++		projects, err := repo.ListProjects(c.Context(), s, false)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		c.Type("html")
++		return renderPage(c, d, "pages/qa_my.html", httpx.ViewData{
++			Title: "My work", Org: org, User: user, Nav: navWithTrail("qa_tools", len(projects), []httpx.NavCrumb{{Label: "QA Tools", Href: "/qa"}, {Label: "My work"}}), Data: data,
++		})
++	}
++}
+diff --git a/internal/web/qa_my_test.go b/internal/web/qa_my_test.go
+new file mode 100644
+index 0000000..c89f3a7
+--- /dev/null
++++ b/internal/web/qa_my_test.go
+@@ -0,0 +1,56 @@
++package web
++
++import (
++	"context"
++	"net/http"
++	"strings"
++	"testing"
++
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++func TestQAMyWork_ListsOpenUntestedItemsAndCountsThem(t *testing.T) {
++	r := newQARunEnv(t, "acme-qamy")
++	ctx := context.Background()
++	run, items := r.firstRun(t) // 2 items
++	repo.AssignQARunItems(ctx, r.s, run.ID, []uuid.UUID{items[0].ID, items[1].ID}, &r.memberID)
++
++	// A passed item, an item in a closed run and one in a closed plan are not work.
++	second, _ := repo.CreateQARun(ctx, r.s, r.plan.ID, repo.QARunInput{Name: "Cycle 2", Testers: []uuid.UUID{r.memberID}, Distribution: repo.DistributeRoundRobin}, nil)
++	repo.CloseQARun(ctx, r.s, second.ID)
++	repo.RecordQAResult(ctx, r.s, repo.QAResultInput{ItemID: items[1].ID, Status: "passed"})
++	otherPlan, _ := repo.DuplicateQAPlan(ctx, r.s, r.plan.ID, "Regression November", nil)
++	repo.CreateQARun(ctx, r.s, otherPlan.ID, repo.QARunInput{Name: "Cycle 1", Testers: []uuid.UUID{r.memberID}, Distribution: repo.DistributeRoundRobin}, nil)
++	repo.CloseQAPlan(ctx, r.s, otherPlan.ID)
++
++	status, body := r.get(t, r.member, "/qa/my")
++	if status != http.StatusOK || strings.Count(body, "data-my-item") != 1 || !strings.Contains(body, "Portal") ||
++		!strings.Contains(body, "Regression October") || !strings.Contains(body, `href="`+r.base+"/runs/"+run.ID.String()+`?who=mine"`) {
++		t.Fatalf("my work = %d:\n%s", status, body)
++	}
++	mine, _ := repo.ListMyQAItems(ctx, r.s, r.memberID, nil)
++	if len(mine) != 1 || !strings.Contains(body, `data-qa-my-count="1"`) {
++		t.Fatalf("sidebar count missing or wrong (repo says %d)", len(mine))
++	}
++	// Any page with the sidebar carries the count.
++	if _, body = r.get(t, r.member, "/projects"); !strings.Contains(body, `data-qa-my-count="1"`) {
++		t.Fatal("the sidebar count is only on QA pages")
++	}
++}
++
++func TestQAMyWork_GuestSeesOnlyItsProjects(t *testing.T) {
++	r := newQARunEnv(t, "acme-qamy-guest")
++	ctx := context.Background()
++	run, items := r.firstRun(t)
++	repo.AssignQARunItems(ctx, r.s, run.ID, []uuid.UUID{items[0].ID}, &r.guestID)
++	_, body := r.get(t, r.guest, "/qa/my")
++	if strings.Count(body, "data-my-item") != 1 {
++		t.Fatalf("guest my work:\n%s", body)
++	}
++	repo.RemoveProjectMember(ctx, r.s, r.projectID, r.guestID)
++	if _, body = r.get(t, r.guest, "/qa/my"); strings.Contains(body, "data-my-item") {
++		t.Fatal("guest removed from the project still sees its items")
++	}
++}
+diff --git a/internal/web/qa_plans.go b/internal/web/qa_plans.go
+new file mode 100644
+index 0000000..3fbfcdf
+--- /dev/null
++++ b/internal/web/qa_plans.go
+@@ -0,0 +1,420 @@
++package web
++
++import (
++	"encoding/json"
++	"errors"
++	"fmt"
++	"strings"
++	"time"
++
++	"github.com/gofiber/fiber/v2"
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/httpx"
++	"github.com/uyab/lotus/internal/repo"
++	"github.com/uyab/lotus/internal/tenant"
++)
++
++// qaWindow is a plan's date window as people read it: "01 Sep – 14 Sep
++// 2026", "from 01 Sep 2026", "" when there is none.
++func qaWindow(start, end *time.Time) string {
++	switch {
++	case start != nil && end != nil && start.Year() == end.Year():
++		return start.Format("02 Jan") + " – " + end.Format("02 Jan 2006")
++	case start != nil && end != nil:
++		return start.Format("02 Jan 2006") + " – " + end.Format("02 Jan 2006")
++	case start != nil:
++		return "from " + start.Format("02 Jan 2006")
++	case end != nil:
++		return "until " + end.Format("02 Jan 2006")
++	}
++	return ""
++}
++
++func dateValue(t *time.Time) string {
++	if t == nil {
++		return ""
++	}
++	return t.Format("2006-01-02")
++}
++
++// qaPlanFormData fills the New plan / Edit plan form.
++type qaPlanFormData struct {
++	Action, Err, Submit      string
++	Name, Phase, Environment string
++	Build, StartsOn, EndsOn  string
++	PhaseOptions             []httpx.SelectOption
++	Scenarios                []qaPlanScenarioOption
++}
++
++type qaPlanScenarioOption struct {
++	ID         uuid.UUID
++	Name       string
++	PhaseLabel string
++	Checked    bool
++}
++
++// qaPlanScenarioOptions lists the project's live scenarios for the form,
++// ticking the ones in chosen.
++func qaPlanScenarioOptions(c *fiber.Ctx, s tenant.Scope, project *repo.Project, chosen []uuid.UUID) ([]qaPlanScenarioOption, error) {
++	list, err := repo.ListQAScenarios(c.Context(), s, project.ID, false)
++	if err != nil {
++		return nil, err
++	}
++	on := map[uuid.UUID]bool{}
++	for _, id := range chosen {
++		on[id] = true
++	}
++	out := make([]qaPlanScenarioOption, 0, len(list))
++	for _, sc := range list {
++		out = append(out, qaPlanScenarioOption{ID: sc.ID, Name: sc.Name, PhaseLabel: qaPhaseLabels[sc.Phase], Checked: on[sc.ID]})
++	}
++	return out, nil
++}
++
++// readQAPlanForm reads a submitted plan. msg is the sentence to show for a
++// rejected form; a scenario of another project is 404.
++func readQAPlanForm(c *fiber.Ctx, s tenant.Scope, project *repo.Project) (repo.QAPlanInput, string, error) {
++	in := repo.QAPlanInput{
++		Name: c.FormValue("name"), Phase: strings.TrimSpace(c.FormValue("phase")),
++		Environment: c.FormValue("environment"), Build: c.FormValue("build"),
++	}
++	if _, ok := qaPhaseLabels[in.Phase]; !ok {
++		return in, "Choose a phase.", nil
++	}
++	for _, f := range []struct {
++		field string
++		to    **time.Time
++	}{{"starts_on", &in.StartsOn}, {"ends_on", &in.EndsOn}} {
++		raw := strings.TrimSpace(c.FormValue(f.field))
++		if raw == "" {
++			continue
++		}
++		d, err := time.Parse("2006-01-02", raw)
++		if err != nil {
++			return in, "Dates are written as YYYY-MM-DD.", nil
++		}
++		*f.to = &d
++	}
++	if in.StartsOn != nil && in.EndsOn != nil && in.EndsOn.Before(*in.StartsOn) {
++		return in, "The end date is before the start date.", nil
++	}
++	for _, raw := range c.Context().PostArgs().PeekMulti("scenario_id") {
++		id, err := qaOwned(c, s, project, repo.QAKindScenario, string(raw))
++		if err != nil {
++			return in, "", err
++		}
++		in.ScenarioIDs = append(in.ScenarioIDs, id)
++	}
++	return in, "", nil
++}
++
++func qaPlanNameErr(err error) (int, string, bool) {
++	if errors.Is(err, repo.ErrInvalidInput) {
++		return fiber.StatusUnprocessableEntity,
++			fmt.Sprintf("Plan name is required and can be at most %d characters.", repo.MaxQANameLength), true
++	}
++	return 0, "", false
++}
++
++// loadQAPlan reads :pid, which must be a plan of the project in the URL.
++func loadQAPlan(c *fiber.Ctx, s tenant.Scope, project *repo.Project) (*repo.QAPlan, error) {
++	id, err := qaOwned(c, s, project, repo.QAKindPlan, c.Params("pid"))
++	if err != nil {
++		return nil, err
++	}
++	return repo.GetQAPlan(c.Context(), s, id)
++}
++
++func planURL(project *repo.Project, p *repo.QAPlan) string {
++	return qaBase(project) + "/plans/" + p.ID.String()
++}
++
++type qaPlanRow struct {
++	repo.QAPlan
++	PhaseLabel string
++	Window     string
++	Runs       int
++	Progress   repo.QAProgress
++	Href       string
++}
++
++type qaPlansData struct {
++	Project  repo.Project
++	Base     string
++	Rows     []qaPlanRow
++	Phase    string
++	CanWrite bool
++	Form     qaPlanFormData
++	Filters  []httpx.SelectOption
++}
++
++func qaPlansPage(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		data := qaPlansData{Project: *project, Base: qaBase(project), Phase: c.Query("phase"),
++			CanWrite: mustPrincipal(c).Can("qa.plan.write")}
++		if _, ok := qaPhaseLabels[data.Phase]; !ok {
++			data.Phase = ""
++		}
++		data.Filters = append([]httpx.SelectOption{{Value: "", Label: "All phases"}}, qaPhaseOptions()...)
++		plans, err := repo.ListQAPlans(c.Context(), s, project.ID) // open first, newest first
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		ids := make([]uuid.UUID, 0, len(plans))
++		for _, p := range plans {
++			if data.Phase == "" || p.Phase == data.Phase {
++				ids = append(ids, p.ID)
++			}
++		}
++		progress, err := repo.QAPlanProgress(c.Context(), s, ids)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		runs, err := repo.QAPlanRunCounts(c.Context(), s, ids)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		for _, p := range plans {
++			if data.Phase != "" && p.Phase != data.Phase {
++				continue
++			}
++			data.Rows = append(data.Rows, qaPlanRow{QAPlan: p, PhaseLabel: qaPhaseLabels[p.Phase], Window: qaWindow(p.StartsOn, p.EndsOn),
++				Runs: runs[p.ID], Progress: progress[p.ID], Href: data.Base + "/plans/" + p.ID.String()})
++		}
++		if data.CanWrite {
++			scenarios, err := qaPlanScenarioOptions(c, s, project, nil)
++			if err != nil {
++				return writeRepoErr(c, err)
++			}
++			data.Form = qaPlanFormData{Action: data.Base + "/plans", Err: "new-plan-error", Submit: "Create plan",
++				Phase: "regression", PhaseOptions: qaPhaseOptions(), Scenarios: scenarios}
++		}
++		org, user, err := shellChrome(c, d.DB)
++		if err != nil {
++			return err
++		}
++		nav, err := qaNav(c, s, project, httpx.NavCrumb{Label: "Plans"})
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		c.Type("html")
++		return renderPage(c, d, "pages/qa_plans.html", httpx.ViewData{
++			Title: "Plans · " + project.Name, Org: org, User: user, Nav: nav, Data: data,
++		})
++	}
++}
++
++func createQAPlanUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		in, msg, err := readQAPlanForm(c, s, project)
++		if err != nil {
++			return err
++		}
++		if msg != "" {
++			return qaFormError(c, d, fiber.StatusUnprocessableEntity, msg)
++		}
++		plan, err := repo.CreateQAPlan(c.Context(), s, project.ID, in, qaActor(c))
++		if err != nil {
++			if status, msg, ok := qaPlanNameErr(err); ok {
++				return qaFormError(c, d, status, msg)
++			}
++			return err
++		}
++		setFlash(c, "qa.plan.created", plan.Name)
++		return redirectAfterCreate(c, planURL(project, plan))
++	}
++}
++
++type qaPlanRunRow struct {
++	repo.QARun
++	Href       string
++	RetestOf   string // the name of the run this retests, "" otherwise
++	RetestHref string
++	Progress   repo.QAProgress
++}
++
++type qaPlanData struct {
++	Project    repo.Project
++	Base       string
++	Plan       repo.QAPlan
++	PhaseLabel string
++	Window     string
++	Scenarios  []qaScenarioRow
++	Runs       []qaPlanRunRow
++	Progress   repo.QAProgress
++	CanWrite   bool // qa.plan.write on an open plan
++	CanCopy    bool // qa.plan.write (a closed plan can still be duplicated)
++	Form       qaPlanFormData
++	CopyName   string
++}
++
++func qaPlanPage(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		plan, err := loadQAPlan(c, s, project)
++		if err != nil {
++			return err
++		}
++		canWrite := mustPrincipal(c).Can("qa.plan.write")
++		data := qaPlanData{Project: *project, Base: qaBase(project), Plan: *plan, PhaseLabel: qaPhaseLabels[plan.Phase],
++			Window: qaWindow(plan.StartsOn, plan.EndsOn), CanWrite: canWrite && plan.ClosedAt == nil, CanCopy: canWrite,
++			CopyName: plan.Name + " (copy)"}
++		scenarioIDs, err := repo.ListQAPlanScenarioIDs(c.Context(), s, plan.ID)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		inPlan := map[uuid.UUID]bool{}
++		for _, id := range scenarioIDs {
++			inPlan[id] = true
++		}
++		all, err := repo.ListQAScenarios(c.Context(), s, project.ID, true)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		for _, sc := range all {
++			if inPlan[sc.ID] {
++				data.Scenarios = append(data.Scenarios, qaScenarioRow{QAScenario: sc, PhaseLabel: qaPhaseLabels[sc.Phase],
++					Href: data.Base + "/scenarios/" + sc.ID.String()})
++			}
++		}
++		runs, err := repo.ListQARuns(c.Context(), s, plan.ID)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		runIDs := make([]uuid.UUID, len(runs))
++		names := map[uuid.UUID]string{}
++		for i, r := range runs {
++			runIDs[i], names[r.ID] = r.ID, r.Name
++		}
++		progress, err := repo.QARunProgressFor(c.Context(), s, runIDs)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		for _, r := range runs {
++			row := qaPlanRunRow{QARun: r, Href: data.Base + "/runs/" + r.ID.String(), Progress: progress[r.ID]}
++			if r.RetestOf != nil {
++				row.RetestOf, row.RetestHref = names[*r.RetestOf], data.Base+"/runs/"+r.RetestOf.String()
++			}
++			data.Runs = append(data.Runs, row)
++		}
++		planProgress, err := repo.QAPlanProgress(c.Context(), s, []uuid.UUID{plan.ID})
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		data.Progress = planProgress[plan.ID]
++		if data.CanWrite {
++			options, err := qaPlanScenarioOptions(c, s, project, scenarioIDs)
++			if err != nil {
++				return writeRepoErr(c, err)
++			}
++			data.Form = qaPlanFormData{Action: planURL(project, plan), Err: "edit-plan-error", Submit: "Save",
++				Name: plan.Name, Phase: plan.Phase, Environment: plan.Environment, Build: plan.Build,
++				StartsOn: dateValue(plan.StartsOn), EndsOn: dateValue(plan.EndsOn),
++				PhaseOptions: qaPhaseOptions(), Scenarios: options}
++		}
++		org, user, err := shellChrome(c, d.DB)
++		if err != nil {
++			return err
++		}
++		nav, err := qaNav(c, s, project, httpx.NavCrumb{Label: "Plans", Href: data.Base + "/plans"}, httpx.NavCrumb{Label: plan.Name})
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		c.Type("html")
++		return renderPage(c, d, "pages/qa_plan.html", httpx.ViewData{
++			Title: plan.Name + " · " + project.Name, Org: org, User: user, Nav: nav, Data: data,
++		})
++	}
++}
++
++func updateQAPlanUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		plan, err := loadQAPlan(c, s, project)
++		if err != nil {
++			return err
++		}
++		if plan.ClosedAt != nil {
++			return qaFormError(c, d, fiber.StatusConflict, "This plan is closed.")
++		}
++		in, msg, err := readQAPlanForm(c, s, project)
++		if err != nil {
++			return err
++		}
++		if msg != "" {
++			return qaFormError(c, d, fiber.StatusUnprocessableEntity, msg)
++		}
++		if err := repo.UpdateQAPlan(c.Context(), s, plan.ID, in); err != nil {
++			if status, msg, ok := qaPlanNameErr(err); ok {
++				return qaFormError(c, d, status, msg)
++			}
++			return err
++		}
++		setFlash(c, "qa.plan.saved", strings.TrimSpace(in.Name))
++		return redirectAfterMutation(c, planURL(project, plan))
++	}
++}
++
++// duplicateQAPlanUI starts the next cycle of work from a plan: the same
++// phase, environment, build and scenarios, a new name, no dates.
++func duplicateQAPlanUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		plan, err := loadQAPlan(c, s, project)
++		if err != nil {
++			return err
++		}
++		dup, err := repo.DuplicateQAPlan(c.Context(), s, plan.ID, c.FormValue("name"), qaActor(c))
++		if err != nil {
++			if status, msg, ok := qaPlanNameErr(err); ok {
++				return qaFormError(c, d, status, msg)
++			}
++			return err
++		}
++		setFlash(c, "qa.plan.created", dup.Name)
++		return redirectAfterCreate(c, planURL(project, dup))
++	}
++}
++
++func closeQAPlanUI() fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		plan, err := loadQAPlan(c, s, project)
++		if err != nil {
++			return err
++		}
++		if plan.ClosedAt != nil { // already closed: nothing to do, nothing to audit
++			return redirectAfterMutation(c, planURL(project, plan))
++		}
++		if err := repo.CloseQAPlan(c.Context(), s, plan.ID); err != nil {
++			return writeRepoErr(c, err)
++		}
++		raw, _ := json.Marshal(fiber.Map{"name": plan.Name, "project_id": project.ID})
++		if err := repo.RecordAuditEvent(c.Context(), s, qaActor(c), "qa.plan.close", "qa_plan", &plan.ID, raw); err != nil {
++			return writeRepoErr(c, err)
++		}
++		setFlash(c, "qa.plan.closed", plan.Name)
++		return redirectAfterMutation(c, planURL(project, plan))
++	}
++}
+diff --git a/internal/web/qa_plans_test.go b/internal/web/qa_plans_test.go
+new file mode 100644
+index 0000000..5c4ffe1
+--- /dev/null
++++ b/internal/web/qa_plans_test.go
+@@ -0,0 +1,144 @@
++package web
++
++import (
++	"context"
++	"net/http"
++	"net/url"
++	"strings"
++	"testing"
++
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++func planNamed(t *testing.T, e qaEnv, projectID uuid.UUID, name string) repo.QAPlan {
++	t.Helper()
++	plans, _ := repo.ListQAPlans(context.Background(), e.s, projectID)
++	for _, p := range plans {
++		if p.Name == name {
++			return p
++		}
++	}
++	t.Fatalf("no plan %q in %+v", name, plans)
++	return repo.QAPlan{}
++}
++
++func TestQAPlans_CreateListFilterAndPage(t *testing.T) {
++	e := newQAEnv(t, "acme-qaplans")
++	ctx := context.Background()
++	member, _ := e.session(t, "qa@acme.example", "member")
++	p := e.project(t, "Portal")
++	seedQALibrary(t, e, p) // "Regression core" scenario, plan "Regression October" with one run
++	uat, _ := repo.CreateQAScenario(ctx, e.s, p, "UAT <b>RFS</b>", "uat", "", nil)
++	reg := planNamed(t, e, p, "Regression October")
++	scs, _ := repo.ListQAPlanScenarioIDs(ctx, e.s, reg.ID)
++	base := "/projects/" + p.String() + "/qa/plans"
++
++	form := url.Values{"name": {"UAT September"}, "phase": {"uat"}, "environment": {"UAT (linknet-uati)"}, "build": {"1.4.2"},
++		"starts_on": {"2026-09-01"}, "ends_on": {"2026-09-14"}, "scenario_id": {uat.ID.String(), scs[0].String()}}
++	resp, _ := e.post(t, member, base, form, true)
++	plan := planNamed(t, e, p, "UAT September")
++	if resp.StatusCode != http.StatusNoContent || resp.Header.Get("HX-Redirect") != base+"/"+plan.ID.String() {
++		t.Fatalf("create = %d %q", resp.StatusCode, resp.Header.Get("HX-Redirect"))
++	}
++	if ids, _ := repo.ListQAPlanScenarioIDs(ctx, e.s, plan.ID); len(ids) != 2 || plan.StartsOn == nil || plan.StartsOn.Format("2006-01-02") != "2026-09-01" {
++		t.Fatalf("plan = %+v, scenarios %v", plan, ids)
++	}
++
++	status, body := e.get(t, member, base)
++	if status != http.StatusOK || !strings.Contains(body, "UAT September") || !strings.Contains(body, "Regression October") {
++		t.Fatalf("list = %d", status)
++	}
++	_, body = e.get(t, member, base+"?phase=uat")
++	if !strings.Contains(body, "UAT September") || strings.Contains(body, "Regression October") {
++		t.Fatal("phase filter does not filter")
++	}
++
++	status, body = e.get(t, member, base+"/"+plan.ID.String())
++	if status != http.StatusOK || !strings.Contains(body, "UAT &lt;b&gt;RFS&lt;/b&gt;") || strings.Contains(body, "<b>RFS</b>") ||
++		!strings.Contains(body, "UAT (linknet-uati)") || !strings.Contains(body, "01 Sep – 14 Sep 2026") {
++		t.Fatalf("plan page = %d:\n%s", status, body)
++	}
++	// The existing plan's run is listed with its cycle.
++	_, body = e.get(t, member, base+"/"+reg.ID.String())
++	if !strings.Contains(body, "Cycle 1") || !strings.Contains(body, `data-run-cycle="1"`) {
++		t.Fatalf("runs by cycle missing:\n%s", body)
++	}
++}
++
++func TestQAPlans_EditValidatesDatesAndScenarios(t *testing.T) {
++	e := newQAEnv(t, "acme-qaplans-edit")
++	ctx := context.Background()
++	p := e.project(t, "Portal")
++	other := e.project(t, "Billing")
++	foreign, _ := repo.CreateQAScenario(ctx, e.s, other, "Billing SIT", "sit", "", nil)
++	plan, _ := repo.CreateQAPlan(ctx, e.s, p, repo.QAPlanInput{Name: "SIT", Phase: "sit"}, nil)
++	path := "/projects/" + p.String() + "/qa/plans/" + plan.ID.String()
++
++	_, body := e.post(t, e.owner, path, url.Values{"name": {"SIT"}, "phase": {"sit"}, "starts_on": {"2026-09-14"}, "ends_on": {"2026-09-01"}}, true)
++	if !strings.Contains(body, "The end date is before the start date.") {
++		t.Fatalf("reversed window: %s", body)
++	}
++	_, body = e.post(t, e.owner, path, url.Values{"name": {"SIT"}, "phase": {"sit"}, "starts_on": {"14/09/2026"}}, true)
++	if !strings.Contains(body, "Dates are written as YYYY-MM-DD.") {
++		t.Fatalf("bad date: %s", body)
++	}
++	if resp, _ := e.post(t, e.owner, path, url.Values{"name": {"SIT"}, "phase": {"sit"}, "scenario_id": {foreign.ID.String()}}, false); resp.StatusCode != http.StatusNotFound {
++		t.Fatalf("scenario of another project = %d; want 404", resp.StatusCode)
++	}
++	resp, _ := e.post(t, e.owner, path, url.Values{"name": {"SIT round 2"}, "phase": {"sit"}, "build": {"2.0"}}, true)
++	got, _ := repo.GetQAPlan(ctx, e.s, plan.ID)
++	if resp.StatusCode != http.StatusNoContent || got.Name != "SIT round 2" || got.Build != "2.0" {
++		t.Fatalf("edit = %d, %+v", resp.StatusCode, got)
++	}
++}
++
++func TestQAPlans_DuplicateCopiesScopeNotDatesAndCloseIsFinal(t *testing.T) {
++	e := newQAEnv(t, "acme-qaplans-dup")
++	ctx := context.Background()
++	viewer, _ := e.session(t, "viewer@acme.example", "viewer")
++	p := e.project(t, "Portal")
++	seedQALibrary(t, e, p)
++	reg := planNamed(t, e, p, "Regression October")
++	start := reg.CreatedAt
++	repo.UpdateQAPlan(ctx, e.s, reg.ID, repo.QAPlanInput{Name: reg.Name, Phase: "regression", Environment: "Staging", Build: "1.3",
++		StartsOn: &start, EndsOn: &start, ScenarioIDs: mustPlanScenarios(t, e, reg.ID)})
++	base := "/projects/" + p.String() + "/qa/plans"
++
++	resp, _ := e.post(t, e.owner, base+"/"+reg.ID.String()+"/duplicate", url.Values{"name": {"Regression November"}}, true)
++	dup := planNamed(t, e, p, "Regression November")
++	if resp.Header.Get("HX-Redirect") != base+"/"+dup.ID.String() || dup.Environment != "Staging" || dup.Build != "1.3" ||
++		dup.StartsOn != nil || dup.EndsOn != nil || len(mustPlanScenarios(t, e, dup.ID)) != 1 {
++		t.Fatalf("duplicate = %q, %+v", resp.Header.Get("HX-Redirect"), dup)
++	}
++
++	if resp, _ := e.post(t, viewer, base+"/"+dup.ID.String()+"/close", nil, false); resp.StatusCode != http.StatusForbidden {
++		t.Fatalf("viewer close = %d; want 403", resp.StatusCode)
++	}
++	e.post(t, e.owner, base+"/"+dup.ID.String()+"/close", nil, false)
++	e.post(t, e.owner, base+"/"+dup.ID.String()+"/close", nil, false)
++	if n := auditCount(t, e.db, e.orgID, "qa.plan.close"); n != 1 {
++		t.Fatalf("qa.plan.close audit rows = %d; want 1", n)
++	}
++	_, body := e.post(t, e.owner, base+"/"+dup.ID.String(), url.Values{"name": {"Reopened?"}, "phase": {"regression"}}, true)
++	if !strings.Contains(body, "This plan is closed.") {
++		t.Fatalf("edit of a closed plan: %s", body)
++	}
++	_, body = e.get(t, e.owner, base)
++	if strings.Index(body, "Regression October") > strings.Index(body, "Regression November") {
++		t.Fatal("open plans are not listed before closed ones")
++	}
++	if _, body = e.get(t, e.owner, base+"/"+dup.ID.String()); strings.Contains(body, "Edit plan…") || !strings.Contains(body, "closed") {
++		t.Fatal("closed plan still offers editing")
++	}
++}
++
++func mustPlanScenarios(t *testing.T, e qaEnv, planID uuid.UUID) []uuid.UUID {
++	t.Helper()
++	ids, err := repo.ListQAPlanScenarioIDs(context.Background(), e.s, planID)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return ids
++}
+diff --git a/internal/web/qa_run.go b/internal/web/qa_run.go
+new file mode 100644
+index 0000000..ddf3149
+--- /dev/null
++++ b/internal/web/qa_run.go
+@@ -0,0 +1,494 @@
++package web
++
++import (
++	"database/sql"
++	"errors"
++	"fmt"
++	"mime"
++	"mime/multipart"
++	"sort"
++	"strings"
++
++	"github.com/gofiber/fiber/v2"
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/blob"
++	"github.com/uyab/lotus/internal/httpx"
++	"github.com/uyab/lotus/internal/repo"
++	"github.com/uyab/lotus/internal/repo/global"
++	"github.com/uyab/lotus/internal/tenant"
++)
++
++// The run page lists a run's items compactly, grouped; an item's details
++// (precondition, steps, history, the result form) load into its panel when
++// it is opened, so the page never reads every item's history up front.
++// Recording a result answers with the refreshed panel plus out-of-band
++// swaps of the row's status and the progress header, so a tester moves on
++// to the next item without a reload.
++
++// qaStatusTone maps an item or result status to a badge tone.
++func qaStatusTone(status string) string {
++	switch status {
++	case "passed":
++		return "pass"
++	case "failed", "blocked":
++		return "fail"
++	}
++	return "none"
++}
++
++// qaPeopleLabels names every active member of the organization (any
++// role), for assignees and executors. Someone who has left shows as "—".
++func qaPeopleLabels(c *fiber.Ctx, d Deps, s tenant.Scope) (map[uuid.UUID]string, error) {
++	members, err := global.ListMembersForOrg(c.Context(), d.DB, s.OrgID())
++	if err != nil {
++		return nil, err
++	}
++	out := make(map[uuid.UUID]string, len(members))
++	for _, m := range members {
++		label := m.Name
++		if strings.TrimSpace(label) == "" {
++			label = m.Email
++		}
++		out[m.UserID] = label
++	}
++	return out, nil
++}
++
++func personLabel(labels map[uuid.UUID]string, id *uuid.UUID) string {
++	if id == nil {
++		return ""
++	}
++	if l, ok := labels[*id]; ok {
++		return l
++	}
++	return "—"
++}
++
++// loadQARun reads :rid, which must be a run of the project in the URL.
++func loadQARun(c *fiber.Ctx, s tenant.Scope, project *repo.Project) (*repo.QARun, error) {
++	id, err := qaOwned(c, s, project, repo.QAKindRun, c.Params("rid"))
++	if err != nil {
++		return nil, err
++	}
++	return repo.GetQARun(c.Context(), s, id)
++}
++
++// loadQAItem reads :iid, which must be an item of run.
++func loadQAItem(c *fiber.Ctx, s tenant.Scope, run *repo.QARun) (*repo.QARunItem, error) {
++	id, err := uuid.Parse(c.Params("iid"))
++	if err != nil {
++		return nil, fiber.ErrNotFound
++	}
++	item, err := repo.GetQARunItem(c.Context(), s, id)
++	if errors.Is(err, repo.ErrNotFound) || (err == nil && item.RunID != run.ID) {
++		return nil, fiber.ErrNotFound
++	}
++	return item, err
++}
++
++func runURL(project *repo.Project, run *repo.QARun) string {
++	return qaBase(project) + "/runs/" + run.ID.String()
++}
++
++type qaItemRow struct {
++	repo.QARunItem
++	Key      int
++	Changed  bool // the live case is newer than the copy this run holds
++	Tone     string
++	Assignee string
++	Panel    string // where the item panel loads from
++}
++
++type qaItemGroup struct {
++	Name     string
++	Items    []qaItemRow
++	Progress repo.QAProgress
++}
++
++type qaTesterProgress struct {
++	Label    string
++	Progress repo.QAProgress
++}
++
++type qaRunProgressData struct {
++	Total   repo.QAProgress
++	Testers []qaTesterProgress
++	OOB     bool
++}
++
++type qaRunData struct {
++	Project    repo.Project
++	Base       string
++	Run        repo.QARun
++	Plan       repo.QAPlan
++	PhaseLabel string
++	Progress   qaRunProgressData
++	Groups     []qaItemGroup
++	Shown      int
++	Who        string // "", "mine", "unassigned"
++	Status     string
++	Group      string
++	GroupNames []string
++	CanExecute bool
++	URL        string
++
++	// Managing the run (qa.plan.write): assignment, retest, close.
++	CanManage  bool
++	People     []httpx.SelectOption
++	RetestOf   string
++	RetestHref string
++
++	// Save as scenario (qa.case.write).
++	CanSaveScenario bool
++	PhaseOptions    []httpx.SelectOption
++}
++
++// runProgress is the header: overall, then each assignee (unassigned last).
++func runProgress(c *fiber.Ctx, s tenant.Scope, run *repo.QARun, labels map[uuid.UUID]string) (qaRunProgressData, error) {
++	total, per, err := repo.QARunProgress(c.Context(), s, run.ID)
++	if err != nil {
++		return qaRunProgressData{}, err
++	}
++	out := qaRunProgressData{Total: total}
++	for id, p := range per {
++		if id == uuid.Nil {
++			continue
++		}
++		out.Testers = append(out.Testers, qaTesterProgress{Label: personLabel(labels, &id), Progress: p})
++	}
++	sort.Slice(out.Testers, func(i, j int) bool {
++		return strings.ToLower(out.Testers[i].Label) < strings.ToLower(out.Testers[j].Label)
++	})
++	if p, ok := per[uuid.Nil]; ok {
++		out.Testers = append(out.Testers, qaTesterProgress{Label: "Unassigned", Progress: p})
++	}
++	return out, nil
++}
++
++func qaRunPage(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		run, err := loadQARun(c, s, project)
++		if err != nil {
++			return err
++		}
++		plan, err := repo.GetQAPlan(c.Context(), s, run.PlanID)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		labels, err := qaPeopleLabels(c, d, s)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		me := mustPrincipal(c).UserID
++		data := qaRunData{Project: *project, Base: qaBase(project), Run: *run, Plan: *plan, PhaseLabel: qaPhaseLabels[plan.Phase],
++			Who: c.Query("who"), Status: c.Query("status"), Group: c.Query("group"),
++			CanExecute: mustPrincipal(c).Can("qa.execute") && run.ClosedAt == nil, URL: runURL(project, run)}
++		if data.Progress, err = runProgress(c, s, run, labels); err != nil {
++			return writeRepoErr(c, err)
++		}
++		if run.RetestOf != nil {
++			if orig, err := repo.GetQARun(c.Context(), s, *run.RetestOf); err == nil {
++				data.RetestOf, data.RetestHref = orig.Name, runURL(project, orig)
++			}
++		}
++		if mustPrincipal(c).Can("qa.case.write") {
++			data.CanSaveScenario, data.PhaseOptions = true, qaPhaseOptions()
++		}
++		if mustPrincipal(c).Can("qa.plan.write") {
++			data.CanManage = true
++			people, err := qaPeople(c, d, s, project)
++			if err != nil {
++				return writeRepoErr(c, err)
++			}
++			data.People = []httpx.SelectOption{{Value: "", Label: "Nobody"}}
++			for _, p := range people {
++				data.People = append(data.People, httpx.SelectOption{Value: p.ID.String(), Label: p.Label})
++			}
++		}
++		items, err := repo.ListQARunItems(c.Context(), s, run.ID, repo.QAItemFilter{})
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		caseIDs := make([]uuid.UUID, len(items))
++		for i, it := range items {
++			caseIDs[i] = it.CaseID
++		}
++		refs, err := repo.QACaseRefs(c.Context(), s, caseIDs)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		index := map[string]int{}
++		for _, it := range items {
++			g, ok := index[it.GroupName]
++			if !ok {
++				g = len(data.Groups)
++				index[it.GroupName] = g
++				data.Groups = append(data.Groups, qaItemGroup{Name: it.GroupName})
++				data.GroupNames = append(data.GroupNames, it.GroupName)
++			}
++			data.Groups[g].Progress.Count(it.Status)
++			switch {
++			case data.Who == "mine" && (it.AssigneeID == nil || *it.AssigneeID != me),
++				data.Who == "unassigned" && it.AssigneeID != nil,
++				data.Status != "" && it.Status != data.Status,
++				data.Group != "" && it.GroupName != data.Group:
++				continue
++			}
++			ref := refs[it.CaseID]
++			data.Groups[g].Items = append(data.Groups[g].Items, qaItemRow{
++				QARunItem: it, Key: ref.Key, Changed: ref.Version > it.CaseVersion, Tone: qaStatusTone(it.Status),
++				Assignee: personLabel(labels, it.AssigneeID), Panel: data.URL + "/items/" + it.ID.String(),
++			})
++			data.Shown++
++		}
++		org, user, err := shellChrome(c, d.DB)
++		if err != nil {
++			return err
++		}
++		nav, err := qaNav(c, s, project, httpx.NavCrumb{Label: "Plans", Href: data.Base + "/plans"},
++			httpx.NavCrumb{Label: plan.Name, Href: planURL(project, plan)}, httpx.NavCrumb{Label: run.Name})
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		c.Type("html")
++		return renderPage(c, d, "pages/qa_run.html", httpx.ViewData{
++			Title: run.Name + " · " + plan.Name, Org: org, User: user, Nav: nav, Data: data,
++		})
++	}
++}
++
++type qaHistoryEntry struct {
++	repo.QAResult
++	Tone  string
++	By    string
++	Files []qaFileLink
++}
++
++type qaFileLink struct {
++	Name string
++	Href string
++	Size string
++}
++
++func humanSize(n int64) string {
++	switch {
++	case n >= 1<<20:
++		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
++	case n >= 1<<10:
++		return fmt.Sprintf("%d KB", n>>10)
++	}
++	return fmt.Sprintf("%d B", n)
++}
++
++type qaItemPanelData struct {
++	Item       qaItemRow
++	Action     string
++	History    []qaHistoryEntry
++	CanExecute bool
++	Error      string
++	Progress   qaRunProgressData
++	OOB        bool // also refresh the row status and the progress header
++}
++
++func itemPanel(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, run *repo.QARun, item *repo.QARunItem) (qaItemPanelData, error) {
++	labels, err := qaPeopleLabels(c, d, s)
++	if err != nil {
++		return qaItemPanelData{}, err
++	}
++	refs, err := repo.QACaseRefs(c.Context(), s, []uuid.UUID{item.CaseID})
++	if err != nil {
++		return qaItemPanelData{}, err
++	}
++	ref := refs[item.CaseID]
++	url := runURL(project, run) + "/items/" + item.ID.String()
++	data := qaItemPanelData{
++		Item: qaItemRow{QARunItem: *item, Key: ref.Key, Changed: ref.Version > item.CaseVersion, Tone: qaStatusTone(item.Status),
++			Assignee: personLabel(labels, item.AssigneeID), Panel: url},
++		Action: url + "/result", CanExecute: mustPrincipal(c).Can("qa.execute") && run.ClosedAt == nil,
++	}
++	results, err := repo.ListQAResults(c.Context(), s, item.ID)
++	if err != nil {
++		return data, err
++	}
++	for _, r := range results {
++		id := r.ID
++		files, err := repo.ListQAAttachments(c.Context(), s, repo.QAAttachmentOwner{ResultID: &id})
++		if err != nil {
++			return data, err
++		}
++		entry := qaHistoryEntry{QAResult: r, Tone: qaStatusTone(r.Status), By: personLabel(labels, r.CreatedBy)}
++		for _, f := range files {
++			entry.Files = append(entry.Files, qaFileLink{Name: f.FileName, Href: qaBase(project) + "/files/" + f.ID.String(), Size: humanSize(f.SizeBytes)})
++		}
++		data.History = append(data.History, entry)
++	}
++	if data.Progress, err = runProgress(c, s, run, labels); err != nil {
++		return data, err
++	}
++	data.Progress.OOB = true
++	return data, nil
++}
++
++func qaItemPanelUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		run, err := loadQARun(c, s, project)
++		if err != nil {
++			return err
++		}
++		item, err := loadQAItem(c, s, run)
++		if err != nil {
++			return err
++		}
++		data, err := itemPanel(c, d, s, project, run, item)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		c.Type("html")
++		return d.Renderer.RenderNamed(c, "qa_item_panel", data)
++	}
++}
++
++var qaResultChoices = map[string]bool{"passed": true, "failed": true, "blocked": true, "skipped": true}
++
++// recordQAResultUI records one result (and its files) for an item. Every
++// file is checked against the size limit before anything is written, so a
++// refused upload leaves no result behind.
++func recordQAResultUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		run, err := loadQARun(c, s, project)
++		if err != nil {
++			return err
++		}
++		item, err := loadQAItem(c, s, run)
++		if err != nil {
++			return err
++		}
++		refuse := func(status int, msg string) error {
++			if c.Get("HX-Request") == "" {
++				return fiber.NewError(status, msg)
++			}
++			data, err := itemPanel(c, d, s, project, run, item)
++			if err != nil {
++				return writeRepoErr(c, err)
++			}
++			data.Error = msg
++			c.Type("html")
++			return d.Renderer.RenderNamed(c, "qa_item_panel", data)
++		}
++		status := strings.TrimSpace(c.FormValue("status"))
++		if !qaResultChoices[status] {
++			return refuse(fiber.StatusUnprocessableEntity, "Choose a result: passed, failed, blocked or skipped.")
++		}
++		var files []*multipart.FileHeader
++		if form, err := c.MultipartForm(); err == nil {
++			files = form.File["file"]
++		}
++		for _, f := range files {
++			if f.Size > repo.MaxQAAttachmentBytes {
++				return refuse(fiber.StatusUnprocessableEntity, "Each file can be at most 20 MB.")
++			}
++		}
++		result, err := repo.RecordQAResult(c.Context(), s, repo.QAResultInput{
++			ItemID: item.ID, Status: status, Comment: c.FormValue("comment"), CreatedBy: qaActor(c),
++		})
++		if errors.Is(err, repo.ErrQAClosed) {
++			return refuse(fiber.StatusConflict, "This run is closed.")
++		}
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		for _, fh := range files {
++			f, err := fh.Open()
++			if err != nil {
++				return err
++			}
++			// A browser that does not know the type says octet-stream; let
++			// SaveQAAttachment sniff it instead, so a screenshot shows inline.
++			ctype := fh.Header.Get("Content-Type")
++			if ctype == "application/octet-stream" {
++				ctype = ""
++			}
++			_, err = repo.SaveQAAttachment(c.Context(), s, d.Blob, repo.QAAttachmentOwner{ResultID: &result.ID},
++				fh.Filename, ctype, f, qaActor(c))
++			f.Close()
++			if errors.Is(err, repo.ErrQAAttachmentTooLarge) {
++				return refuse(fiber.StatusUnprocessableEntity, "Each file can be at most 20 MB.")
++			}
++			if err != nil {
++				return err
++			}
++		}
++		if c.Get("HX-Request") == "" {
++			return c.Redirect(runURL(project, run), fiber.StatusFound)
++		}
++		item, err = repo.GetQARunItem(c.Context(), s, item.ID)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		data, err := itemPanel(c, d, s, project, run, item)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		data.OOB = true
++		c.Type("html")
++		return d.Renderer.RenderNamed(c, "qa_item_panel", data)
++	}
++}
++
++// qaFileUI serves an attachment of the project in the URL. Images other
++// than SVG are shown inline; everything else downloads, typed as bytes,
++// with nosniff and a sandbox, so an uploaded HTML or SVG file never runs
++// in the app's origin.
++func qaFileUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		id, err := uuid.Parse(c.Params("aid"))
++		if err != nil {
++			return fiber.ErrNotFound
++		}
++		pid, err := repo.QAAttachmentProjectID(c.Context(), s, id)
++		if errors.Is(err, repo.ErrNotFound) || errors.Is(err, sql.ErrNoRows) || (err == nil && pid != project.ID) {
++			return fiber.ErrNotFound
++		}
++		if err != nil {
++			return err
++		}
++		a, err := repo.GetQAAttachment(c.Context(), s, id)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		rc, err := d.Blob.Open(c.Context(), a.StorageKey)
++		if errors.Is(err, blob.ErrNotFound) {
++			return fiber.ErrNotFound
++		}
++		if err != nil {
++			return err
++		}
++		inline := strings.HasPrefix(a.ContentType, "image/") && !strings.Contains(a.ContentType, "svg")
++		disposition, ctype := "attachment", "application/octet-stream"
++		if inline {
++			disposition, ctype = "inline", a.ContentType
++		}
++		c.Set(fiber.HeaderContentType, ctype)
++		c.Set(fiber.HeaderContentDisposition, mime.FormatMediaType(disposition, map[string]string{"filename": a.FileName}))
++		c.Set(fiber.HeaderXContentTypeOptions, "nosniff")
++		c.Set(fiber.HeaderContentSecurityPolicy, "sandbox")
++		return c.SendStream(rc, int(a.SizeBytes))
++	}
++}
+diff --git a/internal/web/qa_run_manage.go b/internal/web/qa_run_manage.go
+new file mode 100644
+index 0000000..2b2858f
+--- /dev/null
++++ b/internal/web/qa_run_manage.go
+@@ -0,0 +1,139 @@
++package web
++
++import (
++	"encoding/json"
++	"errors"
++	"strconv"
++	"strings"
++
++	"github.com/gofiber/fiber/v2"
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++// Managing a run (qa.plan.write): assign items, start a retest, close it.
++
++// assignQAItemsUI gives every ticked item (item_id, repeated) to one
++// person, or to nobody. Ids of another run's items are skipped by the
++// repo; the person must be someone who can execute here.
++func assignQAItemsUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		run, err := loadQARun(c, s, project)
++		if err != nil {
++			return err
++		}
++		ids, err := formUUIDs(c, "item_id")
++		if err != nil {
++			return err
++		}
++		if len(ids) == 0 {
++			return qaFormError(c, d, fiber.StatusUnprocessableEntity, "Select at least one item.")
++		}
++		var assignee *uuid.UUID
++		if raw := strings.TrimSpace(c.FormValue("assignee_id")); raw != "" {
++			people, err := qaPeople(c, d, s, project)
++			if err != nil {
++				return writeRepoErr(c, err)
++			}
++			for _, p := range people {
++				if p.ID.String() == raw {
++					id := p.ID
++					assignee = &id
++				}
++			}
++			if assignee == nil {
++				return fiber.ErrNotFound
++			}
++		}
++		n, err := repo.AssignQARunItems(c.Context(), s, run.ID, ids, assignee)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		setFlash(c, "qa.items.assigned", strconv.Itoa(n))
++		return redirectAfterMutation(c, runURL(project, run))
++	}
++}
++
++// retestQARunUI starts the next cycle with the run's failed and blocked
++// items, each given to whoever ran it, and opens it.
++func retestQARunUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		run, err := loadQARun(c, s, project)
++		if err != nil {
++			return err
++		}
++		retest, err := repo.CreateQARetest(c.Context(), s, run.ID, qaActor(c))
++		switch {
++		case errors.Is(err, repo.ErrQAEmptyRun):
++			return qaFormError(c, d, fiber.StatusUnprocessableEntity, "Nothing failed or blocked to retest.")
++		case errors.Is(err, repo.ErrQAClosed):
++			return qaFormError(c, d, fiber.StatusConflict, "This plan is closed.")
++		case err != nil:
++			return writeRepoErr(c, err)
++		}
++		setFlash(c, "qa.run.created", retest.Name)
++		return redirectAfterCreate(c, qaBase(project)+"/runs/"+retest.ID.String())
++	}
++}
++
++func closeQARunUI() fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		run, err := loadQARun(c, s, project)
++		if err != nil {
++			return err
++		}
++		if run.ClosedAt != nil { // already closed: nothing to do, nothing to audit
++			return redirectAfterMutation(c, runURL(project, run))
++		}
++		if err := repo.CloseQARun(c.Context(), s, run.ID); err != nil {
++			return writeRepoErr(c, err)
++		}
++		raw, _ := json.Marshal(fiber.Map{"name": run.Name, "plan_id": run.PlanID, "project_id": project.ID})
++		if err := repo.RecordAuditEvent(c.Context(), s, qaActor(c), "qa.run.close", "qa_run", &run.ID, raw); err != nil {
++			return writeRepoErr(c, err)
++		}
++		setFlash(c, "qa.run.closed", run.Name)
++		return redirectAfterMutation(c, runURL(project, run))
++	}
++}
++
++// saveQARunAsScenarioUI keeps a run's case set for next time: a new
++// scenario with the run's cases, order and groups (qa.case.write).
++func saveQARunAsScenarioUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		run, err := loadQARun(c, s, project)
++		if err != nil {
++			return err
++		}
++		name, phase, _, msg := readQAScenarioForm(c)
++		if msg != "" {
++			return qaFormError(c, d, fiber.StatusUnprocessableEntity, msg)
++		}
++		sc, err := repo.CreateQAScenarioFromRun(c.Context(), s, run.ID, name, phase, qaActor(c))
++		if err != nil {
++			if status, msg, ok := qaScenarioErr(err); ok {
++				return qaFormError(c, d, status, msg)
++			}
++			return err
++		}
++		setFlash(c, "qa.scenario.created", sc.Name)
++		return redirectAfterCreate(c, qaBase(project)+"/scenarios/"+sc.ID.String())
++	}
++}
+diff --git a/internal/web/qa_run_manage_test.go b/internal/web/qa_run_manage_test.go
+new file mode 100644
+index 0000000..ba150cb
+--- /dev/null
++++ b/internal/web/qa_run_manage_test.go
+@@ -0,0 +1,146 @@
++package web
++
++import (
++	"context"
++	"fmt"
++	"net/http"
++	"net/url"
++	"strings"
++	"testing"
++
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++func TestQARun_BulkAssignTwoHundredInOneRequest(t *testing.T) {
++	r := newQARunEnv(t, "acme-qarun-assign")
++	ctx := context.Background()
++	sec, _ := repo.CreateQASection(ctx, r.s, r.projectID, "Bulk", nil)
++	var ids []uuid.UUID
++	for i := 0; i < 200; i++ {
++		c, _ := repo.CreateQACase(ctx, r.s, r.projectID, repo.QACaseInput{SectionID: sec.ID, Title: fmt.Sprintf("Bulk %03d", i)}, nil)
++		ids = append(ids, c.ID)
++	}
++	sc, _ := repo.CreateQAScenario(ctx, r.s, r.projectID, "Bulk", "regression", "", nil)
++	repo.AddQAScenarioCases(ctx, r.s, sc.ID, nil, ids)
++	plan, _ := repo.CreateQAPlan(ctx, r.s, r.projectID, repo.QAPlanInput{Name: "Bulk", Phase: "regression", ScenarioIDs: []uuid.UUID{sc.ID}}, nil)
++	run, _ := repo.CreateQARun(ctx, r.s, plan.ID, repo.QARunInput{Name: "C1"}, nil)
++	items, _ := repo.ListQARunItems(ctx, r.s, run.ID, repo.QAItemFilter{})
++	_, foreign := r.firstRun(t)
++
++	form := url.Values{"assignee_id": {r.guestID.String()}}
++	for _, it := range items {
++		form.Add("item_id", it.ID.String())
++	}
++	form.Add("item_id", foreign[0].ID.String())
++	path := r.base + "/runs/" + run.ID.String()
++	resp, _ := r.post(t, r.member, path+"/assign", form, true)
++	if resp.StatusCode != http.StatusNoContent {
++		t.Fatalf("assign = %d", resp.StatusCode)
++	}
++	_, per, _ := repo.QARunProgress(ctx, r.s, run.ID)
++	if per[r.guestID].Total != 200 {
++		t.Fatalf("assigned %d; want 200", per[r.guestID].Total)
++	}
++	if got, _ := repo.GetQARunItem(ctx, r.s, foreign[0].ID); got.AssigneeID != nil {
++		t.Fatal("an item of another run was assigned")
++	}
++
++	form.Set("assignee_id", "")
++	r.post(t, r.member, path+"/assign", form, true)
++	if _, per, _ = repo.QARunProgress(ctx, r.s, run.ID); per[uuid.Nil].Total != 200 {
++		t.Fatal("unassign did not clear")
++	}
++	viewer, viewerID := r.session(t, "viewer@acme.example", "viewer")
++	form.Set("assignee_id", viewerID.String())
++	if resp, _ := r.post(t, r.member, path+"/assign", form, false); resp.StatusCode != http.StatusNotFound {
++		t.Fatalf("assign to a viewer = %d; want 404", resp.StatusCode)
++	}
++	for _, raw := range []string{r.guest, viewer} {
++		if resp, _ := r.post(t, raw, path+"/assign", url.Values{"item_id": {items[0].ID.String()}}, false); resp.StatusCode != http.StatusForbidden {
++			t.Fatalf("assign by a read/execute-only role = %d; want 403", resp.StatusCode)
++		}
++	}
++	if _, body := r.get(t, r.member, path); !strings.Contains(body, `form="assign-items"`) {
++		t.Fatal("writer has no assignment controls")
++	}
++	if _, body := r.get(t, r.guest, path); strings.Contains(body, `form="assign-items"`) {
++		t.Fatal("guest sees assignment controls")
++	}
++}
++
++func TestQARun_RetestAndClose(t *testing.T) {
++	r := newQARunEnv(t, "acme-qarun-retest")
++	ctx := context.Background()
++	run, items := r.firstRun(t)
++	path := r.base + "/runs/" + run.ID.String()
++
++	_, body := r.post(t, r.member, path+"/retest", nil, true)
++	if !strings.Contains(body, "Nothing failed or blocked to retest.") {
++		t.Fatalf("retest with nothing failed: %s", body)
++	}
++	repo.RecordQAResult(ctx, r.s, repo.QAResultInput{ItemID: items[0].ID, Status: "failed", CreatedBy: &r.guestID})
++	resp, _ := r.post(t, r.member, path+"/retest", nil, true)
++	runs, _ := repo.ListQARuns(ctx, r.s, r.plan.ID)
++	retest := runs[len(runs)-1]
++	if resp.Header.Get("HX-Redirect") != r.base+"/runs/"+retest.ID.String() || retest.RetestOf == nil || *retest.RetestOf != run.ID {
++		t.Fatalf("retest = %q, %+v", resp.Header.Get("HX-Redirect"), retest)
++	}
++	rItems, _ := repo.ListQARunItems(ctx, r.s, retest.ID, repo.QAItemFilter{})
++	if len(rItems) != 1 || rItems[0].AssigneeID == nil || *rItems[0].AssigneeID != r.guestID {
++		t.Fatalf("retest items = %+v; want the failed one, given to who ran it", rItems)
++	}
++	if _, body = r.get(t, r.member, r.base+"/runs/"+retest.ID.String()); !strings.Contains(body, "retest of") || !strings.Contains(body, `href="`+path+`"`) {
++		t.Fatal("retest page does not link back to its origin")
++	}
++
++	e := r.post
++	e(t, r.member, path+"/close", nil, false)
++	e(t, r.member, path+"/close", nil, false)
++	if n := auditCount(t, r.db, r.orgID, "qa.run.close"); n != 1 {
++		t.Fatalf("qa.run.close audit rows = %d; want 1", n)
++	}
++	if got, _ := repo.GetQARun(ctx, r.s, run.ID); got.ClosedAt == nil {
++		t.Fatal("run not closed")
++	}
++	if _, body = r.get(t, r.member, path+"/items/"+items[1].ID.String()); strings.Contains(body, "Record result") {
++		t.Fatal("a closed run still offers the result form")
++	}
++	if resp, _ := r.post(t, r.guest, path+"/close", nil, false); resp.StatusCode != http.StatusForbidden {
++		t.Fatalf("guest close = %d; want 403", resp.StatusCode)
++	}
++}
++
++func TestQARun_SaveAsScenario(t *testing.T) {
++	r := newQARunEnv(t, "acme-qarun-save")
++	ctx := context.Background()
++	viewer, _ := r.session(t, "viewer@acme.example", "viewer")
++	run, _ := r.firstRun(t)
++	path := r.base + "/runs/" + run.ID.String()
++
++	if _, body := r.get(t, r.member, path); !strings.Contains(body, "Save as scenario…") {
++		t.Fatal("no Save as scenario on the run page")
++	}
++	resp, _ := r.post(t, r.member, path+"/scenario", url.Values{"name": {"Regression core, as run"}, "phase": {"regression"}}, true)
++	list, _ := repo.ListQAScenarios(ctx, r.s, r.projectID, false)
++	var saved repo.QAScenario
++	for _, sc := range list {
++		if sc.Name == "Regression core, as run" {
++			saved = sc
++		}
++	}
++	if resp.Header.Get("HX-Redirect") != r.base+"/scenarios/"+saved.ID.String() {
++		t.Fatalf("save = %d %q", resp.StatusCode, resp.Header.Get("HX-Redirect"))
++	}
++	if entries, _ := repo.ListQAScenarioEntries(ctx, r.s, saved.ID); len(entries) != 2 {
++		t.Fatalf("saved scenario holds %d cases; want the run's 2", len(entries))
++	}
++	_, body := r.post(t, r.member, path+"/scenario", url.Values{"name": {"X"}, "phase": {"exploratory"}}, true)
++	if !strings.Contains(body, "Choose a phase.") {
++		t.Fatalf("bad phase: %s", body)
++	}
++	if resp, _ := r.post(t, viewer, path+"/scenario", url.Values{"name": {"X"}, "phase": {"uat"}}, false); resp.StatusCode != http.StatusForbidden {
++		t.Fatalf("viewer save = %d; want 403", resp.StatusCode)
++	}
++}
+diff --git a/internal/web/qa_run_new.go b/internal/web/qa_run_new.go
+new file mode 100644
+index 0000000..83e68fe
+--- /dev/null
++++ b/internal/web/qa_run_new.go
+@@ -0,0 +1,277 @@
++package web
++
++import (
++	"errors"
++	"fmt"
++	"strings"
++
++	"github.com/gofiber/fiber/v2"
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/httpx"
++	"github.com/uyab/lotus/internal/repo"
++	"github.com/uyab/lotus/internal/repo/global"
++	"github.com/uyab/lotus/internal/tenant"
++)
++
++// qaPerson is someone who can be given run items: a member with
++// qa.execute (owner, admin, member) or a guest listed on the project.
++// Viewers cannot execute and are never offered.
++type qaPerson struct {
++	ID    uuid.UUID
++	Label string
++	Guest bool
++}
++
++func qaPeople(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project) ([]qaPerson, error) {
++	members, err := global.ListMembersForOrg(c.Context(), d.DB, s.OrgID())
++	if err != nil {
++		return nil, err
++	}
++	guests, err := repo.ListProjectMemberUserIDs(c.Context(), s, project.ID)
++	if err != nil {
++		return nil, err
++	}
++	listed := map[uuid.UUID]bool{}
++	for _, id := range guests {
++		listed[id] = true
++	}
++	var out []qaPerson
++	for _, m := range members {
++		label := m.Name
++		if strings.TrimSpace(label) == "" {
++			label = m.Email
++		}
++		switch {
++		case m.RoleKey == "guest" && listed[m.UserID]:
++			out = append(out, qaPerson{ID: m.UserID, Label: label, Guest: true})
++		case m.RoleKey == "owner" || m.RoleKey == "admin" || m.RoleKey == "member":
++			out = append(out, qaPerson{ID: m.UserID, Label: label})
++		}
++	}
++	return out, nil
++}
++
++type qaRunNewData struct {
++	Project      repo.Project
++	Base         string
++	Plan         repo.QAPlan
++	Name         string
++	Notes        string
++	Scenarios    []qaPlanScenarioOption
++	People       []qaPlanPersonOption
++	Distribution string
++	Error        string
++}
++
++type qaPlanPersonOption struct {
++	qaPerson
++	Checked bool
++}
++
++// readQARunForm reads the new-run form. Scenarios must be the plan's and
++// testers must be people who can execute here; anything else is 404.
++func readQARunForm(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, plan *repo.QAPlan) (repo.QARunInput, []qaPerson, error) {
++	in := repo.QARunInput{Name: c.FormValue("name"), Notes: c.FormValue("notes"), Distribution: c.FormValue("distribution")}
++	planScenarios, err := repo.ListQAPlanScenarioIDs(c.Context(), s, plan.ID)
++	if err != nil {
++		return in, nil, err
++	}
++	inPlan := map[string]bool{}
++	for _, id := range planScenarios {
++		inPlan[id.String()] = true
++	}
++	for _, raw := range c.Context().PostArgs().PeekMulti("scenario_id") {
++		if !inPlan[string(raw)] {
++			return in, nil, fiber.ErrNotFound
++		}
++		id, _ := uuid.Parse(string(raw))
++		in.ScenarioIDs = append(in.ScenarioIDs, id)
++	}
++	people, err := qaPeople(c, d, s, project)
++	if err != nil {
++		return in, nil, err
++	}
++	ok := map[string]bool{}
++	for _, p := range people {
++		ok[p.ID.String()] = true
++	}
++	for _, raw := range c.Context().PostArgs().PeekMulti("tester_id") {
++		if !ok[string(raw)] {
++			return in, nil, fiber.ErrNotFound
++		}
++		id, _ := uuid.Parse(string(raw))
++		in.Testers = append(in.Testers, id)
++	}
++	return in, people, nil
++}
++
++// qaRunErrMessage is the sentence for a refused run.
++func qaRunErrMessage(err error, in repo.QARunInput) (int, string, bool) {
++	switch {
++	case errors.Is(err, repo.ErrQAClosed):
++		return fiber.StatusConflict, "This plan is closed.", true
++	case errors.Is(err, repo.ErrQAEmptyRun):
++		return fiber.StatusUnprocessableEntity, "The run would have no cases.", true
++	case errors.Is(err, repo.ErrInvalidInput) && len(in.Testers) == 0 && in.Distribution != "" && in.Distribution != repo.DistributeNone:
++		return fiber.StatusUnprocessableEntity, "Choose at least one tester to share the cases between.", true
++	case errors.Is(err, repo.ErrInvalidInput):
++		return fiber.StatusUnprocessableEntity,
++			fmt.Sprintf("Run name is required and can be at most %d characters.", repo.MaxQANameLength), true
++	}
++	return 0, "", false
++}
++
++func renderQARunNew(c *fiber.Ctx, d Deps, s tenant.Scope, data qaRunNewData, chosen map[uuid.UUID]bool, testers map[uuid.UUID]bool, status int) error {
++	project := &data.Project
++	ids, err := repo.ListQAPlanScenarioIDs(c.Context(), s, data.Plan.ID)
++	if err != nil {
++		return writeRepoErr(c, err)
++	}
++	all, err := qaPlanScenarioOptions(c, s, project, nil)
++	if err != nil {
++		return writeRepoErr(c, err)
++	}
++	inPlan := map[uuid.UUID]bool{}
++	for _, id := range ids {
++		inPlan[id] = true
++	}
++	for _, o := range all {
++		if inPlan[o.ID] {
++			o.Checked = len(chosen) == 0 || chosen[o.ID]
++			data.Scenarios = append(data.Scenarios, o)
++		}
++	}
++	people, err := qaPeople(c, d, s, project)
++	if err != nil {
++		return writeRepoErr(c, err)
++	}
++	for _, p := range people {
++		data.People = append(data.People, qaPlanPersonOption{qaPerson: p, Checked: testers[p.ID]})
++	}
++	org, user, err := shellChrome(c, d.DB)
++	if err != nil {
++		return err
++	}
++	nav, err := qaNav(c, s, project, httpx.NavCrumb{Label: "Plans", Href: data.Base + "/plans"},
++		httpx.NavCrumb{Label: data.Plan.Name, Href: planURL(project, &data.Plan)}, httpx.NavCrumb{Label: "New run"})
++	if err != nil {
++		return writeRepoErr(c, err)
++	}
++	c.Type("html")
++	c.Status(status)
++	return renderPage(c, d, "pages/qa_run_new.html", httpx.ViewData{
++		Title: "New run · " + data.Plan.Name, Org: org, User: user, Nav: nav, Data: data,
++	})
++}
++
++func newQARunPage(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		plan, err := loadQAPlan(c, s, project)
++		if err != nil {
++			return err
++		}
++		runs, err := repo.ListQARuns(c.Context(), s, plan.ID)
++		if err != nil {
++			return writeRepoErr(c, err)
++		}
++		data := qaRunNewData{Project: *project, Base: qaBase(project), Plan: *plan,
++			Name: fmt.Sprintf("Cycle %d", len(runs)+1), Distribution: repo.DistributeNone}
++		if plan.ClosedAt != nil {
++			data.Error = "This plan is closed."
++		}
++		return renderQARunNew(c, d, s, data, nil, nil, fiber.StatusOK)
++	}
++}
++
++func createQARunUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		plan, err := loadQAPlan(c, s, project)
++		if err != nil {
++			return err
++		}
++		in, _, err := readQARunForm(c, d, s, project, plan)
++		if err != nil {
++			return err
++		}
++		run, err := repo.CreateQARun(c.Context(), s, plan.ID, in, qaActor(c))
++		if err != nil {
++			status, msg, ok := qaRunErrMessage(err, in)
++			if !ok {
++				return writeRepoErr(c, err)
++			}
++			data := qaRunNewData{Project: *project, Base: qaBase(project), Plan: *plan, Name: in.Name, Notes: in.Notes,
++				Distribution: in.Distribution, Error: msg}
++			chosen, testers := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
++			for _, id := range in.ScenarioIDs {
++				chosen[id] = true
++			}
++			for _, id := range in.Testers {
++				testers[id] = true
++			}
++			return renderQARunNew(c, d, s, data, chosen, testers, status)
++		}
++		setFlash(c, "qa.run.created", run.Name)
++		return c.Redirect(qaBase(project)+"/runs/"+run.ID.String(), fiber.StatusFound)
++	}
++}
++
++type qaRunPreviewRow struct {
++	Label string
++	N     int
++}
++
++type qaRunPreviewData struct {
++	Cases      int
++	Rows       []qaRunPreviewRow
++	Unassigned int
++	Error      string
++}
++
++// previewQARunUI is the new-run form's live preview (an htmx fragment):
++// how many cases, and how many each chosen tester would get.
++func previewQARunUI(d Deps) fiber.Handler {
++	return func(c *fiber.Ctx) error {
++		s, project, err := loadQAProject(c)
++		if err != nil {
++			return err
++		}
++		plan, err := loadQAPlan(c, s, project)
++		if err != nil {
++			return err
++		}
++		in, people, err := readQARunForm(c, d, s, project, plan)
++		if err != nil {
++			return err
++		}
++		var data qaRunPreviewData
++		p, err := repo.PreviewQARun(c.Context(), s, plan.ID, in)
++		if err != nil {
++			_, msg, ok := qaRunErrMessage(err, in)
++			if !ok {
++				return writeRepoErr(c, err)
++			}
++			data.Error = msg
++		} else {
++			data.Cases, data.Unassigned = p.Cases, p.Unassigned
++			if p.Cases == 0 {
++				data.Error = "The run would have no cases."
++			}
++			for _, person := range people {
++				if n, ok := p.PerTester[person.ID]; ok {
++					data.Rows = append(data.Rows, qaRunPreviewRow{Label: person.Label, N: n})
++				}
++			}
++		}
++		c.Type("html")
++		return d.Renderer.RenderNamed(c, "qa_run_preview", data)
++	}
++}
+diff --git a/internal/web/qa_run_new_test.go b/internal/web/qa_run_new_test.go
+new file mode 100644
+index 0000000..ab838b4
+--- /dev/null
++++ b/internal/web/qa_run_new_test.go
+@@ -0,0 +1,103 @@
++package web
++
++import (
++	"context"
++	"net/http"
++	"net/url"
++	"strings"
++	"testing"
++
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++// runFixture: a project with the seeded library, a member, a guest listed
++// on the project, and the plan.
++type qaRunEnv struct {
++	qaEnv
++	projectID uuid.UUID
++	plan      repo.QAPlan
++	member    string
++	memberID  uuid.UUID
++	guest     string
++	guestID   uuid.UUID
++	base      string
++}
++
++func newQARunEnv(t *testing.T, sub string) qaRunEnv {
++	t.Helper()
++	e := newQAEnv(t, sub)
++	p := e.project(t, "Portal")
++	seedQALibrary(t, e, p)
++	r := qaRunEnv{qaEnv: e, projectID: p, plan: planNamed(t, e, p, "Regression October"), base: "/projects/" + p.String() + "/qa"}
++	r.member, r.memberID = e.session(t, "qa@acme.example", "member")
++	r.guest, r.guestID = e.session(t, "client@bank.example", "guest")
++	if err := repo.AddProjectMember(context.Background(), e.s, p, r.guestID); err != nil {
++		t.Fatal(err)
++	}
++	return r
++}
++
++func TestQARunNew_CreatesWithDistribution(t *testing.T) {
++	r := newQARunEnv(t, "acme-runnew")
++	ctx := context.Background()
++	path := r.base + "/plans/" + r.plan.ID.String() + "/runs"
++
++	status, body := r.get(t, r.member, path+"/new")
++	if status != http.StatusOK || !strings.Contains(body, "client@bank.example") || !strings.Contains(body, "qa@acme.example") {
++		t.Fatalf("new run page = %d; testers should list members and the project's guest", status)
++	}
++	form := url.Values{"name": {"Cycle 2"}, "tester_id": {r.memberID.String(), r.guestID.String()}, "distribution": {"round_robin"}}
++	resp, _ := r.post(t, r.member, path, form, false)
++	runs, _ := repo.ListQARuns(ctx, r.s, r.plan.ID)
++	run := runs[len(runs)-1]
++	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != r.base+"/runs/"+run.ID.String() || run.Name != "Cycle 2" || run.Cycle != 2 {
++		t.Fatalf("create = %d %s, %+v", resp.StatusCode, resp.Header.Get("Location"), run)
++	}
++	items, _ := repo.ListQARunItems(ctx, r.s, run.ID, repo.QAItemFilter{})
++	if len(items) != 2 || items[0].AssigneeID == nil || *items[0].AssigneeID != r.memberID || *items[1].AssigneeID != r.guestID {
++		t.Fatalf("round robin items = %+v", items)
++	}
++}
++
++func TestQARunNew_PreviewAndRejections(t *testing.T) {
++	r := newQARunEnv(t, "acme-runnew-bad")
++	ctx := context.Background()
++	viewer, viewerID := r.session(t, "viewer@acme.example", "viewer")
++	path := r.base + "/plans/" + r.plan.ID.String() + "/runs"
++
++	_, body := r.post(t, r.member, path+"/preview", url.Values{"tester_id": {r.memberID.String()}, "distribution": {"round_robin"}}, true)
++	if !strings.Contains(body, "2 cases") || !strings.Contains(body, `data-preview-count="2"`) {
++		t.Fatalf("preview:\n%s", body)
++	}
++	_, body = r.post(t, r.member, path+"/preview", url.Values{"distribution": {"by_group"}}, true)
++	if !strings.Contains(body, "Choose at least one tester to share the cases between.") {
++		t.Fatalf("by group without testers:\n%s", body)
++	}
++
++	// A viewer cannot execute, so it is not a tester; nor is a stranger.
++	for _, id := range []uuid.UUID{viewerID, uuid.New()} {
++		resp, _ := r.post(t, r.member, path, url.Values{"name": {"X"}, "tester_id": {id.String()}}, false)
++		if resp.StatusCode != http.StatusNotFound {
++			t.Fatalf("tester %s = %d; want 404", id, resp.StatusCode)
++		}
++	}
++	if resp, _ := r.post(t, r.guest, path, url.Values{"name": {"X"}}, false); resp.StatusCode != http.StatusForbidden {
++		t.Fatalf("guest create = %d; want 403", resp.StatusCode)
++	}
++	if resp, _ := r.post(t, viewer, path, url.Values{"name": {"X"}}, false); resp.StatusCode != http.StatusForbidden {
++		t.Fatalf("viewer create = %d; want 403", resp.StatusCode)
++	}
++
++	empty, _ := repo.CreateQAPlan(ctx, r.s, r.projectID, repo.QAPlanInput{Name: "Empty", Phase: "sit"}, nil)
++	resp, body := r.post(t, r.member, r.base+"/plans/"+empty.ID.String()+"/runs", url.Values{"name": {"X"}}, false)
++	if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "The run would have no cases.") {
++		t.Fatalf("empty run = %d", resp.StatusCode)
++	}
++	repo.CloseQAPlan(ctx, r.s, r.plan.ID)
++	resp, body = r.post(t, r.member, path, url.Values{"name": {"X"}}, false)
++	if resp.StatusCode != http.StatusConflict || !strings.Contains(body, "This plan is closed.") {
++		t.Fatalf("closed plan = %d", resp.StatusCode)
++	}
++}
+diff --git a/internal/web/qa_run_test.go b/internal/web/qa_run_test.go
+new file mode 100644
+index 0000000..bd2f1c2
+--- /dev/null
++++ b/internal/web/qa_run_test.go
+@@ -0,0 +1,181 @@
++package web
++
++import (
++	"bytes"
++	"context"
++	"io"
++	"mime/multipart"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"github.com/google/uuid"
++
++	"github.com/uyab/lotus/internal/repo"
++)
++
++type qaFile struct {
++	name string
++	body []byte
++}
++
++// record posts a result the way the item panel does: multipart, htmx.
++func (r qaRunEnv) record(t *testing.T, raw string, runID, itemID uuid.UUID, status, comment string, files ...qaFile) (*http.Response, string) {
++	t.Helper()
++	var body bytes.Buffer
++	mw := multipart.NewWriter(&body)
++	mw.WriteField("status", status)
++	mw.WriteField("comment", comment)
++	for _, f := range files {
++		fw, _ := mw.CreateFormFile("file", f.name)
++		fw.Write(f.body)
++	}
++	mw.Close()
++	path := r.base + "/runs/" + runID.String() + "/items/" + itemID.String() + "/result"
++	req := httptest.NewRequest(http.MethodPost, "http://"+r.host+path, &body)
++	req.Host = r.host
++	req.Header.Set("Content-Type", mw.FormDataContentType())
++	req.Header.Set("HX-Request", "true")
++	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
++	resp, err := r.app.Test(req, 60_000)
++	if err != nil {
++		t.Fatalf("record: %v", err)
++	}
++	defer resp.Body.Close()
++	out, _ := io.ReadAll(resp.Body)
++	return resp, string(out)
++}
++
++func (r qaRunEnv) firstRun(t *testing.T) (repo.QARun, []repo.QARunItem) {
++	t.Helper()
++	runs, _ := repo.ListQARuns(context.Background(), r.s, r.plan.ID)
++	items, _ := repo.ListQARunItems(context.Background(), r.s, runs[0].ID, repo.QAItemFilter{})
++	return runs[0], items
++}
++
++func TestQARun_PageShowsGroupsProgressAndFilters(t *testing.T) {
++	r := newQARunEnv(t, "acme-qarun")
++	ctx := context.Background()
++	run, items := r.firstRun(t)
++	repo.AssignQARunItems(ctx, r.s, run.ID, []uuid.UUID{items[0].ID}, &r.memberID)
++	repo.RecordQAResult(ctx, r.s, repo.QAResultInput{ItemID: items[0].ID, Status: "failed"})
++	path := r.base + "/runs/" + run.ID.String()
++
++	status, body := r.get(t, r.member, path)
++	if status != http.StatusOK || strings.Count(body, "data-item-row") != 2 || !strings.Contains(body, "TC-1") ||
++		!strings.Contains(body, "1/2 done") || !strings.Contains(body, "qa@acme.example") {
++		t.Fatalf("run page = %d:\n%s", status, body)
++	}
++	if _, body = r.get(t, r.member, path+"?who=mine"); strings.Count(body, "data-item-row") != 1 {
++		t.Fatal("who=mine does not filter")
++	}
++	if _, body = r.get(t, r.member, path+"?who=unassigned"); strings.Count(body, "data-item-row") != 1 || !strings.Contains(body, "Logout") {
++		t.Fatal("who=unassigned does not filter")
++	}
++	if _, body = r.get(t, r.member, path+"?status=failed"); strings.Count(body, "data-item-row") != 1 || !strings.Contains(body, "Login") {
++		t.Fatal("status filter does not filter")
++	}
++
++	// The case changes after the run was created: the item says so.
++	c, _ := repo.GetQACase(ctx, r.s, items[1].CaseID)
++	repo.UpdateQACase(ctx, r.s, c.ID, repo.QACaseInput{SectionID: c.SectionID, Title: c.Title + " (v2)"})
++	if _, body = r.get(t, r.member, path); !strings.Contains(body, "Case changed since this run") {
++		t.Fatal("no changed-case badge")
++	}
++}
++
++func TestQARun_RecordEachStatusAndRefuseTheRest(t *testing.T) {
++	r := newQARunEnv(t, "acme-qarun-record")
++	ctx := context.Background()
++	run, items := r.firstRun(t)
++	for _, st := range []string{"passed", "failed", "blocked", "skipped"} {
++		resp, body := r.record(t, r.member, run.ID, items[0].ID, st, "note "+st)
++		got, _ := repo.GetQARunItem(ctx, r.s, items[0].ID)
++		if resp.StatusCode != http.StatusOK || got.Status != st || !strings.Contains(body, "note "+st) ||
++			!strings.Contains(body, `id="run-progress" hx-swap-oob="true"`) {
++			t.Fatalf("record %s = %d, item %s:\n%s", st, resp.StatusCode, got.Status, body)
++		}
++	}
++	if hist, _ := repo.ListQAResults(ctx, r.s, items[0].ID); len(hist) != 4 || hist[0].Status != "skipped" {
++		t.Fatalf("history = %+v", hist)
++	}
++	for _, st := range []string{"untested", "done", ""} {
++		_, body := r.record(t, r.member, run.ID, items[1].ID, st, "")
++		if !strings.Contains(body, "Choose a result: passed, failed, blocked or skipped.") {
++			t.Fatalf("status %q: %s", st, body)
++		}
++	}
++	repo.CloseQARun(ctx, r.s, run.ID)
++	_, body := r.record(t, r.member, run.ID, items[1].ID, "passed", "")
++	if !strings.Contains(body, "This run is closed.") {
++		t.Fatalf("closed run: %s", body)
++	}
++}
++
++func TestQARun_AttachmentsAreCheckedStoredAndServedSafely(t *testing.T) {
++	r := newQARunEnv(t, "acme-qarun-files")
++	ctx := context.Background()
++	run, items := r.firstRun(t)
++	png := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{0}, 64)...)
++	resp, body := r.record(t, r.member, run.ID, items[0].ID, "failed", "500 on submit",
++		qaFile{"shot.png", png}, qaFile{"trace.html", []byte("<script>alert(1)</script>")})
++	if resp.StatusCode != http.StatusOK || strings.Count(body, "/qa/files/") != 2 {
++		t.Fatalf("record with files = %d:\n%s", resp.StatusCode, body)
++	}
++	hist, _ := repo.ListQAResults(ctx, r.s, items[0].ID)
++	files, _ := repo.ListQAAttachments(ctx, r.s, repo.QAAttachmentOwner{ResultID: &hist[0].ID})
++	for _, f := range files {
++		res, _ := r.app.Test(reqWithSession(http.MethodGet, r.host, r.base+"/files/"+f.ID.String(), r.member))
++		disp := res.Header.Get("Content-Disposition")
++		if res.StatusCode != http.StatusOK || res.Header.Get("X-Content-Type-Options") != "nosniff" {
++			t.Fatalf("download %s = %d", f.FileName, res.StatusCode)
++		}
++		if f.FileName == "shot.png" && !strings.HasPrefix(disp, "inline") || f.FileName == "trace.html" && !strings.HasPrefix(disp, "attachment") {
++			t.Fatalf("%s served with %q", f.FileName, disp)
++		}
++	}
++
++	// Over 20 MB: refused before anything is recorded.
++	big := bytes.Repeat([]byte("x"), repo.MaxQAAttachmentBytes+1)
++	_, body = r.record(t, r.member, run.ID, items[1].ID, "passed", "", qaFile{"huge.log", big})
++	if !strings.Contains(body, "Each file can be at most 20 MB.") {
++		t.Fatalf("oversized file: %s", body)
++	}
++	if got, _ := repo.GetQARunItem(ctx, r.s, items[1].ID); got.Status != "untested" {
++		t.Fatal("a refused upload still recorded the result")
++	}
++
++	// Another project's attachment through this project's URL: 404.
++	other := r.project(t, "Billing")
++	if res, _ := r.app.Test(reqWithSession(http.MethodGet, r.host, "/projects/"+other.String()+"/qa/files/"+files[0].ID.String(), r.member)); res.StatusCode != http.StatusNotFound {
++		t.Fatalf("attachment via another project = %d; want 404", res.StatusCode)
++	}
++}
++
++func TestQARun_WhoMayRecord(t *testing.T) {
++	r := newQARunEnv(t, "acme-qarun-who")
++	ctx := context.Background()
++	viewer, _ := r.session(t, "viewer@acme.example", "viewer")
++	run, items := r.firstRun(t)
++
++	if resp, _ := r.record(t, r.guest, run.ID, items[0].ID, "passed", "OK di UAT"); resp.StatusCode != http.StatusOK {
++		t.Fatalf("guest on its project = %d; want 200", resp.StatusCode)
++	}
++	if resp, _ := r.record(t, viewer, run.ID, items[0].ID, "passed", ""); resp.StatusCode != http.StatusForbidden {
++		t.Fatalf("viewer = %d; want 403", resp.StatusCode)
++	}
++	// An item of another run through this run's URL: 404.
++	other, _ := repo.CreateQARun(ctx, r.s, r.plan.ID, repo.QARunInput{Name: "Cycle 2"}, nil)
++	otherItems, _ := repo.ListQARunItems(ctx, r.s, other.ID, repo.QAItemFilter{})
++	if resp, _ := r.record(t, r.member, run.ID, otherItems[0].ID, "passed", ""); resp.StatusCode != http.StatusNotFound {
++		t.Fatalf("item of another run = %d; want 404", resp.StatusCode)
++	}
++	// A guest listed elsewhere cannot open this project's run.
++	stranger, strangerID := r.session(t, "other-client@bank.example", "guest")
++	elsewhere := r.project(t, "Elsewhere")
++	repo.AddProjectMember(ctx, r.s, elsewhere, strangerID)
++	if status, _ := r.get(t, stranger, r.base+"/runs/"+run.ID.String()); status != http.StatusNotFound {
++		t.Fatalf("guest of another project = %d; want 404", status)
++	}
++}
+diff --git a/internal/web/server.go b/internal/web/server.go
+index c58ae39..f507f45 100644
+--- a/internal/web/server.go
++++ b/internal/web/server.go
+@@ -15,6 +15,7 @@ import (
+ 
+ 	"github.com/uyab/lotus/internal/authn"
+ 	"github.com/uyab/lotus/internal/authz"
++	"github.com/uyab/lotus/internal/blob"
+ 	"github.com/uyab/lotus/internal/config"
+ 	"github.com/uyab/lotus/internal/crypto"
+ 	"github.com/uyab/lotus/internal/httpx"
+@@ -34,6 +35,8 @@ type Deps struct {
+ 	CookieSecure   bool
+ 	Mailer         *mailer.Mailer
+ 	KEK            *crypto.KEK
++	// Blob stores uploaded files (QA attachments); config LOTUS_BLOB_DIR.
++	Blob blob.Store
+ 
+ 	// NetguardResolver overrides task 2.2's SSRF-guarded HTTP client's DNS
+ 	// resolution. Nil in every real deployment (real DNS). Tests set this
+@@ -60,6 +63,11 @@ type Deps struct {
+ func New(d Deps) *fiber.App {
+ 	app := fiber.New(fiber.Config{
+ 		AppName: "lotus",
++		// QA attachments go up to repo.MaxQAAttachmentBytes (20 MB) per
++		// file; Fiber's 4 MB default would refuse them before any handler
++		// could say why. The margin covers the multipart envelope and a
++		// comment beside the file.
++		BodyLimit: 25 << 20,
+ 	})
+ 	app.Use(recover.New())
+ 	app.Use(logger.New())
+diff --git a/web/static/js/lotus.js b/web/static/js/lotus.js
+index 46a35f6..9113fb9 100644
+--- a/web/static/js/lotus.js
++++ b/web/static/js/lotus.js
+@@ -725,3 +725,18 @@ function qaSteps(sourceId) {
+     },
+   };
+ }
++
++// qaResultKeys picks a result in a run item's panel (components/
++// qa_item_panel.html) from the keyboard: p, f, b or s ticks Pass, Fail,
++// Blocked or Skip. Keys typed into the comment or any other field are
++// left alone.
++function qaResultKeys(e) {
++  if (e.ctrlKey || e.metaKey || e.altKey) return;
++  const tag = (e.target && e.target.tagName) || "";
++  if (tag === "TEXTAREA" || (tag === "INPUT" && e.target.type !== "radio")) return;
++  const radio = e.currentTarget.querySelector(`input[name="status"][data-key="${e.key}"]`);
++  if (!radio) return;
++  e.preventDefault();
++  radio.checked = true;
++  radio.focus();
++}
+diff --git a/web/templates/components/qa_home_nav.html b/web/templates/components/qa_home_nav.html
+new file mode 100644
+index 0000000..6be5697
+--- /dev/null
++++ b/web/templates/components/qa_home_nav.html
+@@ -0,0 +1,9 @@
++{{/* qa_home_nav is the segmented control on the QA overview: every
++     project, or the viewer's own untested items. Takes "." = "projects" |
++     "my". */}}
++{{define "qa_home_nav"}}
++<nav aria-label="QA Tools" style="display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:var(--radius-group);padding:3px;box-shadow:var(--shadow-segment-track)">
++  {{template "qa_subnav_link" (dict "Href" "/qa" "Label" "Projects" "On" (eq . "projects"))}}
++  {{template "qa_subnav_link" (dict "Href" "/qa/my" "Label" "My work" "On" (eq . "my"))}}
++</nav>
++{{end}}
+diff --git a/web/templates/components/qa_item_panel.html b/web/templates/components/qa_item_panel.html
+new file mode 100644
+index 0000000..1339a02
+--- /dev/null
++++ b/web/templates/components/qa_item_panel.html
+@@ -0,0 +1,61 @@
++{{/* qa_item_panel is one run item opened: the case as the run copied it,
++     the result form and the history. Returned alone as an htmx fragment;
++     after a result it also refreshes the row's status and the progress
++     header out of band. Takes qaItemPanelData. */}}
++{{define "qa_item_panel"}}
++{{$i := .Item}}
++<div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;padding:12px 14px 16px 14px;background:var(--ink-50);border-bottom:1px solid var(--ink-200)">
++  <div style="display:flex;flex-direction:column;gap:10px;min-width:0;font-size:12.5px;color:#374151">
++    {{if $i.Changed}}<div style="font-size:11.5px;color:#9E2B47">Case changed since this run. This run keeps the text it was created with.</div>{{end}}
++    {{if $i.Precondition}}<div><div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:3px">PRECONDITION</div><div style="white-space:pre-wrap">{{$i.Precondition}}</div></div>{{end}}
++    <div>
++      <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:3px">STEPS</div>
++      {{range $n, $s := $i.Steps}}
++      <div style="display:grid;grid-template-columns:22px minmax(0,1fr) minmax(0,1fr);gap:8px;padding:4px 0;border-bottom:1px solid var(--ink-200)">
++        <span style="font:500 11px 'IBM Plex Mono',monospace;color:#9CA3AF">{{inc $n}}</span>
++        <span style="white-space:pre-wrap">{{$s.Action}}</span><span style="white-space:pre-wrap;color:#6B7280">{{$s.Expected}}</span>
++      </div>
++      {{else}}<div style="color:#9CA3AF">No steps.</div>{{end}}
++    </div>
++  </div>
++  <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
++    {{with .Error}}{{template "form_error" .}}{{end}}
++    {{if .CanExecute}}
++    <form method="post" action="{{.Action}}" enctype="multipart/form-data" hx-post="{{.Action}}" hx-encoding="multipart/form-data"
++          hx-target="#panel-{{$i.ID}}" hx-swap="innerHTML" x-data @keydown="qaResultKeys($event)"
++          style="display:flex;flex-direction:column;gap:8px">
++      <div role="radiogroup" aria-label="Result" style="display:flex;gap:6px;flex-wrap:wrap">
++        {{range $opt := (selectOptions (dict "Value" "passed" "Label" "Pass") (dict "Value" "failed" "Label" "Fail") (dict "Value" "blocked" "Label" "Blocked") (dict "Value" "skipped" "Label" "Skip"))}}
++        <label class="btn-lotus btn-lotus-secondary" style="gap:6px;cursor:pointer">
++          <input type="radio" name="status" value="{{$opt.Value}}" required data-key="{{slice $opt.Value 0 1}}" style="accent-color:var(--text-brand)">{{$opt.Label}}
++        </label>
++        {{end}}
++      </div>
++      <textarea name="comment" rows="2" class="lotus-textarea" placeholder="What happened, if not a plain pass" aria-label="Comment"></textarea>
++      <input type="file" name="file" multiple class="lotus-input" aria-label="Attach files">
++      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
++        <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">p · f · b · s picks a result · up to 20 MB per file</span>
++        <button type="submit" class="btn-lotus btn-lotus-primary">Record result</button>
++      </div>
++    </form>
++    {{end}}
++    <div style="display:flex;flex-direction:column;gap:8px">
++      <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">HISTORY</div>
++      {{range .History}}
++      <div style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:#374151">
++        <div style="display:flex;align-items:center;gap:8px">
++          {{template "qa_status" (dict "Status" .Status "Tone" .Tone)}}
++          <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.CreatedAt.Format "02 Jan 2006 15:04"}}{{if .By}} · {{.By}}{{end}}</span>
++        </div>
++        {{if .Comment}}<div style="white-space:pre-wrap">{{.Comment}}</div>{{end}}
++        {{range .Files}}<a href="{{.Href}}" style="font-size:11.5px;color:#43284E">{{.Name}}</a> <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.Size}}</span>{{end}}
++      </div>
++      {{else}}<div style="font-size:12px;color:#9CA3AF">No results yet.</div>{{end}}
++    </div>
++  </div>
++</div>
++{{if .OOB}}
++{{template "qa_status" (dict "Status" $i.Status "Tone" $i.Tone "ID" (printf "item-status-%s" $i.ID) "OOB" true)}}
++{{template "qa_run_progress" .Progress}}
++{{end}}
++{{end}}
+diff --git a/web/templates/components/qa_plan_form.html b/web/templates/components/qa_plan_form.html
+new file mode 100644
+index 0000000..9d3bf54
+--- /dev/null
++++ b/web/templates/components/qa_plan_form.html
+@@ -0,0 +1,56 @@
++{{/* qa_plan_form is the body of the New plan and Edit plan dialogs.
++     Takes qaPlanFormData. */}}
++{{define "qa_plan_form"}}
++<div class="lotus-modal-form">
++  <form method="post" action="{{.Action}}" hx-post="{{.Action}}" hx-target="#{{.Err}}" hx-swap="innerHTML">
++    <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px;min-width:min(520px,80vw)">
++      <div id="{{.Err}}"></div>
++      <label style="display:flex;flex-direction:column;gap:6px">
++        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
++        <input type="text" name="name" required maxlength="200" value="{{.Name}}" placeholder="Regresi Oktober" class="lotus-input">
++      </label>
++      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
++        <label style="display:flex;flex-direction:column;gap:6px">
++          <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PHASE</span>
++          {{template "lotus_select" (dict "Name" "phase" "ID" (printf "%s-phase" .Err) "Value" .Phase "Label" "Phase" "Options" (selectOptions .PhaseOptions))}}
++        </label>
++        <label style="display:flex;flex-direction:column;gap:6px">
++          <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">ENVIRONMENT</span>
++          <input type="text" name="environment" maxlength="200" value="{{.Environment}}" placeholder="UAT" class="lotus-input">
++        </label>
++        <label style="display:flex;flex-direction:column;gap:6px">
++          <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">BUILD</span>
++          <input type="text" name="build" maxlength="200" value="{{.Build}}" placeholder="1.4.2" class="lotus-input lotus-input-mono">
++        </label>
++      </div>
++      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
++        <label style="display:flex;flex-direction:column;gap:6px">
++          <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">STARTS</span>
++          <input type="date" name="starts_on" value="{{.StartsOn}}" class="lotus-input">
++        </label>
++        <label style="display:flex;flex-direction:column;gap:6px">
++          <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">ENDS</span>
++          <input type="date" name="ends_on" value="{{.EndsOn}}" class="lotus-input">
++        </label>
++      </div>
++      <fieldset style="border:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">
++        <legend style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:6px">SCENARIOS</legend>
++        {{if not .Scenarios}}<p style="margin:0;font-size:12px;color:#6B7280">No scenarios yet. Runs take their cases from the plan's scenarios.</p>{{end}}
++        <div style="display:flex;flex-direction:column;max-height:220px;overflow:auto">
++          {{range .Scenarios}}
++          <label style="display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:12.5px;color:#111827">
++            <input type="checkbox" name="scenario_id" value="{{.ID}}"{{if .Checked}} checked{{end}} style="accent-color:var(--text-brand)">
++            <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
++            <span class="lotus-badge lotus-badge-none">{{.PhaseLabel}}</span>
++          </label>
++          {{end}}
++        </div>
++      </fieldset>
++    </div>
++    <div class="lotus-modal-foot">
++      <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
++      <button type="submit" class="btn-lotus btn-lotus-primary">{{.Submit}}</button>
++    </div>
++  </form>
++</div>
++{{end}}
+diff --git a/web/templates/components/qa_progress.html b/web/templates/components/qa_progress.html
+new file mode 100644
+index 0000000..7d51fc3
+--- /dev/null
++++ b/web/templates/components/qa_progress.html
+@@ -0,0 +1,20 @@
++{{/* qa_progress is a run's or plan's progress: one stacked bar (passed,
++     failed and blocked, skipped, untested) and a count line. Takes
++     repo.QAProgress. With nothing to count it says so instead of drawing
++     an empty bar. */}}
++{{define "qa_progress"}}
++{{if .Total}}
++<div style="display:flex;flex-direction:column;gap:4px;min-width:0" title="{{.Passed}} passed · {{.Failed}} failed · {{.Blocked}} blocked · {{.Skipped}} skipped · {{.Untested}} untested">
++  <div style="display:flex;gap:1px;height:5px;border-radius:3px;overflow:hidden;background:var(--ink-100)">
++    {{if .Passed}}<div class="lotus-bar-pass" style="flex:{{.Passed}}"></div>{{end}}
++    {{if .Failed}}<div class="lotus-bar-fail" style="flex:{{.Failed}}"></div>{{end}}
++    {{if .Blocked}}<div class="lotus-bar-fail" style="flex:{{.Blocked}};opacity:.5"></div>{{end}}
++    {{if .Skipped}}<div class="lotus-bar-none" style="flex:{{.Skipped}}"></div>{{end}}
++    {{if .Untested}}<div style="flex:{{.Untested}}"></div>{{end}}
++  </div>
++  <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#6B7280;white-space:nowrap">{{.Done}}/{{.Total}} done{{if .Failed}} · <span style="color:var(--status-fail)">{{.Failed}} failed</span>{{end}}{{if .Blocked}} · {{.Blocked}} blocked{{end}}</div>
++</div>
++{{else}}
++<span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">—</span>
++{{end}}
++{{end}}
+diff --git a/web/templates/components/qa_run_preview.html b/web/templates/components/qa_run_preview.html
+new file mode 100644
+index 0000000..d1fb4f0
+--- /dev/null
++++ b/web/templates/components/qa_run_preview.html
+@@ -0,0 +1,15 @@
++{{/* qa_run_preview is the new-run form's live preview, returned alone as
++     an htmx fragment. Takes qaRunPreviewData. */}}
++{{define "qa_run_preview"}}
++{{if .Error}}
++{{template "form_error" .Error}}
++{{else}}
++<div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:#374151">
++  <div style="font-size:15px;font-weight:600;color:#111827">{{.Cases}} case{{if ne .Cases 1}}s{{end}}</div>
++  {{range .Rows}}
++  <div style="display:flex;justify-content:space-between;gap:10px"><span>{{.Label}}</span><span style="font:500 11.5px 'IBM Plex Mono',monospace" data-preview-count="{{.N}}">{{.N}}</span></div>
++  {{end}}
++  {{if .Unassigned}}<div style="display:flex;justify-content:space-between;gap:10px;color:#6B7280"><span>Unassigned</span><span style="font:500 11.5px 'IBM Plex Mono',monospace">{{.Unassigned}}</span></div>{{end}}
++</div>
++{{end}}
++{{end}}
+diff --git a/web/templates/components/qa_run_progress.html b/web/templates/components/qa_run_progress.html
+new file mode 100644
+index 0000000..3475d00
+--- /dev/null
++++ b/web/templates/components/qa_run_progress.html
+@@ -0,0 +1,19 @@
++{{/* qa_run_progress is the run header's progress: overall, then each
++     assignee. Swapped out of band after a result is recorded. Takes
++     qaRunProgressData. */}}
++{{define "qa_run_progress"}}
++<div id="run-progress"{{if .OOB}} hx-swap-oob="true"{{end}} style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,2fr);gap:18px;align-items:start">
++  <div style="display:flex;flex-direction:column;gap:6px">
++    <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PROGRESS</div>
++    {{template "qa_progress" .Total}}
++  </div>
++  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px 16px">
++    {{range .Testers}}
++    <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
++      <div style="font-size:12px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Label}}</div>
++      {{template "qa_progress" .Progress}}
++    </div>
++    {{end}}
++  </div>
++</div>
++{{end}}
+diff --git a/web/templates/components/qa_status.html b/web/templates/components/qa_status.html
+new file mode 100644
+index 0000000..8719eb1
+--- /dev/null
++++ b/web/templates/components/qa_status.html
+@@ -0,0 +1,5 @@
++{{/* qa_status is an item or result status as a badge. Takes (dict
++     "Status" "Tone" "ID" optional element id "OOB" swap it out of band). */}}
++{{define "qa_status"}}
++<span{{with .ID}} id="{{.}}"{{end}}{{if .OOB}} hx-swap-oob="true"{{end}} class="lotus-badge lotus-badge-{{.Tone}}">{{.Status}}</span>
++{{end}}
+diff --git a/web/templates/components/qa_subnav.html b/web/templates/components/qa_subnav.html
+index 3dbc3a7..318a780 100644
+--- a/web/templates/components/qa_subnav.html
++++ b/web/templates/components/qa_subnav.html
+@@ -1,11 +1,13 @@
+ {{/* qa_subnav is the segmented control across a project's QA area:
+-     Overview · Cases · Scenarios. Links, not buttons: each is its own
+-     page. Takes (dict "Base" "/projects/<id>/qa" "Active" "overview"|"cases"|"scenarios"). */}}
++     Overview · Cases · Scenarios · Plans. Links, not buttons: each is its
++     own page. Takes (dict "Base" "/projects/<id>/qa" "Active"
++     "overview"|"cases"|"scenarios"|"plans"). */}}
+ {{define "qa_subnav"}}
+ <nav aria-label="QA" style="display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:var(--radius-group);padding:3px;box-shadow:var(--shadow-segment-track)">
+   {{template "qa_subnav_link" (dict "Href" .Base "Label" "Overview" "On" (eq .Active "overview"))}}
+   {{template "qa_subnav_link" (dict "Href" (printf "%s/cases" .Base) "Label" "Cases" "On" (eq .Active "cases"))}}
+   {{template "qa_subnav_link" (dict "Href" (printf "%s/scenarios" .Base) "Label" "Scenarios" "On" (eq .Active "scenarios"))}}
++  {{template "qa_subnav_link" (dict "Href" (printf "%s/plans" .Base) "Label" "Plans" "On" (eq .Active "plans"))}}
+ </nav>
+ {{end}}
+ 
+diff --git a/web/templates/components/shell.html b/web/templates/components/shell.html
+index f8fcef2..eb62fb8 100644
+--- a/web/templates/components/shell.html
++++ b/web/templates/components/shell.html
+@@ -44,7 +44,7 @@
+       {{if .Href}}
+       <a href="{{.Href}}" class="lotus-nav-item{{if eq .Key $.Nav.Active}} is-active{{end}}">
+         {{.Icon}}{{.Label}}
+-        {{if .Count}}<span style="margin-left:auto;font:500 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.Count}}</span>{{end}}
++        {{if .Count}}<span style="margin-left:auto;font:500 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF"{{if eq .Key "qa_tools"}} data-qa-my-count="{{.Count}}" title="Untested items assigned to you"{{end}}>{{.Count}}</span>{{end}}
+       </a>
+       {{else}}
+       <div class="lotus-nav-item is-disabled" title="Coming soon">
+diff --git a/web/templates/pages/qa_case_import.html b/web/templates/pages/qa_case_import.html
+index 4646708..5f6b153 100644
+--- a/web/templates/pages/qa_case_import.html
++++ b/web/templates/pages/qa_case_import.html
+@@ -4,7 +4,7 @@
+ 
+ <header style="margin-bottom:18px">
+   <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">Import cases</h1>
+-  <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Project.Name}} · CSV, up to 5000 rows and 4 MB</p>
++  <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Project.Name}} · CSV, up to 5000 rows and 20 MB</p>
+ </header>
+ 
+ <div style="display:flex;flex-direction:column;gap:14px;max-width:760px">
+diff --git a/web/templates/pages/qa_home.html b/web/templates/pages/qa_home.html
+index 67a0696..ba078b1 100644
+--- a/web/templates/pages/qa_home.html
++++ b/web/templates/pages/qa_home.html
+@@ -1,9 +1,12 @@
+ {{define "content"}}
+ {{template "shell_open" .}}
+ 
+-<header style="margin-bottom:18px">
+-  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">QA Tools</h1>
+-  <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{len .Data.Rows}} project{{if ne (len .Data.Rows) 1}}s{{end}} · {{.Data.Cases}} test case{{if ne .Data.Cases 1}}s{{end}}</p>
++<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
++  <div style="flex:1;min-width:220px">
++    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">QA Tools</h1>
++    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{len .Data.Rows}} project{{if ne (len .Data.Rows) 1}}s{{end}} · {{.Data.Cases}} test case{{if ne .Data.Cases 1}}s{{end}}</p>
++  </div>
++  {{template "qa_home_nav" "projects"}}
+ </header>
+ 
+ {{if not .Data.Rows}}
+diff --git a/web/templates/pages/qa_my.html b/web/templates/pages/qa_my.html
+new file mode 100644
+index 0000000..845bced
+--- /dev/null
++++ b/web/templates/pages/qa_my.html
+@@ -0,0 +1,42 @@
++{{define "content"}}
++{{template "shell_open" .}}
++{{$d := .Data}}
++
++<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
++  <div style="flex:1;min-width:220px">
++    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">My work</h1>
++    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Total}} untested item{{if ne $d.Total 1}}s{{end}} assigned to you in open runs</p>
++  </div>
++  {{template "qa_home_nav" "my"}}
++</header>
++
++{{if not $d.Projects}}
++{{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
++  Nothing assigned to you is waiting.
++{{template "lotus_card_section_close" .}}
++{{else}}
++<div style="display:flex;flex-direction:column;gap:14px">
++{{range $d.Projects}}
++{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
++  <div style="padding:10px 14px 4px"><a href="{{.Href}}" style="font-size:14px;font-weight:600;color:#43284E;text-decoration:none">{{.Name}}</a></div>
++  {{range .Plans}}
++  {{range $run := .Runs}}
++  <div class="lotus-table-head" style="display:flex;align-items:center;gap:10px">
++    <span style="flex:1">{{$run.Name}}</span>
++    <a href="{{$run.Href}}" style="font-size:11px;color:#43284E;text-transform:none;letter-spacing:0">Open run</a>
++  </div>
++  {{range $run.Items}}
++  <a href="{{$run.Href}}" data-my-item class="lotus-repo-row" style="display:grid;grid-template-columns:minmax(0,1fr) 200px;gap:10px;align-items:center;padding:0 14px;text-decoration:none;color:inherit">
++    <span style="font-size:12.5px;color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Title}}</span>
++    <span style="font-size:11.5px;color:#6B7280;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.PlanName}}{{if .GroupName}} · {{.GroupName}}{{end}}</span>
++  </a>
++  {{end}}
++  {{end}}
++  {{end}}
++{{template "lotus_card_section_close" .}}
++{{end}}
++</div>
++{{end}}
++
++{{template "shell_close" .}}
++{{end}}
+diff --git a/web/templates/pages/qa_plan.html b/web/templates/pages/qa_plan.html
+new file mode 100644
+index 0000000..21d0452
+--- /dev/null
++++ b/web/templates/pages/qa_plan.html
+@@ -0,0 +1,97 @@
++{{define "content"}}
++{{template "shell_open" .}}
++{{$d := .Data}}
++
++<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
++  <div style="flex:1;min-width:220px">
++    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Plan.Name}}</h1>
++    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.PhaseLabel}}{{if $d.Plan.Environment}} · {{$d.Plan.Environment}}{{end}}{{if $d.Plan.Build}} · <span style="font-family:'IBM Plex Mono',monospace">{{$d.Plan.Build}}</span>{{end}}{{if $d.Window}} · {{$d.Window}}{{end}}{{if $d.Plan.ClosedAt}} · closed {{$d.Plan.ClosedAt.Format "02 Jan 2006"}}{{end}}</p>
++  </div>
++  {{if $d.CanWrite}}
++  <a href="{{$d.Base}}/plans/{{$d.Plan.ID}}/runs/new" class="btn-lotus btn-lotus-primary">
++    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>New run
++  </a>
++  <div x-data="lotusModal('edit-plan')" style="display:contents">
++    <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Edit plan…</button>
++    <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="edit-plan-title">
++      <div class="lotus-modal-head">
++        <div class="lotus-modal-title" id="edit-plan-title">Edit plan</div>
++        <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
++          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
++        </button>
++      </div>
++      {{template "qa_plan_form" $d.Form}}
++    </dialog>
++  </div>
++  {{end}}
++  {{if $d.CanCopy}}
++  <div x-data="lotusModal('duplicate-plan')" style="display:contents">
++    <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Duplicate…</button>
++    <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="duplicate-plan-title">
++      <div class="lotus-modal-head">
++        <div class="lotus-modal-title" id="duplicate-plan-title">Duplicate plan</div>
++        <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
++          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
++        </button>
++      </div>
++      <div class="lotus-modal-form">
++        <form method="post" action="{{$d.Base}}/plans/{{$d.Plan.ID}}/duplicate" hx-post="{{$d.Base}}/plans/{{$d.Plan.ID}}/duplicate" hx-target="#duplicate-plan-error" hx-swap="innerHTML">
++          <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
++            <div id="duplicate-plan-error"></div>
++            <p style="margin:0;font-size:12px;color:#6B7280">Copies the phase, environment, build and scenarios. Dates and runs start empty.</p>
++            <label style="display:flex;flex-direction:column;gap:6px">
++              <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
++              <input type="text" name="name" required maxlength="200" value="{{$d.CopyName}}" class="lotus-input">
++            </label>
++          </div>
++          <div class="lotus-modal-foot">
++            <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
++            <button type="submit" class="btn-lotus btn-lotus-primary">Duplicate</button>
++          </div>
++        </form>
++      </div>
++    </dialog>
++  </div>
++  {{end}}
++  {{if $d.CanWrite}}
++  <form method="post" action="{{$d.Base}}/plans/{{$d.Plan.ID}}/close">
++    <button type="submit" class="btn-lotus btn-lotus-secondary">Close plan</button>
++  </form>
++  {{end}}
++  {{template "qa_subnav" (dict "Base" $d.Base "Active" "plans")}}
++</header>
++
++<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:14px;align-items:start">
++  {{template "lotus_card_section_open" (dict "Padding" "14px" "Style" "display:flex;flex-direction:column;gap:10px")}}
++    <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PROGRESS</div>
++    {{template "qa_progress" $d.Progress}}
++    <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-top:6px">SCENARIOS</div>
++    {{range $d.Scenarios}}
++    <a href="{{.Href}}" style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#111827;text-decoration:none{{if .ArchivedAt}};opacity:.6{{end}}">
++      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
++      <span class="lotus-badge lotus-badge-none">{{.PhaseLabel}}</span>
++    </a>
++    {{else}}<p style="margin:0;font-size:12px;color:#6B7280">No scenarios. Edit the plan to choose some.</p>{{end}}
++  {{template "lotus_card_section_close" .}}
++
++  {{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
++    {{if not $d.Runs}}
++    <p style="margin:0;padding:28px 14px;text-align:center;font-size:12.5px;color:#6B7280">No runs yet.</p>
++    {{else}}
++    <div class="lotus-table-head" style="grid-template-columns:60px minmax(0,1fr) 170px;gap:10px"><div>CYCLE</div><div>RUN</div><div>PROGRESS</div></div>
++    {{range $d.Runs}}
++    <div class="lotus-repo-row lotus-repo-row-selectable" data-run-cycle="{{.Cycle}}" style="display:grid;grid-template-columns:60px minmax(0,1fr) 170px;gap:10px;align-items:center;padding:0 14px{{if .ClosedAt}};opacity:.7{{end}}">
++      <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">{{.Cycle}}</span>
++      <span style="min-width:0;display:flex;flex-direction:column">
++        <a href="{{.Href}}" class="lotus-row-link" style="font-size:12.5px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}{{if .ClosedAt}} <span class="lotus-badge lotus-badge-none">closed</span>{{end}}</a>
++        {{if .RetestOf}}<span style="font-size:11px;color:#6B7280">retest of {{.RetestOf}}</span>{{end}}
++      </span>
++      {{template "qa_progress" .Progress}}
++    </div>
++    {{end}}
++    {{end}}
++  {{template "lotus_card_section_close" .}}
++</div>
++
++{{template "shell_close" .}}
++{{end}}
+diff --git a/web/templates/pages/qa_plans.html b/web/templates/pages/qa_plans.html
+new file mode 100644
+index 0000000..f65d42f
+--- /dev/null
++++ b/web/templates/pages/qa_plans.html
+@@ -0,0 +1,42 @@
++{{define "content"}}
++{{template "shell_open" .}}
++{{$d := .Data}}
++
++<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
++  <div style="flex:1;min-width:220px">
++    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Project.Name}}</h1>
++    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">Plans · {{len $d.Rows}}{{if $d.Phase}} in this phase{{end}}</p>
++  </div>
++  {{if $d.CanWrite}}
++  {{template "lotus_modal_open" (dict "Name" "new-plan" "Title" "New plan" "Trigger" "New plan")}}
++    {{template "qa_plan_form" $d.Form}}
++  {{template "lotus_modal_close" .}}
++  {{end}}
++  {{template "qa_subnav" (dict "Base" $d.Base "Active" "plans")}}
++</header>
++
++{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
++  <form method="get" action="{{$d.Base}}/plans" style="display:flex;justify-content:flex-end;padding:8px 10px">
++    <div style="width:180px">{{template "lotus_select" (dict "Name" "phase" "ID" "plans-phase" "Value" $d.Phase "Label" "Phase" "Size" "sm" "AutoSubmit" true "Options" (selectOptions $d.Filters))}}</div>
++  </form>
++  {{if not $d.Rows}}
++  <p style="margin:0;padding:28px 14px;text-align:center;font-size:12.5px;color:#6B7280">No plans{{if $d.Phase}} in this phase{{end}} yet. A plan says which scenarios are tested, where and when; runs belong to it.</p>
++  {{else}}
++  <div class="lotus-table-head" style="grid-template-columns:minmax(0,1.4fr) 100px minmax(0,1fr) 150px 60px 170px;gap:10px">
++    <div>PLAN</div><div>PHASE</div><div>ENVIRONMENT · BUILD</div><div>WINDOW</div><div style="text-align:right">RUNS</div><div>PROGRESS</div>
++  </div>
++  {{range $d.Rows}}
++  <a href="{{.Href}}" class="lotus-repo-row" style="display:grid;grid-template-columns:minmax(0,1.4fr) 100px minmax(0,1fr) 150px 60px 170px;gap:10px;align-items:center;padding:0 14px;text-decoration:none;color:inherit{{if .ClosedAt}};opacity:.6{{end}}">
++    <span style="font-size:12.5px;font-weight:600;color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}{{if .ClosedAt}} <span class="lotus-badge lotus-badge-none">closed</span>{{end}}</span>
++    <span><span class="lotus-badge lotus-badge-none">{{.PhaseLabel}}</span></span>
++    <span style="font-size:11.5px;color:#6B7280;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{if .Environment}}{{.Environment}}{{else}}—{{end}}{{if .Build}} · <span style="font-family:'IBM Plex Mono',monospace">{{.Build}}</span>{{end}}</span>
++    <span style="font:400 11px 'IBM Plex Mono',monospace;color:#6B7280">{{if .Window}}{{.Window}}{{else}}—{{end}}</span>
++    <span style="font:500 11.5px 'IBM Plex Mono',monospace;color:#374151;text-align:right">{{.Runs}}</span>
++    {{template "qa_progress" .Progress}}
++  </a>
++  {{end}}
++  {{end}}
++{{template "lotus_card_section_close" .}}
++
++{{template "shell_close" .}}
++{{end}}
+diff --git a/web/templates/pages/qa_project.html b/web/templates/pages/qa_project.html
+index e7444c7..6568f9e 100644
+--- a/web/templates/pages/qa_project.html
++++ b/web/templates/pages/qa_project.html
+@@ -13,7 +13,7 @@
+ <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">
+   {{template "qa_tile" (dict "Label" "CASES" "Key" "cases" "Value" $d.Summary.Cases "Href" (printf "%s/cases" $d.Base))}}
+   {{template "qa_tile" (dict "Label" "SCENARIOS" "Key" "scenarios" "Value" $d.Summary.Scenarios "Href" (printf "%s/scenarios" $d.Base))}}
+-  {{template "qa_tile" (dict "Label" "OPEN PLANS" "Key" "plans" "Value" $d.Summary.OpenPlans "Href" "")}}
++  {{template "qa_tile" (dict "Label" "OPEN PLANS" "Key" "plans" "Value" $d.Summary.OpenPlans "Href" (printf "%s/plans" $d.Base))}}
+   {{template "qa_tile" (dict "Label" "OPEN ISSUES" "Key" "issues" "Value" $d.Summary.OpenIssues "Href" "")}}
+ </div>
+ 
+@@ -21,7 +21,7 @@
+ {{end}}
+ 
+ {{/* qa_tile is one count on the QA landing. Tiles whose screen exists
+-     link to it; plans and issues get theirs in later phases. */}}
++     link to it; issues get theirs in Phase 6. */}}
+ {{define "qa_tile"}}
+ {{if .Href}}<a href="{{.Href}}" style="text-decoration:none;color:inherit;display:block">{{end}}
+ {{template "lotus_card_open" (dict "Padding" "13px 14px" "Style" "display:flex;flex-direction:column")}}
+diff --git a/web/templates/pages/qa_run.html b/web/templates/pages/qa_run.html
+new file mode 100644
+index 0000000..6634c25
+--- /dev/null
++++ b/web/templates/pages/qa_run.html
+@@ -0,0 +1,105 @@
++{{define "content"}}
++{{template "shell_open" .}}
++{{$d := .Data}}
++
++<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:14px">
++  <div style="flex:1;min-width:220px">
++    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Run.Name}}</h1>
++    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Plan.Name}} · {{$d.PhaseLabel}} · cycle {{$d.Run.Cycle}}{{if $d.Plan.Environment}} · {{$d.Plan.Environment}}{{end}}{{if $d.Run.ClosedAt}} · closed {{$d.Run.ClosedAt.Format "02 Jan 2006"}}{{end}}</p>
++    {{if $d.RetestOf}}<p style="margin:4px 0 0;font-size:12px;color:#6B7280">retest of <a href="{{$d.RetestHref}}" style="color:#43284E">{{$d.RetestOf}}</a></p>{{end}}
++    {{if $d.Run.Notes}}<p style="margin:6px 0 0;font-size:12px;color:#374151;white-space:pre-wrap">{{$d.Run.Notes}}</p>{{end}}
++  </div>
++  {{if $d.CanSaveScenario}}
++  <div x-data="lotusModal('save-scenario')" style="display:contents">
++    <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Save as scenario…</button>
++    <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="save-scenario-title">
++      <div class="lotus-modal-head">
++        <div class="lotus-modal-title" id="save-scenario-title">Save as scenario</div>
++        <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
++          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
++        </button>
++      </div>
++      <div class="lotus-modal-form">
++        <form method="post" action="{{$d.URL}}/scenario" hx-post="{{$d.URL}}/scenario" hx-target="#save-scenario-error" hx-swap="innerHTML">
++          <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
++            <div id="save-scenario-error"></div>
++            <p style="margin:0;font-size:12px;color:#6B7280">A new scenario with this run's cases, in this order and these groups, for the next plan to reuse.</p>
++            <label style="display:flex;flex-direction:column;gap:6px">
++              <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
++              <input type="text" name="name" required maxlength="200" value="{{$d.Run.Name}}" class="lotus-input">
++            </label>
++            <label style="display:flex;flex-direction:column;gap:6px">
++              <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PHASE</span>
++              {{template "lotus_select" (dict "Name" "phase" "ID" "save-scenario-phase" "Value" $d.Plan.Phase "Label" "Phase" "Options" (selectOptions $d.PhaseOptions))}}
++            </label>
++          </div>
++          <div class="lotus-modal-foot">
++            <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
++            <button type="submit" class="btn-lotus btn-lotus-primary">Save scenario</button>
++          </div>
++        </form>
++      </div>
++    </dialog>
++  </div>
++  {{end}}
++  {{if and $d.CanManage (not $d.Run.ClosedAt)}}
++  <form method="post" action="{{$d.URL}}/retest" hx-post="{{$d.URL}}/retest" hx-target="#run-error" hx-swap="innerHTML">
++    <button type="submit" class="btn-lotus btn-lotus-secondary">Retest failed &amp; blocked</button>
++  </form>
++  <form method="post" action="{{$d.URL}}/close">
++    <button type="submit" class="btn-lotus btn-lotus-secondary">Close run</button>
++  </form>
++  {{end}}
++</header>
++<div id="run-error" style="margin-bottom:10px;max-width:760px"></div>
++
++{{template "lotus_card_section_open" (dict "Padding" "14px" "Style" "margin-bottom:14px")}}
++  {{template "qa_run_progress" $d.Progress}}
++{{template "lotus_card_section_close" .}}
++
++{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
++  <form method="get" action="{{$d.URL}}" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px">
++    <div style="width:150px">{{template "lotus_select" (dict "Name" "who" "ID" "run-who" "Value" $d.Who "Label" "Who" "Size" "sm" "AutoSubmit" true "Options" (selectOptions (dict "Value" "" "Label" "Everyone") (dict "Value" "mine" "Label" "Mine") (dict "Value" "unassigned" "Label" "Unassigned")))}}</div>
++    <div style="width:150px">{{template "lotus_select" (dict "Name" "status" "ID" "run-status" "Value" $d.Status "Label" "Status" "Size" "sm" "AutoSubmit" true "Options" (selectOptions (dict "Value" "" "Label" "Any status") (dict "Value" "untested" "Label" "untested") (dict "Value" "passed" "Label" "passed") (dict "Value" "failed" "Label" "failed") (dict "Value" "blocked" "Label" "blocked") (dict "Value" "skipped" "Label" "skipped")))}}</div>
++    <span style="margin-left:auto;font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{$d.Shown}} shown</span>
++  </form>
++  {{if $d.CanManage}}
++  <form id="assign-items" method="post" action="{{$d.URL}}/assign" hx-post="{{$d.URL}}/assign" hx-target="#run-error" hx-swap="innerHTML"
++        style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:0 10px 8px">
++    <span style="font-size:12px;color:#6B7280">Give the ticked items to</span>
++    <div style="width:220px">{{template "lotus_select" (dict "Name" "assignee_id" "ID" "assign-who" "Value" "" "Label" "Assignee" "Size" "sm" "Options" (selectOptions $d.People))}}</div>
++    <button type="submit" class="btn-lotus btn-lotus-secondary">Assign</button>
++  </form>
++  {{end}}
++  {{range $g := $d.Groups}}
++  {{if $g.Items}}
++  <details open x-data>
++    <summary class="lotus-table-head" style="display:flex;align-items:center;gap:12px;cursor:pointer">
++      {{if $d.CanManage}}<input type="checkbox" aria-label="Select the whole group" @click.stop @change="$el.closest('details').querySelectorAll('input[name=item_id]').forEach(b => b.checked = $el.checked)" style="accent-color:var(--text-brand)">{{end}}
++      <span style="flex:1">{{if $g.Name}}{{$g.Name}}{{else}}CASES{{end}}</span>
++      <span style="width:170px">{{template "qa_progress" $g.Progress}}</span>
++    </summary>
++    {{range $g.Items}}
++    <div data-item-row x-data="{ open: false }" style="display:flex;align-items:stretch">
++      {{if $d.CanManage}}<span class="lotus-row-select" style="padding-left:14px"><input type="checkbox" name="item_id" value="{{.ID}}" form="assign-items" aria-label="Select TC-{{.Key}}"></span>{{end}}
++      <div style="flex:1;min-width:0">
++      <button type="button" class="lotus-repo-row" @click="open = !open" :aria-expanded="open"
++              hx-get="{{.Panel}}" hx-trigger="click once" hx-target="#panel-{{.ID}}"
++              style="display:grid;grid-template-columns:64px minmax(0,1fr) 160px 90px;gap:10px;align-items:center;padding:0 14px;width:100%;border:none;background:none;text-align:left;cursor:pointer">
++        <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">TC-{{.Key}}</span>
++        <span style="font-size:12.5px;color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Title}}{{if .Changed}} <span class="lotus-badge lotus-badge-none" title="The case was edited after this run was created">Case changed since this run</span>{{end}}</span>
++        <span style="font-size:11.5px;color:#6B7280;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{if .Assignee}}{{.Assignee}}{{else}}—{{end}}</span>
++        {{template "qa_status" (dict "Status" .Status "Tone" .Tone "ID" (printf "item-status-%s" .ID))}}
++      </button>
++      <div id="panel-{{.ID}}" x-show="open" x-cloak></div>
++      </div>
++    </div>
++    {{end}}
++  </details>
++  {{end}}
++  {{end}}
++  {{if not $d.Shown}}<p style="margin:0;padding:28px 14px;text-align:center;font-size:12.5px;color:#6B7280">No items match.</p>{{end}}
++{{template "lotus_card_section_close" .}}
++
++{{template "shell_close" .}}
++{{end}}
+diff --git a/web/templates/pages/qa_run_new.html b/web/templates/pages/qa_run_new.html
+new file mode 100644
+index 0000000..ff70b18
+--- /dev/null
++++ b/web/templates/pages/qa_run_new.html
+@@ -0,0 +1,67 @@
++{{define "content"}}
++{{template "shell_open" .}}
++{{$d := .Data}}
++{{$action := printf "%s/plans/%s/runs" $d.Base $d.Plan.ID}}
++
++<header style="margin-bottom:18px">
++  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">New run</h1>
++  <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Plan.Name}} · cases are copied from the chosen scenarios when the run is created</p>
++</header>
++
++<form id="new-run-form" method="post" action="{{$action}}" style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:14px;align-items:start;max-width:980px">
++  <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
++    {{if $d.Error}}{{template "form_error" $d.Error}}{{end}}
++    {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:14px")}}
++      <label style="display:flex;flex-direction:column;gap:6px">
++        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
++        <input type="text" name="name" required maxlength="200" value="{{$d.Name}}" class="lotus-input">
++      </label>
++      <label style="display:flex;flex-direction:column;gap:6px">
++        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NOTES</span>
++        <textarea name="notes" rows="2" class="lotus-textarea" placeholder="Browser: Chrome · test data in the shared sheet">{{$d.Notes}}</textarea>
++      </label>
++      <fieldset style="border:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px">
++        <legend style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:6px">SCENARIOS</legend>
++        {{range $d.Scenarios}}
++        <label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:12.5px;color:#111827">
++          <input type="checkbox" name="scenario_id" value="{{.ID}}"{{if .Checked}} checked{{end}} style="accent-color:var(--text-brand)">
++          <span>{{.Name}}</span><span class="lotus-badge lotus-badge-none">{{.PhaseLabel}}</span>
++        </label>
++        {{else}}<p style="margin:0;font-size:12px;color:#6B7280">The plan has no scenarios. Edit the plan first.</p>{{end}}
++      </fieldset>
++    {{template "lotus_card_section_close" .}}
++    {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:14px")}}
++      <fieldset style="border:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px">
++        <legend style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:6px">TESTERS</legend>
++        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px 12px;max-height:260px;overflow:auto">
++          {{range $d.People}}
++          <label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:12.5px;color:#111827;min-width:0">
++            <input type="checkbox" name="tester_id" value="{{.ID}}"{{if .Checked}} checked{{end}} style="accent-color:var(--text-brand)">
++            <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Label}}</span>
++            {{if .Guest}}<span class="lotus-badge lotus-badge-none">guest</span>{{end}}
++          </label>
++          {{end}}
++        </div>
++      </fieldset>
++      <fieldset style="border:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">
++        <legend style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-bottom:6px">SHARE THE CASES</legend>
++        {{range $opt := (selectOptions (dict "Value" "none" "Label" "Leave unassigned") (dict "Value" "round_robin" "Label" "One by one, in turn") (dict "Value" "by_group" "Label" "Whole groups, in turn"))}}
++        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#111827">
++          <input type="radio" name="distribution" value="{{$opt.Value}}"{{if eq $opt.Value $d.Distribution}} checked{{end}} style="accent-color:var(--text-brand)"> {{$opt.Label}}
++        </label>
++        {{end}}
++      </fieldset>
++    {{template "lotus_card_section_close" .}}
++    <div style="display:flex;gap:8px;justify-content:flex-end">
++      <a href="{{$d.Base}}/plans/{{$d.Plan.ID}}" class="btn-lotus btn-lotus-secondary">Cancel</a>
++      <button type="submit" class="btn-lotus btn-lotus-primary">Create run</button>
++    </div>
++  </div>
++  {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:10px;position:sticky;top:16px")}}
++    <div style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PREVIEW</div>
++    <div id="run-preview" hx-post="{{$action}}/preview" hx-include="#new-run-form" hx-trigger="load, change from:#new-run-form"></div>
++  {{template "lotus_card_section_close" .}}
++</form>
++
++{{template "shell_close" .}}
++{{end}}
+diff --git a/web/templates/pages/qa_scenario.html b/web/templates/pages/qa_scenario.html
+index 00c6515..b7ff5b9 100644
+--- a/web/templates/pages/qa_scenario.html
++++ b/web/templates/pages/qa_scenario.html
+@@ -64,7 +64,7 @@
+ {{if $d.Scenario.Description}}<p style="margin:0 0 14px;max-width:760px;font-size:12.5px;color:#374151;white-space:pre-wrap">{{$d.Scenario.Description}}</p>{{end}}
+ {{if $d.ArchivedCase}}
+ <div role="note" style="margin-bottom:14px;max-width:760px;padding:9px 11px;border-radius:var(--radius-petal-sm);background:var(--status-fail-bg);color:var(--status-fail);font-size:12.5px">
+-  {{$d.ArchivedCase}} case{{if ne $d.ArchivedCase 1}}s are{{else}} is{{end}} archived and will still be copied into new runs. Remove {{if ne $d.ArchivedCase 1}}them{{else}}it{{end}} or restore the case.
++  {{$d.ArchivedCase}} case{{if ne $d.ArchivedCase 1}}s are archived and are{{else}} is archived and is{{end}} skipped when a run is created. Remove {{if ne $d.ArchivedCase 1}}them{{else}}it{{end}} or restore the case.
+ </div>
+ {{end}}
+ 
