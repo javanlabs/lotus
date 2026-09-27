@@ -29,7 +29,7 @@ func TestRolePermissionsSeedMatchesEveryRole(t *testing.T) {
 		t.Fatalf("query: %v", err)
 	}
 	sort.Strings(keys)
-	want := []string{"admin", "member", "owner", "viewer"}
+	want := []string{"admin", "guest", "member", "owner", "viewer"}
 	if len(keys) != len(want) {
 		t.Fatalf("roles with seeded permissions = %v, want %v", keys, want)
 	}
@@ -84,7 +84,7 @@ func TestRolePermissionsSeedMatchesTheGoMatrix(t *testing.T) {
 		seeded[row.RoleKey] = append(seeded[row.RoleKey], row.Permission)
 	}
 
-	for _, role := range []string{"owner", "admin", "member", "viewer"} {
+	for _, role := range []string{"owner", "admin", "member", "viewer", "guest"} {
 		inGo := authz.PermissionsForRole(role)
 		inDB := seeded[role]
 		sort.Strings(inGo)

@@ -16,7 +16,7 @@ func TestMigrateUpIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestSeedsFourSystemRoles(t *testing.T) {
+func TestSeedsFiveSystemRoles(t *testing.T) {
 	sqlDB := dbtest.Open(t)
 
 	var keys []string
@@ -24,7 +24,7 @@ func TestSeedsFourSystemRoles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("select roles: %v", err)
 	}
-	want := []string{"admin", "member", "owner", "viewer"}
+	want := []string{"admin", "guest", "member", "owner", "viewer"}
 	if len(keys) != len(want) {
 		t.Fatalf("roles = %v, want %v", keys, want)
 	}

@@ -83,6 +83,9 @@ var rolePermissions = map[string]map[string]bool{
 		"org.settings.update", "org.domain.verify", "org.slug.change", "org.sso.configure",
 		"org.delete", "org.transfer_ownership",
 		"token.manage.own", "token.manage.org", "audit.read",
+		"qa.read", "qa.case.write", "qa.plan.write", "qa.execute",
+		"qa.issue.write", "qa.issue.report", "qa.signoff", "qa.share",
+		"project_member.manage",
 	),
 	"admin": setOf(
 		"dashboard.read", "project.create", "project.update", "project.delete",
@@ -94,6 +97,9 @@ var rolePermissions = map[string]map[string]bool{
 		"member.invite", "member.remove", "member.role.change",
 		"org.settings.update", "org.domain.verify",
 		"token.manage.own", "token.manage.org", "audit.read",
+		"qa.read", "qa.case.write", "qa.plan.write", "qa.execute",
+		"qa.issue.write", "qa.issue.report", "qa.signoff", "qa.share",
+		"project_member.manage",
 	),
 	"member": setOf(
 		"dashboard.read", "project.create", "project.update",
@@ -103,10 +109,20 @@ var rolePermissions = map[string]map[string]bool{
 		"connection.read",
 		"sync.trigger", "metrics.ingest",
 		"token.manage.own",
+		"qa.read", "qa.case.write", "qa.plan.write", "qa.execute",
+		"qa.issue.write", "qa.issue.report", "qa.share",
 	),
 	"viewer": setOf(
 		"dashboard.read",
 		"token.manage.own",
+		"qa.read",
+	),
+	// guest is a client taking part in UAT. Everything it can do is also
+	// limited to the projects listed for it in project_members — enforced
+	// by RequireProjectAccess, not by this map. No dashboard.read: Lotus
+	// metrics stay internal.
+	"guest": setOf(
+		"qa.read", "qa.execute", "qa.issue.report", "qa.signoff",
 	),
 }
 

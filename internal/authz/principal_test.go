@@ -40,9 +40,18 @@ var permissionMatrix = map[string][]string{
 	"token.manage.own":        {"owner", "admin", "member", "viewer"},
 	"token.manage.org":        {"owner", "admin"},
 	"audit.read":              {"owner", "admin"},
+	"qa.read":                 {"owner", "admin", "member", "viewer", "guest"},
+	"qa.case.write":           {"owner", "admin", "member"},
+	"qa.plan.write":           {"owner", "admin", "member"},
+	"qa.execute":              {"owner", "admin", "member", "guest"},
+	"qa.issue.write":          {"owner", "admin", "member"},
+	"qa.issue.report":         {"owner", "admin", "member", "guest"},
+	"qa.signoff":              {"owner", "admin", "guest"},
+	"qa.share":                {"owner", "admin", "member"},
+	"project_member.manage":   {"owner", "admin"},
 }
 
-var allRoles = []string{"owner", "admin", "member", "viewer"}
+var allRoles = []string{"owner", "admin", "member", "viewer", "guest"}
 
 func TestPermissionMatrix(t *testing.T) {
 	for perm, allowedRoles := range permissionMatrix {
@@ -135,5 +144,17 @@ func TestServiceTokenPrincipal_ScopedByTokenScopesAlone(t *testing.T) {
 	}
 	if p.Can("metrics:read") {
 		t.Error("service token must not exceed its own declared scopes")
+	}
+}
+
+func TestCanChangeRole_AdminCanMakeAndUnmakeGuests(t *testing.T) {
+	if !authz.CanChangeRole("admin", "member", "guest") {
+		t.Error("admin should be able to turn a member into a guest")
+	}
+	if !authz.CanChangeRole("admin", "guest", "member") {
+		t.Error("admin should be able to turn a guest into a member")
+	}
+	if authz.CanChangeRole("guest", "member", "guest") {
+		t.Error("a guest must not change roles")
 	}
 }
