@@ -741,44 +741,61 @@ function qaResultKeys(e) {
   radio.focus();
 }
 
-// Upload size, in the browser. A form carrying data-max-file-bytes (the
-// run item's result form) is checked before htmx sends it: a file over the
-// limit cancels the request and says which one, in the form's
-// [data-upload-error] slot. Past the server's request limit the server
-// cannot answer with a message of its own (it refuses the body with 413
-// before any handler runs, and htmx does not swap error responses), so the
-// 413 handler below says the same thing if a request gets through anyway.
+// Upload size, in the browser. A form carrying data-max-file-bytes (and,
+// optionally, data-max-total-bytes) is checked before it is sent: a file
+// over the per-file limit, or files adding up to more than one request can
+// carry, stop the send and say why in the form's [data-upload-error] slot,
+// keeping everything typed. htmx forms are checked on htmx:beforeRequest,
+// plain forms (the issue report) on submit. Past the server's request
+// limit the server cannot answer with a message of its own (it refuses the
+// body with 413 before any handler runs, and htmx does not swap error
+// responses), so the 413 handler says it if a request gets through anyway.
 (function () {
-  const slot = (form) => form && form.querySelector("[data-upload-error]");
+  const MB = 1 << 20;
   const say = (form, text) => {
-    const el = slot(form);
+    const el = form && form.querySelector("[data-upload-error]");
     if (el) {
       el.textContent = text;
       el.hidden = !text;
     }
   };
-  const limitText = (form) => {
-    const mb = Math.round(Number(form.dataset.maxFileBytes) / (1 << 20));
-    return `Each file can be at most ${mb} MB.`;
-  };
-  document.addEventListener("htmx:beforeRequest", (e) => {
-    const form = e.detail && e.detail.elt;
-    if (!form || !form.dataset || !form.dataset.maxFileBytes) return;
+  const problem = (form) => {
     const max = Number(form.dataset.maxFileBytes);
+    const maxTotal = Number(form.dataset.maxTotalBytes || 0);
+    let total = 0;
     for (const input of form.querySelectorAll('input[type="file"]')) {
       for (const f of input.files || []) {
         if (f.size > max) {
-          e.preventDefault();
-          say(form, `${f.name} is over ${Math.round(max / (1 << 20))} MB. ${limitText(form)}`);
-          return;
+          return `${f.name} is over ${Math.round(max / MB)} MB. Each file can be at most ${Math.round(max / MB)} MB.`;
         }
+        total += f.size;
       }
     }
-    say(form, "");
+    if (maxTotal && total > maxTotal) {
+      return `The files add up to more than ${Math.round(maxTotal / MB)} MB. Attach fewer, or send them in a comment afterwards.`;
+    }
+    return "";
+  };
+  const guarded = (form) => form && form.dataset && form.dataset.maxFileBytes;
+  document.addEventListener("htmx:beforeRequest", (e) => {
+    const form = e.detail && e.detail.elt;
+    if (!guarded(form)) return;
+    const text = problem(form);
+    if (text) e.preventDefault();
+    say(form, text);
+  });
+  document.addEventListener("submit", (e) => {
+    const form = e.target;
+    if (!guarded(form) || form.hasAttribute("hx-post")) return;
+    const text = problem(form);
+    if (text) e.preventDefault();
+    say(form, text);
   });
   document.addEventListener("htmx:responseError", (e) => {
     const form = e.detail && e.detail.elt;
-    if (!form || !form.dataset || !form.dataset.maxFileBytes) return;
-    if (e.detail.xhr && e.detail.xhr.status === 413) say(form, `The upload is too large. ${limitText(form)}`);
+    if (!guarded(form)) return;
+    if (e.detail.xhr && e.detail.xhr.status === 413) {
+      say(form, `The upload is too large. Each file can be at most ${Math.round(Number(form.dataset.maxFileBytes) / MB)} MB.`);
+    }
   });
 })();

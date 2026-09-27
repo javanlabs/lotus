@@ -7,15 +7,16 @@
   <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Project.Name}}{{with $d.ItemLabel}} · from {{.}}{{end}}</p>
 </header>
 
-<form method="post" action="{{$d.Base}}/issues/new" enctype="multipart/form-data" style="display:flex;flex-direction:column;gap:14px;max-width:880px">
+<form method="post" action="{{$d.Base}}/issues/new" enctype="multipart/form-data" data-max-file-bytes="{{$d.MaxFileBytes}}" data-max-total-bytes="{{$d.MaxTotalBytes}}" style="display:flex;flex-direction:column;gap:14px;max-width:880px">
   {{if $d.Error}}{{template "form_error" $d.Error}}{{end}}
+  <div data-upload-error role="alert" hidden style="padding:9px 11px;border-radius:var(--radius-petal-sm);background:var(--status-fail-bg);color:var(--status-fail);font-size:12.5px"></div>
   {{with $d.ItemID}}<input type="hidden" name="item_id" value="{{.}}">{{end}}
   {{template "lotus_card_section_open" (dict "Padding" "18px" "Style" "display:flex;flex-direction:column;gap:14px")}}
     {{template "qa_issue_fields" $d}}
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">FILES</span>
       <input type="file" name="file" multiple class="lotus-input" aria-label="Attach files">
-      <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">up to 20 MB per file</span>
+      <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">up to 20 MB per file, 24 MB in all</span>
     </label>
   {{template "lotus_card_section_close" .}}
   <div style="display:flex;gap:8px;justify-content:flex-end">

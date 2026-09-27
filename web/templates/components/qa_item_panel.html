@@ -23,7 +23,7 @@
     {{if .CanExecute}}
     <form method="post" action="{{.Action}}" enctype="multipart/form-data" hx-post="{{.Action}}" hx-encoding="multipart/form-data"
           hx-target="#panel-{{$i.ID}}" hx-swap="innerHTML" x-data @keydown="qaResultKeys($event)"
-          data-max-file-bytes="{{.MaxFileBytes}}" style="display:flex;flex-direction:column;gap:8px">
+          data-max-file-bytes="{{.MaxFileBytes}}" data-max-total-bytes="{{.MaxTotalBytes}}" style="display:flex;flex-direction:column;gap:8px">
       <div data-upload-error role="alert" hidden style="padding:9px 11px;border-radius:var(--radius-petal-sm);background:var(--status-fail-bg);color:var(--status-fail);font-size:12.5px"></div>
       <div role="radiogroup" aria-label="Result" style="display:flex;gap:6px;flex-wrap:wrap">
         {{range $opt := (selectOptions (dict "Value" "passed" "Label" "Pass") (dict "Value" "failed" "Label" "Fail") (dict "Value" "blocked" "Label" "Blocked") (dict "Value" "skipped" "Label" "Skip"))}}

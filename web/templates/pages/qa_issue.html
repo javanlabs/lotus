@@ -58,7 +58,7 @@
       {{else}}<p style="margin:0;font-size:12px;color:#9CA3AF">Nothing yet.</p>{{end}}
       {{if $d.CanComment}}
       <form method="post" action="{{$d.URL}}/comments" enctype="multipart/form-data" hx-post="{{$d.URL}}/comments" hx-encoding="multipart/form-data"
-            hx-target="#comment-error" hx-swap="innerHTML" data-max-file-bytes="{{$d.MaxFileBytes}}" style="display:flex;flex-direction:column;gap:8px">
+            hx-target="#comment-error" hx-swap="innerHTML" data-max-file-bytes="{{$d.MaxFileBytes}}" data-max-total-bytes="{{$d.MaxTotalBytes}}" style="display:flex;flex-direction:column;gap:8px">
         <div id="comment-error"></div>
         <div data-upload-error role="alert" hidden style="padding:9px 11px;border-radius:var(--radius-petal-sm);background:var(--status-fail-bg);color:var(--status-fail);font-size:12.5px"></div>
         <textarea name="body" rows="3" class="lotus-textarea" placeholder="Add to the issue" aria-label="Comment"></textarea>

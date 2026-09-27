@@ -87,6 +87,11 @@ func loadQAItem(c *fiber.Ctx, s tenant.Scope, run *repo.QARun) (*repo.QARunItem,
 	return item, err
 }
 
+// qaMaxUploadTotal is what the files of one request may add up to: the
+// server takes 25 MB bodies (server.go BodyLimit), less room for the other
+// fields. The browser checks it before sending (lotus.js).
+const qaMaxUploadTotal = 24 << 20
+
 // qaCollapseAbove: a run or scenario holding more items than this opens
 // with its groups closed. Production runs reach about 1,100 items (13 are
 // over 500); groups closed turn such a page into a list of groups with
@@ -294,16 +299,17 @@ func humanSize(n int64) string {
 }
 
 type qaItemPanelData struct {
-	Item         qaItemRow
-	Issues       []qaIssueRow // issues linked to this item
-	ReportHref   string       // report an issue from it (qa.issue.report)
-	MaxFileBytes int          // the browser refuses larger files before sending
-	Action       string
-	History      []qaHistoryEntry
-	CanExecute   bool
-	Error        string
-	Progress     qaRunProgressData
-	OOB          bool // also refresh the row status and the progress header
+	Item          qaItemRow
+	Issues        []qaIssueRow // issues linked to this item
+	ReportHref    string       // report an issue from it (qa.issue.report)
+	MaxFileBytes  int          // the browser refuses larger files before sending
+	MaxTotalBytes int          // … and files adding up to more than one request carries
+	Action        string
+	History       []qaHistoryEntry
+	CanExecute    bool
+	Error         string
+	Progress      qaRunProgressData
+	OOB           bool // also refresh the row status and the progress header
 }
 
 func itemPanel(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, run *repo.QARun, item *repo.QARunItem) (qaItemPanelData, error) {
@@ -321,7 +327,7 @@ func itemPanel(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, run 
 		Item: qaItemRow{QARunItem: *item, Key: ref.Key, Changed: ref.Version > item.CaseVersion, Tone: qaStatusTone(item.Status),
 			Assignee: personLabel(labels, item.AssigneeID), Panel: url},
 		Action: url + "/result", CanExecute: mustPrincipal(c).Can("qa.execute") && run.ClosedAt == nil,
-		MaxFileBytes: repo.MaxQAAttachmentBytes,
+		MaxFileBytes: repo.MaxQAAttachmentBytes, MaxTotalBytes: qaMaxUploadTotal,
 	}
 	if mustPrincipal(c).Can("qa.issue.report") {
 		data.ReportHref = qaBase(project) + "/issues/new?item=" + item.ID.String()

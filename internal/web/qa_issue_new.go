@@ -37,6 +37,7 @@ type qaIssueFormData struct {
 	CanAssign        bool
 	Error            string
 	MaxFileBytes     int
+	MaxTotalBytes    int
 	SeverityOptions  []httpx.SelectOption
 	PlanOptions      []httpx.SelectOption
 	SectionOptions   []httpx.SelectOption
@@ -82,7 +83,7 @@ func qaIssueItem(c *fiber.Ctx, s tenant.Scope, project *repo.Project, raw string
 func fillQAIssueOptions(c *fiber.Ctx, d Deps, s tenant.Scope, f *qaIssueFormData) error {
 	project := &f.Project
 	f.CanAssign = mustPrincipal(c).Can("qa.issue.write")
-	f.MaxFileBytes = repo.MaxQAAttachmentBytes
+	f.MaxFileBytes, f.MaxTotalBytes = repo.MaxQAAttachmentBytes, qaMaxUploadTotal
 	f.SeverityOptions = append([]httpx.SelectOption{{Value: "", Label: "Choose…"}}, qaSeverityOptions("")...)
 	plans, err := repo.ListQAPlans(c.Context(), s, project.ID)
 	if err != nil {
@@ -193,7 +194,11 @@ func createQAIssueUI(d Deps) fiber.Handler {
 		if authz.IsProjectScoped(mustPrincipal(c)) {
 			in.Source = "client"
 		}
-		if err := readQAIssueFields(c, d, s, project, &in); err != nil {
+		if err := readQAIssueFields(c, d, s, project, &in, nil); err != nil {
+			if errors.Is(err, errQAAssignee) {
+				f.Error = err.Error()
+				return renderQAIssueForm(c, d, s, f, fiber.StatusUnprocessableEntity)
+			}
 			return err
 		}
 		var fromItem *uuid.UUID

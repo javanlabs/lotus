@@ -67,3 +67,30 @@ test('a failure is reported as an issue from its run item and triaged', async ({
     await retireOrg(orgId);
   }
 });
+
+test('an issue report with files over the limits is stopped in the browser, keeping what was typed', async ({ page, context }) => {
+  const { sessionToken, subdomain, orgId } = await seedOwnerSession('qa-issue-big-e2e', 'placeholder');
+  const origin = tenantOrigin(subdomain);
+  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+  const { projectId } = await seedPlan(orgId);
+
+  try {
+    await page.goto(`${origin}/projects/${projectId}/qa/issues/new`);
+    await page.locator('input[name="title"]').fill('Upload freezes the page');
+    await page.getByLabel('Attach files').setInputFiles({ name: 'screen.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(26 << 20) });
+    await page.getByRole('button', { name: 'Report issue' }).click();
+    await expect(page.getByText('screen.mp4 is over 20 MB. Each file can be at most 20 MB.')).toBeVisible();
+    await expect(page.locator('input[name="title"]')).toHaveValue('Upload freezes the page');
+
+    // Each under 20 MB, together over what one request can carry.
+    await page.getByLabel('Attach files').setInputFiles([
+      { name: 'a.png', mimeType: 'image/png', buffer: Buffer.alloc(15 << 20) },
+      { name: 'b.png', mimeType: 'image/png', buffer: Buffer.alloc(15 << 20) },
+    ]);
+    await page.getByRole('button', { name: 'Report issue' }).click();
+    await expect(page.getByText('The files add up to more than 24 MB. Attach fewer, or send them in a comment afterwards.')).toBeVisible();
+    await expect(page).toHaveURL(/\/qa\/issues\/new$/);
+  } finally {
+    await retireOrg(orgId);
+  }
+});

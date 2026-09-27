@@ -70,6 +70,7 @@ type qaIssueData struct {
 	CanWrite      bool // qa.issue.write: edit, status
 	CanComment    bool // qa.issue.report
 	MaxFileBytes  int
+	MaxTotalBytes int
 	Form          qaIssueFormData
 	StatusOptions []httpx.SelectOption
 }
@@ -104,7 +105,7 @@ func qaIssuePage(d Deps) fiber.Handler {
 		data := qaIssueData{Project: *project, Base: qaBase(project), Issue: *is, URL: issueURL(project, is),
 			SeverityTone: qaSeverityTone(is.Severity), ReportedBy: personLabel(labels, is.ReportedBy),
 			Assignee: personLabel(labels, is.AssigneeID), CanWrite: p.Can("qa.issue.write"),
-			CanComment: p.Can("qa.issue.report"), MaxFileBytes: repo.MaxQAAttachmentBytes}
+			CanComment: p.Can("qa.issue.report"), MaxFileBytes: repo.MaxQAAttachmentBytes, MaxTotalBytes: qaMaxUploadTotal}
 		if is.PlanID != nil {
 			if plan, err := repo.GetQAPlan(c.Context(), s, *is.PlanID); err == nil {
 				data.PlanName, data.PlanHref = plan.Name, planURL(project, plan)
@@ -170,6 +171,15 @@ func qaIssuePage(d Deps) fiber.Handler {
 			if err := fillQAIssueOptions(c, d, s, &data.Form); err != nil {
 				return writeRepoErr(c, err)
 			}
+			// The current assignee may no longer be someone who can execute
+			// here; offer it as it is, so the box never shows a bare id and
+			// saving other fields keeps it.
+			if is.AssigneeID != nil && !slices.ContainsFunc(data.Form.PeopleOptions, func(o httpx.SelectOption) bool {
+				return o.Value == is.AssigneeID.String()
+			}) {
+				data.Form.PeopleOptions = append(data.Form.PeopleOptions, httpx.SelectOption{
+					Value: is.AssigneeID.String(), Label: personLabel(labels, is.AssigneeID) + " (no longer assignable)"})
+			}
 		}
 		org, user, err := shellChrome(c, d.DB)
 		if err != nil {
@@ -187,10 +197,15 @@ func qaIssuePage(d Deps) fiber.Handler {
 	}
 }
 
+// errQAAssignee: the assignee sent is not someone who can execute here.
+var errQAAssignee = errors.New("That person cannot be assigned here.")
+
 // readQAIssueFields reads the fields both the report form and the edit
-// dialog send, checking every id against the project and the assignee
-// against the people who can execute here (404 otherwise).
-func readQAIssueFields(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, in *repo.QAIssueInput) error {
+// dialog send, checking every id against the project. The assignee must be
+// someone who can execute here (errQAAssignee otherwise) — unless it is
+// keep, the issue's current assignee, which may have left or become a
+// viewer since and must not block saving the issue's other fields.
+func readQAIssueFields(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, in *repo.QAIssueInput, keep *uuid.UUID) error {
 	in.Title, in.Severity = c.FormValue("title"), strings.TrimSpace(c.FormValue("severity"))
 	in.Description, in.StepsToReproduce = c.FormValue("description"), c.FormValue("steps_to_reproduce")
 	in.Environment = c.FormValue("environment")
@@ -203,6 +218,10 @@ func readQAIssueFields(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Proje
 	}
 	in.AssigneeID = nil
 	if raw := strings.TrimSpace(c.FormValue("assignee_id")); raw != "" && mustPrincipal(c).Can("qa.issue.write") {
+		if keep != nil && raw == keep.String() {
+			in.AssigneeID = keep
+			return nil
+		}
 		people, err := qaPeople(c, d, s, project)
 		if err != nil {
 			return err
@@ -214,7 +233,7 @@ func readQAIssueFields(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Proje
 			}
 		}
 		if in.AssigneeID == nil {
-			return fiber.ErrNotFound
+			return errQAAssignee
 		}
 	}
 	return nil
@@ -231,7 +250,10 @@ func updateQAIssueUI(d Deps) fiber.Handler {
 			return err
 		}
 		in := repo.QAIssueInput{Source: is.Source}
-		if err := readQAIssueFields(c, d, s, project, &in); err != nil {
+		if err := readQAIssueFields(c, d, s, project, &in, is.AssigneeID); err != nil {
+			if errors.Is(err, errQAAssignee) {
+				return qaFormError(c, d, fiber.StatusUnprocessableEntity, err.Error())
+			}
 			return err
 		}
 		if in.Severity == "" {
@@ -262,6 +284,10 @@ func changeQAIssueStatusUI(d Deps) fiber.Handler {
 		to := strings.TrimSpace(c.FormValue("status"))
 		if !slices.Contains(repo.QAIssueStatuses, to) {
 			return qaFormError(c, d, fiber.StatusUnprocessableEntity, "Choose a status.")
+		}
+		if to == is.Status { // nothing would be recorded, the typed note included
+			return qaFormError(c, d, fiber.StatusConflict,
+				fmt.Sprintf("BUG-%d is already %s. Pick another status, or add the note as a comment.", is.Key, to))
 		}
 		if err := repo.ChangeQAIssueStatus(c.Context(), s, is.ID, to, qaActor(c), c.FormValue("note")); err != nil {
 			return writeRepoErr(c, err)

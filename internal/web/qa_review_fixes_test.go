@@ -177,3 +177,45 @@ func TestQAPlans_ArchivedScenarioStaysOnEditAndRunsSkipIt(t *testing.T) {
 		t.Fatalf("preview over an archived scenario = %+v, %v; want no cases", p, err)
 	}
 }
+
+// Phase 6 final review, Important 1: an issue whose assignee can no longer
+// be assigned (a viewer now, gone, an imported account) still saves when
+// the assignee is left as it is; another invalid assignee gets a message.
+func TestQAIssue_EditKeepsAStaleAssignee(t *testing.T) {
+	r := newQARunEnv(t, "acme-rf-stale")
+	ctx := context.Background()
+	_, viewerID := r.session(t, "viewer@acme.example", "viewer")
+	is, _ := repo.CreateQAIssue(ctx, r.s, r.projectID, repo.QAIssueInput{Title: "Old", Severity: "minor", AssigneeID: &viewerID}, nil, nil)
+	path := fmt.Sprintf("%s/issues/%d", r.base, is.Key)
+
+	_, body := r.get(t, r.member, path)
+	if !strings.Contains(body, "no longer assignable") {
+		t.Fatal("the edit dialog does not show the current, stale assignee")
+	}
+	resp, _ := r.post(t, r.member, path, url.Values{"title": {"Renamed"}, "severity": {"minor"}, "assignee_id": {viewerID.String()}}, true)
+	got, _ := repo.GetQAIssue(ctx, r.s, is.ID)
+	if resp.StatusCode != http.StatusNoContent || got.Title != "Renamed" || got.AssigneeID == nil || *got.AssigneeID != viewerID {
+		t.Fatalf("edit keeping a stale assignee = %d, %+v", resp.StatusCode, got)
+	}
+	_, other := r.session(t, "viewer2@acme.example", "viewer")
+	_, body = r.post(t, r.member, path, url.Values{"title": {"Renamed"}, "severity": {"minor"}, "assignee_id": {other.String()}}, true)
+	if !strings.Contains(body, "That person cannot be assigned here.") {
+		t.Fatalf("a new invalid assignee: %s", body)
+	}
+}
+
+// Phase 6 final review, Important 3: "Change status" to the status the
+// issue already has says so rather than dropping the typed note.
+func TestQAIssue_UnchangedStatusIsRefusedWithAMessage(t *testing.T) {
+	r := newQARunEnv(t, "acme-rf-samestatus")
+	ctx := context.Background()
+	is, _ := repo.CreateQAIssue(ctx, r.s, r.projectID, repo.QAIssueInput{Title: "X", Severity: "minor"}, nil, nil)
+	path := fmt.Sprintf("%s/issues/%d/status", r.base, is.Key)
+	_, body := r.post(t, r.member, path, url.Values{"status": {"new"}, "note": {"Looked at it"}}, true)
+	if !hasText(body, fmt.Sprintf("BUG-%d is already new. Pick another status, or add the note as a comment.", is.Key)) {
+		t.Fatalf("unchanged status: %s", body)
+	}
+	if events, _ := repo.ListQAIssueEvents(ctx, r.s, is.ID); len(events) != 0 {
+		t.Fatalf("events = %d; want none", len(events))
+	}
+}

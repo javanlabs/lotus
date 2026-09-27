@@ -104,8 +104,8 @@ func TestQAIssue_StatusEditAndCommentPermissions(t *testing.T) {
 	}
 	viewer, viewerID := r.session(t, "viewer@acme.example", "viewer")
 	edit.Set("assignee_id", viewerID.String())
-	if resp, _ := r.post(t, r.member, path, edit, false); resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("assign to a viewer = %d; want 404", resp.StatusCode)
+	if resp, _ := r.post(t, r.member, path, edit, false); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("assign to a viewer = %d; want 422", resp.StatusCode)
 	}
 
 	// A guest comments (with a file) but cannot change status or edit.
