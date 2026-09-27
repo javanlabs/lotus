@@ -187,6 +187,27 @@ ssh collab 'sudo install -o lotuscheck -g lotuscheck -m 0755 \
   sudo systemctl restart lotuscheck-web'
 ```
 
+### Unit and nginx changes reach a server only by hand
+
+`deploy.sh` ships the binary and the env; the systemd unit and the nginx
+site are installed once, by `bootstrap.sh`. Re-running `bootstrap.sh` on a
+live server overwrites the certbot-managed TLS blocks, so a change to
+`lotuscheck-web.service` or `nginx-lotuscheck.conf` is applied in place:
+back the file up, make the same edit, `systemd-analyze verify` /
+`nginx -t`, then `daemon-reload` / `reload nginx`.
+
+Uploaded files (QA attachments) live in `/var/lib/lotuscheck/blob`
+(`StateDirectory=lotuscheck` in the unit, `LOTUS_BLOB_DIR` in the rendered
+env). Back it up with the database. If Lotus cannot create it, it starts
+anyway and logs `blob store … unavailable`; file uploads and downloads
+answer 503 until it is fixed.
+
+Applied on collab on 2026-09-27: `StateDirectory=lotuscheck` and
+`StateDirectoryMode=0750` in the unit; nginx `client_max_body_size 4m` for
+the site and a `25m` location for the QA upload routes. Backups:
+`/etc/systemd/system/lotuscheck-web.service.bak-20260927` and
+`/root/nginx-lotuscheck.bak-20260927`.
+
 ## The KEK
 
 `LOTUS_KEK` wraps every organization's data-encryption key, which in turn

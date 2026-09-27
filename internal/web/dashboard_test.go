@@ -53,6 +53,12 @@ func dashboardFakeDNS(_ context.Context, host string) ([]net.IP, error) {
 }
 
 func newDashboardTestApp(t *testing.T) (*fiber.App, *sqlx.DB) {
+	return newDashboardTestAppWith(t, nil)
+}
+
+// newDashboardTestAppWith is newDashboardTestApp with Deps adjusted by
+// change before the app is built (nil: no change).
+func newDashboardTestAppWith(t *testing.T, change func(*Deps)) (*fiber.App, *sqlx.DB) {
 	t.Helper()
 	renderer := httpx.NewRenderer(os.DirFS("../../web/templates"), true)
 	db := dbtest.Open(t)
@@ -61,7 +67,7 @@ func newDashboardTestApp(t *testing.T) (*fiber.App, *sqlx.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := New(Deps{
+	deps := Deps{
 		Blob:             store,
 		Renderer:         renderer,
 		StaticFS:         os.DirFS("../../web/static"),
@@ -70,8 +76,11 @@ func newDashboardTestApp(t *testing.T) (*fiber.App, *sqlx.DB) {
 		OAuthProviders:   authn.Registry{},
 		KEK:              dashboardTestKEK(t),
 		NetguardResolver: dashboardFakeDNS,
-	})
-	return app, db
+	}
+	if change != nil {
+		change(&deps)
+	}
+	return New(deps), db
 }
 
 func TestDashboard_NoSessionRedirectsRatherThanShowingData(t *testing.T) {

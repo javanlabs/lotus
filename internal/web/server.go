@@ -36,6 +36,7 @@ type Deps struct {
 	Mailer         *mailer.Mailer
 	KEK            *crypto.KEK
 	// Blob stores uploaded files (QA attachments); config LOTUS_BLOB_DIR.
+	// Nil when it could not be created: file routes then answer 503.
 	Blob blob.Store
 
 	// NetguardResolver overrides task 2.2's SSRF-guarded HTTP client's DNS

@@ -28,7 +28,13 @@ type qaEnv struct {
 
 func newQAEnv(t *testing.T, sub string) qaEnv {
 	t.Helper()
-	app, db := newDashboardTestApp(t)
+	return newQAEnvWith(t, sub, nil)
+}
+
+// newQAEnvWith is newQAEnv on an app whose Deps change adjusts.
+func newQAEnvWith(t *testing.T, sub string, change func(*Deps)) qaEnv {
+	t.Helper()
+	app, db := newDashboardTestAppWith(t, change)
 	orgID, ownerID := seedMember(t, db, sub, "owner")
 	return qaEnv{
 		app: app, db: db, orgID: orgID, s: tenant.FromRun(db, orgID),

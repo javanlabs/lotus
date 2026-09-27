@@ -136,9 +136,14 @@ func runServe(cfg config.Config) {
 	templatesFS, staticFS := assetFilesystems(cfg.Dev)
 	renderer := httpx.NewRenderer(templatesFS, cfg.Dev)
 	resolver := tenant.NewResolver(cfg, sqlDB)
-	blobStore, err := blob.NewFS(cfg.BlobDir)
-	if err != nil {
-		log.Fatalf("blob store %s: %v", cfg.BlobDir, err)
+	// A blob store that cannot be created (a read-only path, a missing
+	// volume) disables file uploads and downloads, not the whole app: the
+	// QA handlers answer 503 for anything that needs it.
+	var blobStore blob.Store
+	if fs, err := blob.NewFS(cfg.BlobDir); err != nil {
+		log.Printf("blob store %s unavailable, QA attachments are disabled: %v", cfg.BlobDir, err)
+	} else {
+		blobStore = fs
 	}
 	app := web.New(web.Deps{
 		Renderer:       renderer,

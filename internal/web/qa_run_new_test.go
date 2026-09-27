@@ -27,7 +27,12 @@ type qaRunEnv struct {
 
 func newQARunEnv(t *testing.T, sub string) qaRunEnv {
 	t.Helper()
-	e := newQAEnv(t, sub)
+	return newQARunEnvWith(t, sub, nil)
+}
+
+func newQARunEnvWith(t *testing.T, sub string, change func(*Deps)) qaRunEnv {
+	t.Helper()
+	e := newQAEnvWith(t, sub, change)
 	p := e.project(t, "Portal")
 	seedQALibrary(t, e, p)
 	r := qaRunEnv{qaEnv: e, projectID: p, plan: planNamed(t, e, p, "Regression October"), base: "/projects/" + p.String() + "/qa"}

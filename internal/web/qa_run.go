@@ -406,6 +406,9 @@ func recordQAResultUI(d Deps) fiber.Handler {
 		if form, err := c.MultipartForm(); err == nil {
 			files = form.File["file"]
 		}
+		if len(files) > 0 && d.Blob == nil {
+			return refuse(fiber.StatusServiceUnavailable, "File storage is not available. Record the result without files, or ask an administrator.")
+		}
 		for _, f := range files {
 			if f.Size > repo.MaxQAAttachmentBytes {
 				return refuse(fiber.StatusUnprocessableEntity, "Each file can be at most 20 MB.")
@@ -467,6 +470,9 @@ func qaFileUI(d Deps) fiber.Handler {
 		s, project, err := loadQAProject(c)
 		if err != nil {
 			return err
+		}
+		if d.Blob == nil {
+			return fiber.NewError(fiber.StatusServiceUnavailable, "File storage is not available.")
 		}
 		id, err := uuid.Parse(c.Params("aid"))
 		if err != nil {
