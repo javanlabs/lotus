@@ -177,6 +177,15 @@ func qaCasesPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
+		// An archived section is only shown with the archived rows; its URL
+		// on its own (a bookmark, the page it was archived from) opens that view.
+		if active != nil && !data.Archived {
+			for _, sec := range sections {
+				if sec.ID == *active && sec.ArchivedAt != nil {
+					return c.Redirect(casesURL(data.Base, data.SectionID, data.Query, true, 1), fiber.StatusFound)
+				}
+			}
+		}
 		counts, err := repo.QASectionCaseCounts(c.Context(), s, project.ID)
 		if err != nil {
 			return writeRepoErr(c, err)

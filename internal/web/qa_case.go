@@ -36,6 +36,10 @@ type qaCaseForm struct {
 	SectionOptions []httpx.SelectOption
 	PriorityOpts   []httpx.SelectOption
 	SectionPath    string
+	// SectionArchived: the case is filed in an archived section. It is
+	// offered in the picker (marked) so the box never shows a bare id, and
+	// the case cannot be restored until it moves to a live section.
+	SectionArchived bool
 }
 
 // Action is where the form posts.
@@ -102,8 +106,11 @@ func readQACaseForm(c *fiber.Ctx, s tenant.Scope, project *repo.Project, f *qaCa
 }
 
 func qaCaseErrMessage(err error) (string, bool) {
-	if errors.Is(err, repo.ErrInvalidInput) {
+	switch {
+	case errors.Is(err, repo.ErrInvalidInput):
 		return fmt.Sprintf("Title is required and can be at most %d characters.", repo.MaxQATitleLength), true
+	case errors.Is(err, repo.ErrQASectionArchived):
+		return "That section is archived. Choose another.", true
 	}
 	return "", false
 }
@@ -126,7 +133,9 @@ func renderQACase(c *fiber.Ctx, d Deps, s tenant.Scope, f qaCaseForm, status int
 	if f.SectionPath == "" && f.Case != nil { // the case sits in an archived section
 		for _, r := range qaSectionTree(sections, nil, true, nil) {
 			if r.ID == f.Case.SectionID {
-				f.SectionPath = r.Path
+				f.SectionPath, f.SectionArchived = r.Path, true
+				f.SectionOptions = append(f.SectionOptions,
+					httpx.SelectOption{Value: r.ID.String(), Label: r.Path + " (archived)"})
 			}
 		}
 	}
@@ -276,6 +285,9 @@ func setQACaseArchivedUI(archive bool) fiber.Handler {
 			return err
 		}
 		label := fmt.Sprintf("TC-%d", qc.Key)
+		if archive && qc.ArchivedAt != nil { // already archived: nothing to do, nothing to audit
+			return c.Redirect(fmt.Sprintf("%s/cases/%d", qaBase(project), qc.Key), fiber.StatusFound)
+		}
 		if archive {
 			if err := repo.ArchiveQACase(c.Context(), s, qc.ID); err != nil {
 				return writeRepoErr(c, err)
@@ -287,6 +299,9 @@ func setQACaseArchivedUI(archive bool) fiber.Handler {
 			setFlash(c, "qa.case.archived", label)
 		} else {
 			if err := repo.RestoreQACase(c.Context(), s, qc.ID); err != nil {
+				if errors.Is(err, repo.ErrQASectionArchived) {
+					return fiber.NewError(fiber.StatusConflict, "Its section is archived. Move the case to a live section first.")
+				}
 				return writeRepoErr(c, err)
 			}
 			setFlash(c, "qa.case.restored", label)

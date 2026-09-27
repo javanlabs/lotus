@@ -66,7 +66,7 @@ func CreateQACase(ctx context.Context, s tenant.Scope, projectID uuid.UUID, in Q
 	}
 	var out QACase
 	err = s.Tx(ctx, func(tx *sqlx.Tx) error {
-		if err := sectionInProject(ctx, tx, in.SectionID, projectID); err != nil {
+		if err := liveSectionInProject(ctx, tx, in.SectionID, projectID); err != nil {
 			return err
 		}
 		key, err := nextQAKey(ctx, tx, "qa_cases", projectID)
@@ -114,7 +114,10 @@ type QACaseFilter struct {
 	IncludeSubsections bool
 	IncludeArchived    bool
 	Query              string // matches title, case-insensitive, literally
-	Limit, Offset      int    // Limit 0 = every row
+	// NotInScenario leaves out the cases that scenario already holds (the
+	// Add cases picker), before Limit applies.
+	NotInScenario *uuid.UUID
+	Limit, Offset int // Limit 0 = every row
 }
 
 // qaCaseWhere is the filter both ListQACases and CountQACases apply. The
@@ -129,10 +132,12 @@ const qaCaseWhere = `
 	WHERE project_id = $1
 	  AND ($2::uuid IS NULL OR section_id IN (SELECT id FROM scope))
 	  AND ($3 OR archived_at IS NULL)
-	  AND ($4 = '' OR title ILIKE '%%' || $4 || '%%' ESCAPE '\')`
+	  AND ($4 = '' OR title ILIKE '%%' || $4 || '%%' ESCAPE '\')
+	  AND ($6::uuid IS NULL OR NOT EXISTS (
+		SELECT 1 FROM qa_scenario_items si WHERE si.scenario_id = $6 AND si.case_id = qa_cases.id))`
 
 func (f QACaseFilter) args(projectID uuid.UUID) []any {
-	return []any{projectID, f.SectionID, f.IncludeArchived, likeEscape(strings.TrimSpace(f.Query)), f.IncludeSubsections}
+	return []any{projectID, f.SectionID, f.IncludeArchived, likeEscape(strings.TrimSpace(f.Query)), f.IncludeSubsections, f.NotInScenario}
 }
 
 // likeEscape makes % and _ in a search box match themselves.
@@ -143,7 +148,7 @@ func likeEscape(q string) string {
 func ListQACases(ctx context.Context, s tenant.Scope, projectID uuid.UUID, f QACaseFilter) ([]QACase, error) {
 	var out []QACase
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		q := fmt.Sprintf(qaCaseWhere, qaCaseCols) + ` ORDER BY key LIMIT NULLIF($6, 0) OFFSET $7`
+		q := fmt.Sprintf(qaCaseWhere, qaCaseCols) + ` ORDER BY key LIMIT NULLIF($7, 0) OFFSET $8`
 		return tx.SelectContext(ctx, &out, q, append(f.args(projectID), f.Limit, f.Offset)...)
 	})
 	return out, err
@@ -187,7 +192,13 @@ func UpdateQACase(ctx context.Context, s tenant.Scope, id uuid.UUID, in QACaseIn
 		if err := tx.GetContext(ctx, &cur, `SELECT `+qaCaseCols+` FROM qa_cases WHERE id = $1 FOR UPDATE`, id); err != nil {
 			return err
 		}
-		if err := sectionInProject(ctx, tx, in.SectionID, cur.ProjectID); err != nil {
+		// A case may stay where it is (an archived case in an archived
+		// section can still be edited), but a move needs a live section.
+		check := sectionInProject
+		if in.SectionID != cur.SectionID {
+			check = liveSectionInProject
+		}
+		if err := check(ctx, tx, in.SectionID, cur.ProjectID); err != nil {
 			return err
 		}
 		version := cur.Version
@@ -208,6 +219,17 @@ func UpdateQACase(ctx context.Context, s tenant.Scope, id uuid.UUID, in QACaseIn
 
 func setQACaseArchived(ctx context.Context, s tenant.Scope, id uuid.UUID, archived bool) error {
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		if !archived {
+			var sectionArchived bool
+			if err := tx.GetContext(ctx, &sectionArchived, `
+				SELECT sec.archived_at IS NOT NULL FROM qa_cases c JOIN qa_sections sec ON sec.id = c.section_id
+				WHERE c.id = $1`, id); err != nil {
+				return err
+			}
+			if sectionArchived {
+				return ErrQASectionArchived
+			}
+		}
 		res, err := tx.ExecContext(ctx, `
 			UPDATE qa_cases SET archived_at = CASE WHEN $2 THEN now() ELSE NULL END, updated_at = now()
 			WHERE id = $1`, id, archived)
@@ -232,6 +254,13 @@ func RestoreQACase(ctx context.Context, s tenant.Scope, id uuid.UUID) error {
 func MoveQACases(ctx context.Context, s tenant.Scope, ids []uuid.UUID, sectionID uuid.UUID) (int, error) {
 	var n int64
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		var archived *bool
+		if err := tx.GetContext(ctx, &archived, `SELECT archived_at IS NOT NULL FROM qa_sections WHERE id = $1`, sectionID); err != nil {
+			return err
+		}
+		if *archived {
+			return ErrQASectionArchived
+		}
 		res, err := tx.ExecContext(ctx, `
 			UPDATE qa_cases c SET section_id = $2, updated_at = now()
 			FROM qa_sections sec

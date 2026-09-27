@@ -71,3 +71,48 @@ func TestQASections_ParentMustBeInTheSameProject(t *testing.T) {
 		t.Fatalf("missing parent: %v; want ErrNotFound", err)
 	}
 }
+
+func TestQASections_ArchivedSectionTakesNoNewRows(t *testing.T) {
+	db := dbtest.Open(t)
+	ctx := context.Background()
+	_, s := folderTestOrg(t, db, "acme-sec-archived")
+	p := mustProject(t, s, "portal", nil)
+	live, _ := repo.CreateQASection(ctx, s, p.ID, "Live", nil)
+	old, _ := repo.CreateQASection(ctx, s, p.ID, "Old", nil)
+	kept := mustQACase(t, s, p.ID, old.ID, "Kept")
+	other := mustQACase(t, s, p.ID, live.ID, "Other")
+	repo.ArchiveQASection(ctx, s, old.ID)
+
+	if _, err := repo.CreateQACase(ctx, s, p.ID, repo.QACaseInput{SectionID: old.ID, Title: "New"}, nil); err != repo.ErrQASectionArchived {
+		t.Fatalf("case into archived section = %v", err)
+	}
+	if _, err := repo.CreateQASection(ctx, s, p.ID, "Child", &old.ID); err != repo.ErrQASectionArchived {
+		t.Fatalf("section under archived parent = %v", err)
+	}
+	if err := repo.MoveQASection(ctx, s, live.ID, &old.ID); err != repo.ErrQASectionArchived {
+		t.Fatalf("move under archived parent = %v", err)
+	}
+	if _, err := repo.MoveQACases(ctx, s, []uuid.UUID{other.ID}, old.ID); err != repo.ErrQASectionArchived {
+		t.Fatalf("bulk move into archived section = %v", err)
+	}
+	if err := repo.RestoreQACase(ctx, s, kept.ID); err != repo.ErrQASectionArchived {
+		t.Fatalf("restore while the section is archived = %v", err)
+	}
+	// Editing an archived case where it stands is fine; moving it to a live
+	// section and then restoring it is the way back.
+	in := repo.QACaseInput{SectionID: old.ID, Title: "Kept, edited"}
+	if _, err := repo.UpdateQACase(ctx, s, kept.ID, in); err != nil {
+		t.Fatalf("edit in place = %v", err)
+	}
+	in.SectionID = live.ID
+	if _, err := repo.UpdateQACase(ctx, s, kept.ID, in); err != nil {
+		t.Fatalf("move to live section = %v", err)
+	}
+	if err := repo.RestoreQACase(ctx, s, kept.ID); err != nil {
+		t.Fatalf("restore after the move = %v", err)
+	}
+	in.SectionID = old.ID
+	if _, err := repo.UpdateQACase(ctx, s, kept.ID, in); err != repo.ErrQASectionArchived {
+		t.Fatalf("move into archived section = %v", err)
+	}
+}

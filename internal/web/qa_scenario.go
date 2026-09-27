@@ -412,7 +412,7 @@ func qaScenarioPickerUI(d Deps) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		filter := repo.QACaseFilter{IncludeSubsections: true, Query: c.Query("q"), Limit: 4 * qaPickerLimit}
+		filter := repo.QACaseFilter{IncludeSubsections: true, Query: c.Query("q"), NotInScenario: &sc.ID, Limit: qaPickerLimit + 1}
 		if raw := c.Query("section"); raw != "" {
 			id, err := qaOwned(c, s, project, repo.QAKindSection, raw)
 			if err != nil {
@@ -420,29 +420,15 @@ func qaScenarioPickerUI(d Deps) fiber.Handler {
 			}
 			filter.SectionID = &id
 		}
-		entries, err := repo.ListQAScenarioEntries(c.Context(), s, sc.ID)
-		if err != nil {
-			return writeRepoErr(c, err)
-		}
-		in := make(map[uuid.UUID]bool, len(entries))
-		for _, e := range entries {
-			in[e.CaseID] = true
-		}
 		cases, err := repo.ListQACases(c.Context(), s, project.ID, filter)
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
 		data := qaPickerData{Searching: filter.Query != "" || filter.SectionID != nil}
-		for _, qc := range cases {
-			if in[qc.ID] {
-				continue
-			}
-			if len(data.Rows) == qaPickerLimit {
-				data.More = true
-				break
-			}
-			data.Rows = append(data.Rows, qc)
+		if len(cases) > qaPickerLimit {
+			cases, data.More = cases[:qaPickerLimit], true
 		}
+		data.Rows = cases
 		c.Type("html")
 		return d.Renderer.RenderNamed(c, "qa_case_picker", data)
 	}

@@ -26,6 +26,8 @@ func qaSectionErr(err error, name string) (int, string, bool) {
 		return fiber.StatusConflict, fmt.Sprintf("There's already a section called '%s' here.", name), true
 	case errors.Is(err, repo.ErrQASectionCycle):
 		return fiber.StatusConflict, "Can't move a section into itself or its own subsection.", true
+	case errors.Is(err, repo.ErrQASectionArchived):
+		return fiber.StatusConflict, "That section is archived.", true
 	case errors.Is(err, repo.ErrQASectionTooDeep):
 		return fiber.StatusConflict, fmt.Sprintf("Sections can nest at most %d levels.", repo.MaxQASectionDepth), true
 	case errors.Is(err, repo.ErrInvalidInput):
@@ -159,7 +161,9 @@ func archiveQASectionUI(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		setFlash(c, "qa.section.archived", sec.Name)
-		return redirectAfterMutation(c, qaBase(project)+"/cases")
+		// Not redirectAfterMutation: HX-Refresh would reload this section's
+		// own URL, which now shows nothing.
+		return redirectAfterCreate(c, qaBase(project)+"/cases")
 	}
 }
 
@@ -190,6 +194,9 @@ func moveQACasesUI(d Deps) fiber.Handler {
 		}
 		n, err := repo.MoveQACases(c.Context(), s, ids, sectionID)
 		if err != nil {
+			if status, msg, ok := qaSectionErr(err, ""); ok {
+				return qaFormError(c, d, status, msg)
+			}
 			return writeRepoErr(c, err)
 		}
 		setFlash(c, "qa.cases.moved", strconv.Itoa(n))

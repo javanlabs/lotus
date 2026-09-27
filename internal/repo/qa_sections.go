@@ -68,7 +68,7 @@ func CreateQASection(ctx context.Context, s tenant.Scope, projectID uuid.UUID, n
 		if parentID != nil {
 			// The foreign key only pins the organization; the parent must
 			// also be in this project.
-			if err := sectionInProject(ctx, tx, *parentID, projectID); err != nil {
+			if err := liveSectionInProject(ctx, tx, *parentID, projectID); err != nil {
 				return err
 			}
 			d, err := qaSectionDepth(ctx, tx, *parentID)
@@ -132,7 +132,7 @@ func MoveQASection(ctx context.Context, s tenant.Scope, id uuid.UUID, parentID *
 			if *parentID == id {
 				return ErrQASectionCycle
 			}
-			if err := sectionInProject(ctx, tx, *parentID, projectID); err != nil {
+			if err := liveSectionInProject(ctx, tx, *parentID, projectID); err != nil {
 				return err
 			}
 			var inside bool

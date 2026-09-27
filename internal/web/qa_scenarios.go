@@ -133,12 +133,8 @@ func loadQAScenario(c *fiber.Ctx, s tenant.Scope, project *repo.Project) (*repo.
 
 func updateQAScenarioUI(d Deps) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		s, project, err := loadQAProject(c)
-		if err != nil {
-			return err
-		}
-		sc, err := loadQAScenario(c, s, project)
-		if err != nil {
+		s, project, sc, ok, err := writableQAScenario(c, d)
+		if !ok {
 			return err
 		}
 		name, phase, description, msg := readQAScenarioForm(c)
@@ -165,6 +161,9 @@ func archiveQAScenarioUI() fiber.Handler {
 		sc, err := loadQAScenario(c, s, project)
 		if err != nil {
 			return err
+		}
+		if sc.ArchivedAt != nil { // already archived: nothing to do, nothing to audit
+			return redirectAfterMutation(c, qaBase(project)+"/scenarios")
 		}
 		if err := repo.ArchiveQAScenario(c.Context(), s, sc.ID); err != nil {
 			return writeRepoErr(c, err)

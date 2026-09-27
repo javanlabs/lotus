@@ -31,8 +31,11 @@ var (
 	ErrQANameTaken      = errors.New("that name is already used here")
 	ErrQASectionCycle   = errors.New("a section cannot be moved into itself or its own subsection")
 	ErrQASectionTooDeep = errors.New("sections cannot nest that deep")
-	ErrQAClosed         = errors.New("closed")
-	ErrQAEmptyRun       = errors.New("the run would have no cases")
+	// ErrQASectionArchived: nothing new goes into an archived section —
+	// no case, no subsection, no restore of a case still filed there.
+	ErrQASectionArchived = errors.New("that section is archived")
+	ErrQAClosed          = errors.New("closed")
+	ErrQAEmptyRun        = errors.New("the run would have no cases")
 )
 
 // QAStep is one step of a test case.
@@ -112,6 +115,23 @@ func sectionInProject(ctx context.Context, tx *sqlx.Tx, sectionID, projectID uui
 	}
 	if !ok {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// liveSectionInProject is sectionInProject for a section something is being
+// put into: it must also not be archived.
+func liveSectionInProject(ctx context.Context, tx *sqlx.Tx, sectionID, projectID uuid.UUID) error {
+	var archived *bool
+	if err := tx.GetContext(ctx, &archived,
+		`SELECT archived_at IS NOT NULL FROM qa_sections WHERE id = $1 AND project_id = $2`, sectionID, projectID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if *archived {
+		return ErrQASectionArchived
 	}
 	return nil
 }

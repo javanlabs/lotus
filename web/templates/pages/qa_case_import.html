@@ -33,7 +33,7 @@
       {{end}}
     {{end}}
     {{if $d.CSV}}
-    <form method="post" action="{{$d.Base}}/cases/import/confirm" style="display:flex;gap:8px;justify-content:flex-end">
+    <form method="post" action="{{$d.Base}}/cases/import/confirm" enctype="multipart/form-data" style="display:flex;gap:8px;justify-content:flex-end">
       <textarea name="csv" hidden>{{$d.CSV}}</textarea>
       <a href="{{$d.Base}}/cases/import" class="btn-lotus btn-lotus-secondary">Choose another file</a>
       <button type="submit" class="btn-lotus btn-lotus-primary">Import {{$d.Cases}} case{{if ne $d.Cases 1}}s{{end}}</button>
