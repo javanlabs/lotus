@@ -65,4 +65,5 @@ func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fibe
 	app.Get("/qa", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("qa.read"), qaHome(d))
 	app.Get("/projects/:id/qa", qaRoute(requireSession, loadPrincipal, "qa.read", qaProjectPage(d))...)
+	app.Get("/projects/:id/qa/cases", qaRoute(requireSession, loadPrincipal, "qa.read", qaCasesPage(d))...)
 }

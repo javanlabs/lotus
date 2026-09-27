@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -107,22 +108,71 @@ func GetQACaseByKey(ctx context.Context, s tenant.Scope, projectID uuid.UUID, ke
 }
 
 type QACaseFilter struct {
-	SectionID       *uuid.UUID
-	IncludeArchived bool
-	Query           string // matches title, case-insensitive
+	SectionID *uuid.UUID
+	// IncludeSubsections widens SectionID to its whole subtree, which is
+	// what picking a section in the library means.
+	IncludeSubsections bool
+	IncludeArchived    bool
+	Query              string // matches title, case-insensitive, literally
+	Limit, Offset      int    // Limit 0 = every row
+}
+
+// qaCaseWhere is the filter both ListQACases and CountQACases apply. The
+// recursive CTE is empty when no section is chosen.
+const qaCaseWhere = `
+	WITH RECURSIVE scope AS (
+		SELECT id FROM qa_sections WHERE id = $2
+		UNION ALL
+		SELECT sec.id FROM qa_sections sec JOIN scope ON sec.parent_id = scope.id WHERE $5
+	)
+	SELECT %s FROM qa_cases
+	WHERE project_id = $1
+	  AND ($2::uuid IS NULL OR section_id IN (SELECT id FROM scope))
+	  AND ($3 OR archived_at IS NULL)
+	  AND ($4 = '' OR title ILIKE '%%' || $4 || '%%' ESCAPE '\')`
+
+func (f QACaseFilter) args(projectID uuid.UUID) []any {
+	return []any{projectID, f.SectionID, f.IncludeArchived, likeEscape(strings.TrimSpace(f.Query)), f.IncludeSubsections}
+}
+
+// likeEscape makes % and _ in a search box match themselves.
+func likeEscape(q string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q)
 }
 
 func ListQACases(ctx context.Context, s tenant.Scope, projectID uuid.UUID, f QACaseFilter) ([]QACase, error) {
 	var out []QACase
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		return tx.SelectContext(ctx, &out, `
-			SELECT `+qaCaseCols+` FROM qa_cases
-			WHERE project_id = $1
-			  AND ($2::uuid IS NULL OR section_id = $2)
-			  AND ($3 OR archived_at IS NULL)
-			  AND ($4 = '' OR title ILIKE '%' || $4 || '%')
-			ORDER BY key`, projectID, f.SectionID, f.IncludeArchived, strings.TrimSpace(f.Query))
+		q := fmt.Sprintf(qaCaseWhere, qaCaseCols) + ` ORDER BY key LIMIT NULLIF($6, 0) OFFSET $7`
+		return tx.SelectContext(ctx, &out, q, append(f.args(projectID), f.Limit, f.Offset)...)
 	})
+	return out, err
+}
+
+func CountQACases(ctx context.Context, s tenant.Scope, projectID uuid.UUID, f QACaseFilter) (int, error) {
+	var n int
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.GetContext(ctx, &n, fmt.Sprintf(qaCaseWhere, "count(*)"), f.args(projectID)...)
+	})
+	return n, err
+}
+
+// QASectionCaseCounts is the number of live cases filed directly in each
+// section of the project. Sections with none are absent.
+func QASectionCaseCounts(ctx context.Context, s tenant.Scope, projectID uuid.UUID) (map[uuid.UUID]int, error) {
+	var rows []struct {
+		SectionID uuid.UUID `db:"section_id"`
+		N         int       `db:"n"`
+	}
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &rows, `
+			SELECT section_id, count(*) AS n FROM qa_cases
+			WHERE project_id = $1 AND archived_at IS NULL GROUP BY section_id`, projectID)
+	})
+	out := make(map[uuid.UUID]int, len(rows))
+	for _, r := range rows {
+		out[r.SectionID] = r.N
+	}
 	return out, err
 }
 

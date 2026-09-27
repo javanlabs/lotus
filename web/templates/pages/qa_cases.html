@@ -1,0 +1,71 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+
+<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
+  <div style="flex:1;min-width:220px">
+    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Project.Name}}</h1>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{if $d.SectionPath}}{{$d.SectionPath}}{{else}}All cases{{end}} · {{$d.Total}} case{{if ne $d.Total 1}}s{{end}}</p>
+  </div>
+  {{template "qa_subnav" (dict "Base" $d.Base "Active" "cases")}}
+</header>
+
+<div style="display:grid;grid-template-columns:minmax(200px,260px) minmax(0,1fr);gap:14px;align-items:start">
+  {{template "lotus_card_section_open" (dict "Padding" "6px" "Attrs" "aria-label=\"Sections\"")}}
+    <a href="{{$d.AllHref}}" class="lotus-nav-item{{if not $d.SectionID}} is-active{{end}}" style="justify-content:space-between">
+      <span>All cases</span><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{$d.AllCount}}</span>
+    </a>
+    {{range $d.Tree}}
+    <a href="{{.Href}}" class="lotus-nav-item{{if .Active}} is-active{{end}}" data-section="{{.ID}}"
+       style="justify-content:space-between;padding-left:{{.Indent}}px{{if .Archived}};opacity:.6{{end}}">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
+      <span style="font:500 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF" data-section-count="{{.ID}}">{{.Count}}</span>
+    </a>
+    {{end}}
+    {{if not $d.Tree}}<p style="margin:8px 10px;font-size:11.5px;color:#9CA3AF">No sections yet.</p>{{end}}
+  {{template "lotus_card_section_close" .}}
+
+  {{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden;min-width:0")}}
+    <form method="get" action="{{$d.Base}}/cases" style="display:flex;gap:8px;align-items:center;padding:8px 10px">
+      {{if $d.SectionID}}<input type="hidden" name="section" value="{{$d.SectionID}}">{{end}}
+      {{if $d.Archived}}<input type="hidden" name="archived" value="1">{{end}}
+      <input type="search" name="q" value="{{$d.Query}}" placeholder="Search titles" aria-label="Search titles" class="lotus-input" style="flex:1">
+      <a href="{{$d.ArchiveHref}}" style="font-size:11.5px;color:#6B7280;white-space:nowrap">{{if $d.Archived}}Hide archived{{else}}Show archived{{end}}</a>
+    </form>
+    {{template "qa_case_table" $d}}
+  {{template "lotus_card_section_close" .}}
+</div>
+
+{{template "shell_close" .}}
+{{end}}
+
+{{/* qa_case_table is the library's case list and pager. Takes the page's
+     qaCasesData. */}}
+{{define "qa_case_table"}}
+{{if not .Rows}}
+<p style="margin:0;padding:28px 14px;text-align:center;font-size:12.5px;color:#6B7280">{{if .Query}}No cases match "{{.Query}}".{{else}}No cases here yet.{{end}}</p>
+{{else}}
+<div class="lotus-table-head" style="grid-template-columns:70px minmax(0,1fr) 80px 60px 100px;gap:10px">
+  <div>KEY</div><div>TITLE</div><div>PRIORITY</div><div style="text-align:right">STEPS</div><div>UPDATED</div>
+</div>
+{{range .Rows}}
+<a href="{{.Href}}" data-case-row class="lotus-repo-row" style="display:grid;grid-template-columns:70px minmax(0,1fr) 80px 60px 100px;gap:10px;align-items:center;padding:0 14px;text-decoration:none;color:inherit{{if .ArchivedAt}};opacity:.6{{end}}">
+  <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">TC-{{.Key}}</span>
+  <span style="font-size:12.5px;color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Title}}{{if .Negative}} <span class="lotus-badge lotus-badge-none">negative</span>{{end}}</span>
+  <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">{{if .Priority}}{{.Priority}}{{else}}—{{end}}</span>
+  <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280;text-align:right">{{len .Steps}}</span>
+  <span style="font:400 11px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.UpdatedAt.Format "02 Jan 2006"}}</span>
+</a>
+{{end}}
+{{if gt .Pages 1}}
+<div class="lotus-pager">
+  <span>{{.From}}–{{.To}} of {{.Total}} cases</span>
+  <span class="lotus-pager-spacer">
+    {{if .PrevHref}}<a href="{{.PrevHref}}" rel="prev">← Previous</a>{{else}}<span aria-disabled="true">← Previous</span>{{end}}
+    <span style="align-self:center;font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.Page}} / {{.Pages}}</span>
+    {{if .NextHref}}<a href="{{.NextHref}}" rel="next">Next →</a>{{else}}<span aria-disabled="true">Next →</span>{{end}}
+  </span>
+</div>
+{{end}}
+{{end}}
+{{end}}
