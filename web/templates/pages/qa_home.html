@@ -1,0 +1,31 @@
+{{define "content"}}
+{{template "shell_open" .}}
+
+<header style="margin-bottom:18px">
+  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">QA Tools</h1>
+  <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{len .Data.Rows}} project{{if ne (len .Data.Rows) 1}}s{{end}} · {{.Data.Cases}} test case{{if ne .Data.Cases 1}}s{{end}}</p>
+</header>
+
+{{if not .Data.Rows}}
+{{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
+  No projects to test yet.
+{{template "lotus_card_section_close" .}}
+{{else}}
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
+  <div class="lotus-table-head" style="grid-template-columns:1fr 90px 90px 90px 90px;gap:10px">
+    <div>PROJECT</div><div style="text-align:right">CASES</div><div style="text-align:right">SCENARIOS</div><div style="text-align:right">OPEN PLANS</div><div style="text-align:right">OPEN ISSUES</div>
+  </div>
+  {{range .Data.Rows}}
+  <a href="/projects/{{.ProjectID}}/qa" class="lotus-repo-row" style="display:grid;grid-template-columns:1fr 90px 90px 90px 90px;gap:10px;align-items:center;padding:0 14px;text-decoration:none;color:inherit">
+    <span style="font-size:12.5px;font-weight:600;color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.ProjectName}}</span>
+    <span data-qa-cases="{{.Cases}}" style="font:500 11.5px 'IBM Plex Mono',monospace;color:#374151;text-align:right">{{if .Cases}}{{.Cases}}{{else}}—{{end}}</span>
+    <span style="font:500 11.5px 'IBM Plex Mono',monospace;color:#374151;text-align:right">{{if .Scenarios}}{{.Scenarios}}{{else}}—{{end}}</span>
+    <span style="font:500 11.5px 'IBM Plex Mono',monospace;color:#374151;text-align:right">{{if .OpenPlans}}{{.OpenPlans}}{{else}}—{{end}}</span>
+    <span style="font:500 11.5px 'IBM Plex Mono',monospace;color:{{if .OpenIssues}}#9E2B47{{else}}#374151{{end}};text-align:right">{{if .OpenIssues}}{{.OpenIssues}}{{else}}—{{end}}</span>
+  </a>
+  {{end}}
+{{template "lotus_card_section_close" .}}
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}

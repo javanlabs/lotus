@@ -133,6 +133,10 @@ func New(d Deps) *fiber.App {
 	// binding together.
 	registerProjectPageDetailRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerFolderRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+
+	// Tenant host only (QA module, docs/superpowers/plans/2026-09-27-qa-phase-4.md):
+	// the QA overview and each project's QA area.
+	registerQARoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerComponentPageRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerBindWizardRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
