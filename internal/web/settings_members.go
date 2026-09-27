@@ -3,10 +3,10 @@ package web
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -241,14 +241,26 @@ func resendInvitationUI(d Deps) fiber.Handler {
 		if err != nil {
 			return fiber.ErrNotFound
 		}
-		_, hash, err := newInvitationToken()
-		if err != nil {
-			return writeRepoErr(c, err)
+		org, ok := tenant.OrgFromContext(c)
+		if !ok {
+			return fiber.ErrNotFound
 		}
-		if _, err := global.ResendInvitation(c.Context(), d.DB, id, hash, time.Now().Add(7*24*time.Hour)); err != nil {
+		// The old link stops working, so the new one has to reach the
+		// admin: without mail it is the only way in.
+		email, link, err := authn.ResendInvitation(c.Context(), authn.Deps{DB: d.DB, Cfg: d.Cfg, Mailer: d.Mailer}, org.ID, org.Name, id)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return fiber.ErrNotFound
+		case errors.Is(err, authn.ErrInviteRateLimited):
+			return qaFormError(c, d, fiber.StatusTooManyRequests, "Too many invitations sent recently.")
+		case err != nil:
 			return writeRepoErr(c, err)
 		}
 		setFlash(c, "invitation.resent")
+		if c.Get("HX-Request") != "" {
+			c.Type("html")
+			return d.Renderer.RenderNamed(c, "invite_resent", fiber.Map{"Email": email, "Link": link})
+		}
 		return c.Redirect("/settings/members", fiber.StatusFound)
 	}
 }
@@ -259,7 +271,14 @@ func revokeInvitationUI(d Deps) fiber.Handler {
 		if err != nil {
 			return fiber.ErrNotFound
 		}
-		if err := global.RevokeInvitation(c.Context(), d.DB, id); err != nil {
+		org, ok := tenant.OrgFromContext(c)
+		if !ok {
+			return fiber.ErrNotFound
+		}
+		if err := global.RevokeInvitation(c.Context(), d.DB, org.ID, id); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fiber.ErrNotFound
+			}
 			return writeRepoErr(c, err)
 		}
 		setFlash(c, "invitation.revoked")

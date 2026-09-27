@@ -224,6 +224,12 @@ func TestSettingsMembers_InviteResendRevokeAndRoleChange(t *testing.T) {
 	if resendResp.StatusCode != http.StatusFound {
 		t.Fatalf("resend status = %d, want 302", resendResp.StatusCode)
 	}
+	// Resend replaced the invitation; the pending one is the new row.
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&invID, `SELECT id FROM invitations WHERE email = 'newperson@example.com' AND revoked_at IS NULL`); err != nil {
+			t.Fatalf("find resent invitation: %v", err)
+		}
+	})
 
 	// Admin cannot touch the Owner's role — authz.CanChangeRole's guard,
 	// enforced in the handler, not just the coarser permission middleware.

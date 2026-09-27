@@ -61,7 +61,8 @@
     </div>
     {{if $.Data.CanInvite}}
     <div style="display:flex;gap:6px">
-      <form method="post" action="/settings/members/invitations/{{.ID}}/resend">
+      <form method="post" action="/settings/members/invitations/{{.ID}}/resend"
+            hx-post="/settings/members/invitations/{{.ID}}/resend" hx-target="#resent-{{.ID}}" hx-swap="innerHTML">
         <button type="submit" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px">Resend</button>
       </form>
       <form method="post" action="/settings/members/invitations/{{.ID}}/revoke">
@@ -70,6 +71,7 @@
     </div>
     {{end}}
   </div>
+  {{if $.Data.CanInvite}}<div id="resent-{{.ID}}"></div>{{end}}
   {{end}}
 {{template "lotus_card_section_close" .}}
 {{end}}

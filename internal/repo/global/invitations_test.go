@@ -48,7 +48,7 @@ func TestInvitation_GuestProjectsAreAppliedOnAccept(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Resending keeps the projects.
-	newID, err := global.ResendInvitation(ctx, db, invID, "h2", time.Now().Add(time.Hour))
+	newID, err := global.ResendInvitation(ctx, db, orgID, invID, "h2", time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

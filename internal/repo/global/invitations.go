@@ -2,6 +2,7 @@ package global
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
@@ -154,11 +155,39 @@ func DeclineInvitation(ctx context.Context, db *sqlx.DB, invitationID uuid.UUID)
 
 // RevokeInvitation sets revoked_at — the mechanism behind Settings ->
 // Members' revoke button (task 4.5 builds that page; this is its engine).
-func RevokeInvitation(ctx context.Context, db *sqlx.DB, invitationID uuid.UUID) error {
-	_, err := db.ExecContext(ctx, `
+//
+// orgID scopes the id: an invitation of another organization is
+// sql.ErrNoRows, as is one no longer pending.
+func RevokeInvitation(ctx context.Context, db *sqlx.DB, orgID, invitationID uuid.UUID) error {
+	res, err := db.ExecContext(ctx, `
 		UPDATE invitations SET revoked_at = now()
-		WHERE id = $1 AND accepted_at IS NULL AND revoked_at IS NULL`, invitationID)
-	return err
+		WHERE id = $1 AND org_id = $2 AND accepted_at IS NULL AND revoked_at IS NULL`, invitationID, orgID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// PendingInvitation is orgID's still-usable invitation id (sql.ErrNoRows
+// otherwise, including for another organization's id).
+func PendingInvitation(ctx context.Context, db *sqlx.DB, orgID, invitationID uuid.UUID) (*Invitation, error) {
+	var out Invitation
+	err := sqlx.GetContext(ctx, db, &out, `
+		SELECT i.id, i.org_id, i.email, i.role_id, r.key AS role_key, i.invited_by,
+		       i.expires_at, i.accepted_at, i.revoked_at, i.declined_at
+		FROM invitations i
+		JOIN roles r ON r.id = i.role_id
+		WHERE i.id = $1 AND i.org_id = $2
+		  AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.declined_at IS NULL`, invitationID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // ResendInvitation revokes the old token and creates a fresh one with a
@@ -166,20 +195,21 @@ func RevokeInvitation(ctx context.Context, db *sqlx.DB, invitationID uuid.UUID) 
 // yang lama" (task 1.7). Returns the new invitation's id, for the caller
 // to build the new link around a token it generated itself (this function
 // never sees the raw token, only its hash, same as CreateInvitation).
-func ResendInvitation(ctx context.Context, db *sqlx.DB, oldInvitationID uuid.UUID, newTokenHash string, newExpiresAt time.Time) (uuid.UUID, error) {
+// orgID scopes the id, as for RevokeInvitation.
+func ResendInvitation(ctx context.Context, db *sqlx.DB, orgID, oldInvitationID uuid.UUID, newTokenHash string, newExpiresAt time.Time) (uuid.UUID, error) {
 	tx, err := db.BeginTxx(ctx, nil)
 	if err != nil {
 		return uuid.Nil, err
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	var orgID, roleID, invitedBy uuid.UUID
+	var roleID, invitedBy uuid.UUID
 	var email string
 	err = tx.QueryRowxContext(ctx, `
 		UPDATE invitations SET revoked_at = now()
-		WHERE id = $1 AND accepted_at IS NULL AND revoked_at IS NULL AND declined_at IS NULL
-		RETURNING org_id, email, role_id, invited_by`, oldInvitationID).
-		Scan(&orgID, &email, &roleID, &invitedBy)
+		WHERE id = $1 AND org_id = $2 AND accepted_at IS NULL AND revoked_at IS NULL AND declined_at IS NULL
+		RETURNING email, role_id, invited_by`, oldInvitationID, orgID).
+		Scan(&email, &roleID, &invitedBy)
 	if err != nil {
 		return uuid.Nil, err
 	}

@@ -117,7 +117,7 @@ func TestInvitation_ExpiredUsedRevokedAllRejected(t *testing.T) {
 	if err := global.AcceptInvitation(t.Context(), db, usedID, userID); err != nil {
 		t.Fatalf("accept: %v", err)
 	}
-	if err := global.RevokeInvitation(t.Context(), db, revokedID); err != nil {
+	if err := global.RevokeInvitation(t.Context(), db, orgID, revokedID); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
 
@@ -280,7 +280,7 @@ func TestResendInvitation_InvalidatesOldToken(t *testing.T) {
 	oldID, _ := createTestInvitation(t, db, orgID, ownerID, "resend@example.com", "member", 24*time.Hour)
 
 	newRaw := "new-token"
-	newID, err := global.ResendInvitation(t.Context(), db, oldID, sha256HexForTest(newRaw), time.Now().Add(24*time.Hour))
+	newID, err := global.ResendInvitation(t.Context(), db, orgID, oldID, sha256HexForTest(newRaw), time.Now().Add(24*time.Hour))
 	if err != nil {
 		t.Fatalf("resend: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestResendInvitation_InvalidatesOldToken(t *testing.T) {
 	}
 
 	// The old row is revoked, so a resend-of-a-resend must fail cleanly.
-	if _, err := global.ResendInvitation(t.Context(), db, oldID, sha256HexForTest("another"), time.Now().Add(time.Hour)); err == nil {
+	if _, err := global.ResendInvitation(t.Context(), db, orgID, oldID, sha256HexForTest("another"), time.Now().Add(time.Hour)); err == nil {
 		t.Fatal("expected resending an already-revoked invitation to fail")
 	}
 }

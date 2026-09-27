@@ -56,15 +56,8 @@ func SendInvitation(ctx context.Context, deps Deps, p SendInvitationParams) (str
 		return "", ErrCannotInviteOwner
 	}
 
-	if n, err := global.CountRecentInvitationsByOrg(ctx, deps.DB, p.OrgID, time.Now().Add(-inviteRateLimitOrgWindow)); err != nil {
+	if err := checkInviteRate(ctx, deps, p.OrgID, p.Email); err != nil {
 		return "", err
-	} else if n >= inviteRateLimitOrgMax {
-		return "", ErrInviteRateLimited
-	}
-	if n, err := global.CountRecentInvitationsByEmail(ctx, deps.DB, p.Email, time.Now().Add(-inviteRateLimitEmailWindow)); err != nil {
-		return "", err
-	} else if n >= inviteRateLimitEmailMax {
-		return "", ErrInviteRateLimited
 	}
 
 	raw := randToken(32)
@@ -81,15 +74,57 @@ func SendInvitation(ctx context.Context, deps Deps, p SendInvitationParams) (str
 		return "", err
 	}
 
+	return mailInvitation(deps, p.OrgName, p.Email, raw), nil
+}
+
+// checkInviteRate applies task 1.7's sending caps, per organization and
+// per destination address.
+func checkInviteRate(ctx context.Context, deps Deps, orgID uuid.UUID, email string) error {
+	if n, err := global.CountRecentInvitationsByOrg(ctx, deps.DB, orgID, time.Now().Add(-inviteRateLimitOrgWindow)); err != nil {
+		return err
+	} else if n >= inviteRateLimitOrgMax {
+		return ErrInviteRateLimited
+	}
+	if n, err := global.CountRecentInvitationsByEmail(ctx, deps.DB, email, time.Now().Add(-inviteRateLimitEmailWindow)); err != nil {
+		return err
+	} else if n >= inviteRateLimitEmailMax {
+		return ErrInviteRateLimited
+	}
+	return nil
+}
+
+// mailInvitation emails the link for raw when mail is set up, and returns
+// the link either way.
+func mailInvitation(deps Deps, orgName, email, raw string) string {
 	link := deps.Cfg.BaseURL() + "/invite/" + raw
 	if deps.Mailer.Enabled() {
 		_ = deps.Mailer.Send(mailer.Message{
-			To:      mailer.Address{Email: p.Email},
-			Subject: "You're invited to " + p.OrgName + " on Lotus",
-			HTML:    inviteEmailHTML(p.OrgName, link),
+			To:      mailer.Address{Email: email},
+			Subject: "You're invited to " + orgName + " on Lotus",
+			HTML:    inviteEmailHTML(orgName, link),
 		})
 	}
-	return link, nil
+	return link
+}
+
+// ResendInvitation replaces a pending invitation of orgID with a fresh
+// token and expiry (the old link stops working), emails it when mail is
+// set up and returns the invitee's address and the new link. The sending
+// caps apply as for a new invitation. sql.ErrNoRows: not a pending
+// invitation of orgID.
+func ResendInvitation(ctx context.Context, deps Deps, orgID uuid.UUID, orgName string, invitationID uuid.UUID) (email, link string, err error) {
+	inv, err := global.PendingInvitation(ctx, deps.DB, orgID, invitationID)
+	if err != nil {
+		return "", "", err
+	}
+	if err := checkInviteRate(ctx, deps, orgID, inv.Email); err != nil {
+		return "", "", err
+	}
+	raw := randToken(32)
+	if _, err := global.ResendInvitation(ctx, deps.DB, orgID, invitationID, sha256Hex(raw), time.Now().Add(invitationTTL)); err != nil {
+		return "", "", err
+	}
+	return inv.Email, mailInvitation(deps, orgName, inv.Email, raw), nil
 }
 
 func inviteEmailHTML(orgName, link string) string {
