@@ -497,16 +497,32 @@ body {
    backdrop, and cards never sit on cards. */
 .lotus-modal {
   padding: 0;
-  /* A <dialog> is centred by the UA's `margin: auto`, and Tailwind's
-     preflight zeroes margin on every element — so without this the modal
-     sits in the top-left corner. */
-  margin: auto;
+  /* Anchored a fixed distance from the top, centred only horizontally.
+     Tailwind's preflight zeroes margin on every element, so a <dialog>
+     needs a margin set here regardless or it sits in the top-left corner.
+
+     Not `margin: auto`: vertical centring means the modal's height is
+     shared equally between the two edges, so any change in content moves
+     the top edge by half of it. In the New-connection modal the tabs
+     switch between kinds with two and three fields, and every switch slid
+     the heading, the tabs and the name field up or down under the
+     pointer — a real glitch, not a perception one. Anchoring the top
+     leaves the header and tabs perfectly still and lets the body grow
+     downward, which is where the free space is.
+
+     The offset is clamped so it stays out of the way on a short viewport
+     (a laptop in a video call) without dropping the modal to the middle
+     of a tall one. */
+  --modal-top: clamp(16px, 9vh, 88px);
+  margin: var(--modal-top) auto auto;
   border: 1px solid var(--border-plum);
   background: var(--surface-panel);
   color: var(--text-primary);
   box-shadow: var(--shadow-raised);
   width: min(480px, calc(100vw - 32px));
-  max-height: calc(100vh - 64px);
+  /* Leaves the same gap below as above, so a modal tall enough to scroll
+     is not flush against the bottom edge. */
+  max-height: calc(100vh - var(--modal-top) - var(--modal-top));
   overflow: hidden;
 }
 /* Only when open: a closed dialog must keep the UA's display:none, and an

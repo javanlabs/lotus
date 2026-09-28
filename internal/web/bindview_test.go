@@ -117,3 +117,38 @@ func TestConnectionFieldsFor_UsesTheRegisteredCollector(t *testing.T) {
 		t.Errorf("connectionFieldsFor(sentry) = %+v, want an \"org\" field", fields)
 	}
 }
+
+// The New-connection modal's name field hardcoded "e.g. gitlab.com" in the
+// template, so three of the four tabs suggested a GitLab host. Driving it
+// from the kind means a fifth integration cannot reintroduce that by
+// forgetting a template branch.
+func TestConnectionNamePlaceholder_DiffersPerKindAndCoversEveryBindableKind(t *testing.T) {
+	seen := map[string]string{}
+	for _, kind := range bindableKinds {
+		got := connectionNamePlaceholder(kind)
+		if got == "" {
+			t.Errorf("kind %q has no placeholder", kind)
+			continue
+		}
+		if other, dup := seen[got]; dup {
+			t.Errorf("kinds %q and %q share the placeholder %q — switching tabs would look like nothing happened", other, kind, got)
+		}
+		seen[got] = kind
+	}
+}
+
+func TestConnectionNamePlaceholder_UnknownKindStillGetsAnExample(t *testing.T) {
+	if got := connectionNamePlaceholder("something-new"); got == "" {
+		t.Error("an unregistered kind rendered an empty placeholder attribute")
+	}
+}
+
+func TestBuildConnectionForm_CarriesTheSelectedKindsPlaceholder(t *testing.T) {
+	for _, kind := range bindableKinds {
+		view := buildConnectionForm(kind, "", nil, "")
+		if view.NamePlaceholder != connectionNamePlaceholder(kind) {
+			t.Errorf("buildConnectionForm(%q).NamePlaceholder = %q, want %q",
+				kind, view.NamePlaceholder, connectionNamePlaceholder(kind))
+		}
+	}
+}

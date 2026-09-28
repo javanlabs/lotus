@@ -27,6 +27,32 @@ var kindLabels = map[string]string{
 	"gitlab": "GitLab", "sonarqube": "SonarQube", "trivy": "Trivy (Harbor)", "sentry": "Sentry",
 }
 
+// connectionNamePlaceholders are the example connection names shown in the
+// New-connection modal. They live here, beside kindLabels, for the reason
+// AGENTS.md gives for bindableKinds: anything that varies per kind belongs
+// with the kinds, not scattered through templates. The modal's placeholder
+// used to be the literal "e.g. gitlab.com" regardless of the tab, which
+// read as a bug on three of the four tabs.
+//
+// A connection is named after the server it points at, so each example is
+// a plausible host for that integration.
+var connectionNamePlaceholders = map[string]string{
+	"sonarqube": "e.g. sonarqube.internal",
+	"trivy":     "e.g. harbor.internal",
+	"sentry":    "e.g. sentry.io",
+	"gitlab":    "e.g. gitlab.com",
+}
+
+// connectionNamePlaceholder falls back to a generic example rather than an
+// empty attribute, so an integration added without one still renders a
+// sensible field.
+func connectionNamePlaceholder(kind string) string {
+	if p, ok := connectionNamePlaceholders[kind]; ok {
+		return p
+	}
+	return "e.g. example.com"
+}
+
 // providerForKind maps a binding kind to its connection provider — every
 // kind is also its own provider except trivy, whose provider is
 // "harbor_trivy" (see internal/integrations.BindingKindForProvider, whose

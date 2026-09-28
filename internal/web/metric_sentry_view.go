@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -71,7 +72,23 @@ func sentryStatusOptions(counts map[string]int, selected string) []sentryStatusO
 const sentryScoreExplainer = `Score = 100 · e^(−load / 25), where load sums weight(substatus) × log₁₀(1 + events) × 0.5^(days since last seen ÷ 7) over every unresolved issue in this environment. Escalating issues weigh 5×, regressed 4×, new 2×, ongoing 1× — costlier triage states pull the score down harder. Event counts are compressed logarithmically so a handful of chatty issues can't drown out a rare crash, and an issue's contribution halves every 7 days it goes quiet. Grade bands follow the common 90/80/70/60 scale.`
 
 func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome, org *httpx.Org, user *httpx.User, nav *httpx.Nav) error {
-	snaps, err := repo.ListSentrySnapshotsForBinding(c.Context(), s, chrome.Binding.ID)
+	// ?date= reads the history as SonarQube's page does: the state at the
+	// end of that day. Anything unparseable falls back to the latest.
+	selectedDate := strings.TrimSpace(c.Query("date"))
+	var asOf *time.Time
+	if selectedDate != "" {
+		if t, err := time.ParseInLocation("2006-01-02", selectedDate, time.Local); err == nil {
+			cutoff := t.Add(24*time.Hour - time.Nanosecond)
+			asOf = &cutoff
+		} else {
+			selectedDate = ""
+		}
+	}
+	snaps, err := repo.SentrySnapshotsAt(c.Context(), s, chrome.Binding.ID, asOf)
+	if err != nil {
+		return writeRepoErr(c, err)
+	}
+	dates, err := repo.SentrySnapshotDatesForBinding(c.Context(), s, chrome.Binding.ID)
 	if err != nil {
 		return writeRepoErr(c, err)
 	}
@@ -116,7 +133,10 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 		SelectedStatus string
 		Rows           []sentryIssueRow
 		Charts         chartGridData
-	}{Chrome: chrome, Explainer: sentryScoreExplainer, Charts: newChartGridData(cards, "7d", chrome.basePath())}
+		Dates          []string
+		SelectedDate   string
+	}{Chrome: chrome, Explainer: sentryScoreExplainer, Charts: newChartGridData(cards, "7d", chrome.basePath()),
+		Dates: dates, SelectedDate: selectedDate}
 
 	if selectedEnv == "" {
 		c.Type("html")

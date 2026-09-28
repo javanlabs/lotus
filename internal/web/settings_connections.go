@@ -147,7 +147,11 @@ type connectionFormView struct {
 	SelectedKind string
 	Fields       []fieldView
 	Name         string
-	Error        string
+	// NamePlaceholder is the example name for the selected kind. The
+	// template used to hardcode one, so it kept saying "e.g. gitlab.com"
+	// on the SonarQube, Trivy and Sentry tabs.
+	NamePlaceholder string
+	Error           string
 }
 
 func buildConnectionForm(kind, name string, values map[string]string, errMsg string) connectionFormView {
@@ -157,7 +161,7 @@ func buildConnectionForm(kind, name string, values map[string]string, errMsg str
 	return connectionFormView{
 		Kinds: bindableKinds, KindLabels: kindLabels, SelectedKind: kind,
 		Fields: connectionFieldViews(connectionFieldsFor(kind), values),
-		Name:   name, Error: errMsg,
+		Name:   name, NamePlaceholder: connectionNamePlaceholder(kind), Error: errMsg,
 	}
 }
 

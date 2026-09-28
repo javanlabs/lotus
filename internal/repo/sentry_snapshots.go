@@ -106,84 +106,39 @@ type NewSentrySnapshot struct {
 	Issues []NewSentryIssue
 }
 
-// ReplaceSentrySnapshots swaps every environment snapshot for one
-// binding: any environment no longer in snaps is dropped (task 3.5's
-// per-binding environment pruning), and each environment that is present
-// gets either a bumped captured_at (its content_hash matches what's
-// already stored — task 3.6's write dedupe) or a fresh row (cascading a
-// delete of its old one first, if it had one, so its issues never
-// accumulate across collects). Finishes by upserting componentID's
-// dashboard projection row from headline, atomically with everything
-// above — task 3.6's "same transaction as the snapshot write" rule.
+// ReplaceSentrySnapshots records one sync of a Sentry binding: one
+// snapshot per environment (and service tag). Like the other kinds, it
+// keeps history: when an environment's content is unchanged its latest
+// snapshot is only marked as seen again (collected_at), and when it
+// changed a new snapshot is added beside the old one, whose issues stay.
+// Every row a sync writes or touches carries the transaction's now() as
+// collected_at, which is how SentrySnapshotsAt tells the latest sync's
+// environments from ones that have since gone.
 func ReplaceSentrySnapshots(ctx context.Context, s tenant.Scope, componentID, bindingID uuid.UUID, headline collector.Headline, snaps []NewSentrySnapshot) error {
 	return s.Tx(ctx, func(tx *sqlx.Tx) error {
-		keepEnvs := make([]string, 0, len(snaps))
 		for _, snap := range snaps {
-			keepEnvs = append(keepEnvs, snap.Environment)
-		}
-		// sentry_snapshots has no FK from sentry_issues (see migration
-		// 00018's own comment on why not — partitioning), so every delete
-		// below removes the matching sentry_issues rows explicitly first;
-		// nothing here cascades.
-		if len(keepEnvs) == 0 {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM sentry_issues WHERE snapshot_id IN (SELECT id FROM sentry_snapshots WHERE binding_id = $1)`, bindingID); err != nil {
+			var latestID uuid.UUID
+			var latestHash sql.NullString
+			err := tx.QueryRowContext(ctx, `
+				SELECT id, content_hash FROM sentry_snapshots
+				WHERE binding_id = $1 AND environment = $2 AND service_name = $3
+				ORDER BY captured_at DESC LIMIT 1`,
+				bindingID, snap.Environment, snap.ServiceName).Scan(&latestID, &latestHash)
+			if err != nil && !isNoRows(err) {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, `DELETE FROM sentry_snapshots WHERE binding_id = $1`, bindingID); err != nil {
-				return err
-			}
-		} else {
-			iq, iargs, err := sqlx.In(`DELETE FROM sentry_issues WHERE snapshot_id IN (
-				SELECT id FROM sentry_snapshots WHERE binding_id = ? AND environment NOT IN (?))`, bindingID, keepEnvs)
-			if err != nil {
-				return err
-			}
-			if _, err := tx.ExecContext(ctx, tx.Rebind(iq), iargs...); err != nil {
-				return err
-			}
-			q, args, err := sqlx.In(`DELETE FROM sentry_snapshots WHERE binding_id = ? AND environment NOT IN (?)`, bindingID, keepEnvs)
-			if err != nil {
-				return err
-			}
-			if _, err := tx.ExecContext(ctx, tx.Rebind(q), args...); err != nil {
-				return err
-			}
-		}
-
-		for _, snap := range snaps {
-			var existingID uuid.UUID
-			var existingHash sql.NullString
-			lookupErr := tx.QueryRowContext(ctx, `
-				SELECT id, content_hash FROM sentry_snapshots WHERE binding_id = $1 AND environment = $2 AND service_name = $3`,
-				bindingID, snap.Environment, snap.ServiceName).Scan(&existingID, &existingHash)
-			switch {
-			case lookupErr != nil && !isNoRows(lookupErr):
-				return lookupErr
-			case lookupErr == nil && snap.ContentHash != "" && existingHash.Valid && existingHash.String == snap.ContentHash:
-				// Bump collected_at only — never captured_at, which is
-				// the partition key; see snapshot_write.go's
-				// dedupeOrTouch for the same rule applied to the other
-				// three kinds.
-				if _, err := tx.ExecContext(ctx, `UPDATE sentry_snapshots SET collected_at = now() WHERE id = $1`, existingID); err != nil {
+			if err == nil && snap.ContentHash != "" && latestHash.Valid && latestHash.String == snap.ContentHash {
+				// Unchanged: bump collected_at only — never captured_at,
+				// the partition key (snapshot_write.go's dedupeOrTouch
+				// applies the same rule to the other three kinds).
+				if _, err := tx.ExecContext(ctx, `UPDATE sentry_snapshots SET collected_at = now() WHERE id = $1`, latestID); err != nil {
 					return err
 				}
 				continue
-			case lookupErr == nil:
-				// A row exists for this (binding, environment, service)
-				// but its content changed — replace it. No FK/CASCADE
-				// here (see migration 00018's comment), so its old issues
-				// are deleted explicitly first.
-				if _, err := tx.ExecContext(ctx, `DELETE FROM sentry_issues WHERE snapshot_id = $1`, existingID); err != nil {
-					return err
-				}
-				if _, err := tx.ExecContext(ctx, `DELETE FROM sentry_snapshots WHERE id = $1`, existingID); err != nil {
-					return err
-				}
 			}
-
 			var snapID uuid.UUID
 			var capturedAt time.Time
-			err := tx.QueryRowContext(ctx, `
+			err = tx.QueryRowContext(ctx, `
 				INSERT INTO sentry_snapshots (
 					org_id, binding_id, component_id, content_hash, environment, service_name,
 					sentry_project_id, project_slug, project_name, platform, sentry_org,
@@ -214,7 +169,6 @@ func ReplaceSentrySnapshots(ctx context.Context, s tenant.Scope, componentID, bi
 				}
 			}
 		}
-
 		projectID, err := componentProjectID(ctx, tx, componentID)
 		if err != nil {
 			return err
@@ -223,32 +177,69 @@ func ReplaceSentrySnapshots(ctx context.Context, s tenant.Scope, componentID, bi
 	})
 }
 
-// ListSentrySnapshotsForBinding returns every environment currently
-// stored for one binding.
-func ListSentrySnapshotsForBinding(ctx context.Context, s tenant.Scope, bindingID uuid.UUID) ([]SentrySnapshot, error) {
+const sentrySnapshotCols = `id, org_id, binding_id, component_id, captured_at, content_hash, collected_at, environment, service_name,
+	sentry_project_id, project_slug, project_name, platform, sentry_org,
+	team_id, team_slug, status_filter, generated_at, total_issues, score, grade, load`
+
+// SentrySnapshotsAt is a binding's Sentry state, one snapshot per
+// environment. With asOf nil it is the latest sync: exactly the
+// environments that sync reported. With asOf set it is what was current
+// then — per environment the latest snapshot captured by asOf, among the
+// environments still being reported in the day before it.
+func SentrySnapshotsAt(ctx context.Context, s tenant.Scope, bindingID uuid.UUID, asOf *time.Time) ([]SentrySnapshot, error) {
 	var out []SentrySnapshot
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		if asOf == nil {
+			return tx.SelectContext(ctx, &out, `
+				SELECT `+sentrySnapshotCols+` FROM sentry_snapshots
+				WHERE binding_id = $1
+				  AND collected_at = (SELECT max(collected_at) FROM sentry_snapshots WHERE binding_id = $1)
+				ORDER BY environment, service_name`, bindingID)
+		}
 		return tx.SelectContext(ctx, &out, `
-			SELECT id, org_id, binding_id, component_id, captured_at, content_hash, collected_at, environment, service_name,
-			       sentry_project_id, project_slug, project_name, platform, sentry_org,
-			       team_id, team_slug, status_filter, generated_at, total_issues, score, grade, load
-			FROM sentry_snapshots WHERE binding_id = $1 ORDER BY environment`, bindingID)
+			SELECT * FROM (
+				SELECT DISTINCT ON (environment, service_name) `+sentrySnapshotCols+` FROM sentry_snapshots
+				WHERE binding_id = $1 AND captured_at <= $2
+				ORDER BY environment, service_name, captured_at DESC
+			) latest
+			WHERE collected_at > $2::timestamptz - interval '1 day'
+			ORDER BY environment, service_name`, bindingID, *asOf)
 	})
 	return out, err
 }
 
-// ListSentrySnapshotsForComponent returns every environment of every
-// Sentry binding on a component — a component with two Sentry bindings
-// (e.g. a fanned-out backend split into two Sentry projects mid-migration)
-// shows every one of them, not just one.
+// SentrySnapshotDatesForBinding is every calendar date (most recent
+// first) a Sentry snapshot of this binding was captured on — the date
+// picker's options, as for SonarQube.
+func SentrySnapshotDatesForBinding(ctx context.Context, s tenant.Scope, bindingID uuid.UUID) ([]string, error) {
+	var out []string
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &out, `
+			SELECT DISTINCT to_char(captured_at, 'YYYY-MM-DD') FROM sentry_snapshots
+			WHERE binding_id = $1 ORDER BY 1 DESC`, bindingID)
+	})
+	return out, err
+}
+
+// ListSentrySnapshotsForBinding is the binding's latest sync, one
+// snapshot per environment.
+func ListSentrySnapshotsForBinding(ctx context.Context, s tenant.Scope, bindingID uuid.UUID) ([]SentrySnapshot, error) {
+	return SentrySnapshotsAt(ctx, s, bindingID, nil)
+}
+
+// ListSentrySnapshotsForComponent is the latest sync of every Sentry
+// binding on a component — a component with two Sentry bindings (e.g. a
+// fanned-out backend split into two Sentry projects mid-migration) shows
+// every one of them, not just one.
 func ListSentrySnapshotsForComponent(ctx context.Context, s tenant.Scope, componentID uuid.UUID) ([]SentrySnapshot, error) {
 	var out []SentrySnapshot
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.SelectContext(ctx, &out, `
-			SELECT id, org_id, binding_id, component_id, captured_at, content_hash, collected_at, environment, service_name,
-			       sentry_project_id, project_slug, project_name, platform, sentry_org,
-			       team_id, team_slug, status_filter, generated_at, total_issues, score, grade, load
-			FROM sentry_snapshots WHERE component_id = $1 ORDER BY binding_id, environment`, componentID)
+			SELECT `+sentrySnapshotCols+` FROM sentry_snapshots
+			WHERE component_id = $1
+			  AND (binding_id, collected_at) IN (
+				SELECT binding_id, max(collected_at) FROM sentry_snapshots WHERE component_id = $1 GROUP BY binding_id)
+			ORDER BY binding_id, environment`, componentID)
 	})
 	return out, err
 }

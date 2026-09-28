@@ -29,8 +29,16 @@
       <div style="display:flex;gap:2px;background:var(--surface-sunken);border:1px solid var(--plum-a09);border-radius:var(--radius-group);padding:3px;width:fit-content">
         {{$current := .SelectedKind}}
         {{range .Kinds}}
+        {{/* hx-include carries the name the user has already typed, which
+             the fragment handler has always accepted but nothing ever
+             sent — so switching tabs silently emptied the field.
+
+             Only the name input, never `closest form`: this is a GET, so
+             everything included lands in the query string, and the form's
+             other fields are the credential. */}}
         <button type="button" hx-get="/settings/connections/form?kind={{.}}"
                 hx-target="#connection-form" hx-swap="outerHTML"
+                hx-include="#connection-name"
                 {{if eq . $current}}aria-current="true"{{end}}
                 style="border:none;cursor:pointer;padding:var(--pad-button-sm);border-radius:var(--radius-segment);white-space:nowrap;font-size:12px;{{if eq . $current}}font-weight:600;color:var(--text-brand);background:linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%);box-shadow:var(--shadow-segment-thumb){{else}}font-weight:500;color:var(--text-muted);background:none{{end}}">{{index $.KindLabels .}}</button>
         {{end}}
@@ -40,7 +48,7 @@
 
       <label style="display:flex;flex-direction:column;gap:6px">
         <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">CONNECTION NAME</span>
-        <input type="text" name="name" required placeholder="e.g. gitlab.com" value="{{.Name}}" class="lotus-input">
+        <input type="text" id="connection-name" name="name" required placeholder="{{.NamePlaceholder}}" value="{{.Name}}" class="lotus-input">
       </label>
 
       {{range .Fields}}{{template "field_input" .}}{{end}}

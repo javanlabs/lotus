@@ -2,15 +2,30 @@
 {{template "shell_open" .}}
 {{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" "Sentry")}}
 
+{{if .Data.Dates}}
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+  {{if .Data.SelectedDate}}
+  <span style="font-size:11px;padding:4px 9px;border-radius:5px 2px 5px 2px;background:#E6F2F4;color:#23808F">Snapshot as of {{.Data.SelectedDate}} · not the latest</span>
+  {{end}}
+  <form method="get" style="margin-left:auto">
+    {{if .Data.SelectedEnv}}<input type="hidden" name="env" value="{{.Data.SelectedEnv}}">{{end}}
+    {{template "lotus_select" (dict
+      "Name" "date" "Value" .Data.SelectedDate "Size" "sm" "AutoSubmit" true "Label" "Snapshot date"
+      "Options" (selectOptions (dict "Value" "" "Label" "Latest") .Data.Dates))}}
+  </form>
+</div>
+{{end}}
+
 {{if not .Data.HasData}}
 {{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
-  No Sentry data collected for this binding yet.
+  {{if .Data.SelectedDate}}No Sentry snapshot for this binding on {{.Data.SelectedDate}}.{{else}}No Sentry data collected for this binding yet.{{end}}
 {{template "lotus_card_section_close" .}}
 {{else}}
 
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px">
   {{if gt (len .Data.Environments) 1}}
   <form method="get">
+    {{if .Data.SelectedDate}}<input type="hidden" name="date" value="{{.Data.SelectedDate}}">{{end}}
     {{template "lotus_select" (dict
       "Name" "env" "Value" .Data.SelectedEnv "Size" "sm" "AutoSubmit" true "Label" "Environment"
       "Options" (selectOptions .Data.Environments))}}
