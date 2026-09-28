@@ -10,6 +10,9 @@ export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
+  // A shared CI runner is several times slower than a laptop; the longest
+  // specs (folders, uploads) ran out of the 30s default there.
+  timeout: process.env.CI ? 60_000 : 30_000,
   reporter: process.env.CI ? 'dot' : 'list',
   use: {
     baseURL,

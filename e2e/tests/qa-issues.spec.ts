@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { retireOrg, seedOwnerSession } from './helpers/db';
+import { sizedFile } from './helpers/files';
 import { seedPlan } from './helpers/qa';
 
 const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
@@ -57,15 +58,15 @@ test('an issue report with files over the limits is stopped in the browser, keep
   try {
     await page.goto(`${origin}/projects/${projectId}/qa/issues/new`);
     await page.locator('input[name="title"]').fill('Upload freezes the page');
-    await page.getByLabel('Attach files').setInputFiles({ name: 'screen.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(26 << 20) });
+    await page.getByLabel('Attach files').setInputFiles(sizedFile('screen.mp4', 26 << 20));
     await page.getByRole('button', { name: 'Report issue' }).click();
     await expect(page.getByText('screen.mp4 is over 20 MB. Each file can be at most 20 MB.')).toBeVisible();
     await expect(page.locator('input[name="title"]')).toHaveValue('Upload freezes the page');
 
     // Each under 20 MB, together over what one request can carry.
     await page.getByLabel('Attach files').setInputFiles([
-      { name: 'a.png', mimeType: 'image/png', buffer: Buffer.alloc(15 << 20) },
-      { name: 'b.png', mimeType: 'image/png', buffer: Buffer.alloc(15 << 20) },
+      sizedFile('a.png', 15 << 20),
+      sizedFile('b.png', 15 << 20),
     ]);
     await page.getByRole('button', { name: 'Report issue' }).click();
     await expect(page.getByText('The files add up to more than 24 MB. Attach fewer, or send them in a comment afterwards.')).toBeVisible();

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { retireOrg, seedOwnerSession, withDB } from './helpers/db';
+import { sizedFile } from './helpers/files';
 
 const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
 const BASE_DOMAIN = process.env.LOTUS_BASE_DOMAIN ?? 'lotus.localhost';
@@ -86,7 +87,7 @@ test('a file over the limit is refused in the browser with a message, and nothin
     const panel = row.locator('[id^="panel-"]');
     await panel.getByLabel('Pass').check();
     // 26 MB: past the server's 25 MB request limit, so only the browser can say why.
-    await panel.getByLabel('Attach files').setInputFiles({ name: 'screen.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(26 << 20) });
+    await panel.getByLabel('Attach files').setInputFiles(sizedFile('screen.mp4', 26 << 20));
     await panel.getByRole('button', { name: 'Record result' }).click();
     await expect(panel.getByText('screen.mp4 is over 20 MB. Each file can be at most 20 MB.')).toBeVisible();
     await expect(row.locator('[id^="item-status-"]')).toHaveText('untested');
