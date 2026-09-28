@@ -72,7 +72,7 @@ func main() {
 	case "import-qa":
 		runImportQA(cfg, os.Args[2:])
 	case "import-legacy":
-		log.Fatal("import-legacy is not implemented yet (task 5.1)")
+		runImportLegacy(cfg, os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -80,7 +80,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: lotus <serve|migrate up|migrate down|init --org-name=<name> --owner-email=<email> [--slug=<slug>]|seed-dev|seed-connections|seed-services --file=<services.yaml> [--only=<products>] [--org=<slug>]|seed-trivy --file=<export.json>|rewrap-keys --old-kek=<base64>|import-legacy|import-qa [verify] --legacy-dsn=<dsn> --org=<subdomain> [...]>")
+	fmt.Fprintln(os.Stderr, "usage: lotus <serve|migrate up|migrate down|init --org-name=<name> --owner-email=<email> [--slug=<slug>]|seed-dev|seed-connections|seed-services --file=<services.yaml> [--only=<products>] [--org=<slug>]|seed-trivy --file=<export.json>|rewrap-keys --old-kek=<base64>|import-legacy --file=<export.jsonl> [--org=<subdomain>] [--dry-run]|import-qa [verify] --legacy-dsn=<dsn> --org=<subdomain> [...]>")
 }
 
 // runRewrapKeys is task 2.2's KEK rotation command: unwraps every

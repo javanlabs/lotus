@@ -125,6 +125,14 @@ func buildResult(h *glclient.Health) (collector.Result, error) {
 // internal/collector.PersistFunc's own doc comment for why this is
 // registered rather than called directly by the scheduler.
 //
+// BuildImportedResult turns a repository health read from elsewhere — the
+// legacy Lotus's gitlab_snapshots rows (`lotus import-legacy`) — into the
+// same Result a live collect produces, so an import goes through Persist
+// and the facts writer exactly like collected data.
+func BuildImportedResult(h *glclient.Health) (collector.Result, error) {
+	return buildResult(h)
+}
+
 // Fields belonging to a sub-call that failed (recorded in h.Warnings) are
 // written as SQL NULL, not as Go's int/string zero value — the same
 // "omit, don't zero" rule buildResult applies to Facts applies here too;

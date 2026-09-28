@@ -142,6 +142,14 @@ func buildResult(m *sonar.Measures) (collector.Result, error) {
 	}, nil
 }
 
+// BuildImportedResult turns measures read from elsewhere — the legacy
+// Lotus's sonar_snapshots rows (`lotus import-legacy`) — into the same
+// Result a live collect produces, so an import goes through Persist and
+// the facts writer exactly like collected data.
+func BuildImportedResult(m *sonar.Measures) (collector.Result, error) {
+	return buildResult(m)
+}
+
 // Persist writes a Collect's Detail into sonar_snapshots.
 func Persist(ctx context.Context, s tenant.Scope, componentID, bindingID uuid.UUID, r collector.Result) error {
 	var m sonar.Measures
