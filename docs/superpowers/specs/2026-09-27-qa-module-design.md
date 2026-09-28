@@ -109,7 +109,7 @@ DELETE SET NULL` (control plane, no org).
 | `qa_attachments` | result_id NULL, issue_id NULL, event_id NULL, file_name, content_type, size_bytes, storage_key, created_by NULL, created_at | `CHECK (num_nonnulls(result_id, issue_id, event_id) = 1)`. |
 | `qa_signoffs` | plan_id, scenario_id NULL, decision, note, signed_by, signed_at | decision ∈ `accepted, accepted_with_notes, rejected`. |
 | `qa_share_links` | plan_id, token_hash (unique), expires_at, revoked_at, created_by, created_at | Read-only plan report. |
-| `qa_legacy_ids` | legacy_table, legacy_id uuid, new_id uuid, imported_at | `PRIMARY KEY (org_id, legacy_table, legacy_id)`. Import idempotency and legacy-URL redirects; droppable after decommission. |
+| `qa_legacy_ids` | legacy_table, legacy_id uuid, new_id uuid, imported_at | `PRIMARY KEY (org_id, legacy_table, legacy_id)`. Import idempotency (and tracing a row back to its legacy id); droppable after decommission. No legacy-URL redirects (decided 2026-09-28). |
 
 Per-project key allocation (`qa_cases.key`, `qa_issues.key`) takes
 `pg_advisory_xact_lock(hashtext('qa_key:' || project_id))` and uses
@@ -261,8 +261,8 @@ Rules:
 2. Build the UI phases; run QA Tools and Lotus QA side by side on the
    rehearsal data.
 3. Cut-over day: set QA Tools read-only, final import, verify, switch
-   ceo-monitor to the Lotus QA summary endpoint, redirect `qa.javan.id`
-   share URLs through `qa_legacy_ids`.
+   ceo-monitor to the Lotus QA summary endpoint. Old `qa.javan.id` URLs
+   are not redirected (decided 2026-09-28).
 4. Keep the legacy database read-only for 90 days, then drop
    `qa_legacy_ids` and decommission.
 

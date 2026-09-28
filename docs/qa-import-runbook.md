@@ -113,8 +113,8 @@ The report of the rehearsal import is kept as evidence in
 6. Spot-check 3 projects in the UI: a large regression project, a project
    with client UAT, and one with attachments.
 7. Switch ceo-monitor to the Lotus summary endpoint (Phase 8).
-8. Enable the legacy URL redirects (Phase 8).
-9. Announce.
+8. Announce. Old `qa.javan.id` links are not redirected (decided
+   2026-09-28): they stop working when QA Tools is decommissioned.
 
 If the import stops with an error, fix the cause and run the same command
 again. Finished projects are skipped.
@@ -136,5 +136,4 @@ Before the announcement, and only if the import is unusable:
 ## 5. After
 
 - Keep the legacy database read-only for 90 days.
-- Then drop `qa_legacy_ids` (a migration, together with the Phase 8 legacy
-  redirects) and decommission QA Tools.
+- Then drop `qa_legacy_ids` (a migration) and decommission QA Tools.
