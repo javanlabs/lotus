@@ -191,6 +191,7 @@ func New(d Deps) *fiber.App {
 
 	registerIngestRoutes(app, d, authDeps)
 	registerQAAPIRoutes(app, authDeps)
+	registerQAMCPRoutes(app, authDeps)
 
 	return app
 }

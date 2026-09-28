@@ -133,6 +133,12 @@ func renderTokensPage(c *fiber.Ctx, d Deps, plain, label, errMsg string, status 
 			serviceRows = append(serviceRows, buildTokenRow(t))
 		}
 	}
+	// Where the QA API and its MCP endpoint answer: this organization's
+	// own origin.
+	qaOrigin := ""
+	if o, ok := tenant.OrgFromContext(c); ok {
+		qaOrigin = d.Cfg.TenantURL(o.Subdomain)
+	}
 	nav := buildNav("", len(projects))
 	nav.Trail = []httpx.NavCrumb{{Label: "Settings"}}
 	c.Type("html")
@@ -147,8 +153,9 @@ func renderTokensPage(c *fiber.Ctx, d Deps, plain, label, errMsg string, status 
 			NewTokenPlain string
 			NewTokenLabel string
 			Error         string
+			QAOrigin      string
 		}{SettingsNav: buildSettingsNav("tokens"), PATs: patRows, ServiceTokens: serviceRows, CanManageOrg: canManageOrg,
-			NewTokenPlain: plain, NewTokenLabel: label, Error: errMsg},
+			NewTokenPlain: plain, NewTokenLabel: label, Error: errMsg, QAOrigin: qaOrigin},
 	})
 }
 

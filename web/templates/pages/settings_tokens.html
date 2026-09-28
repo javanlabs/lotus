@@ -42,6 +42,17 @@
   </div>
 {{template "lotus_card_section_close" .}}
 
+{{template "lotus_card_section_open" (dict "Padding" "12px 14px" "Style" "margin-bottom:16px;display:flex;flex-direction:column;gap:8px")}}
+  <div style="font-size:13px;font-weight:600;color:#43284E">QA API and AI assistants (MCP)</div>
+  <p style="margin:0;font-size:12px;color:#6B7280">A token reaches QA with what both its scopes and your role allow. Send it as <code>Authorization: Bearer &lt;token&gt;</code>; the browser session does not work here.</p>
+  <div style="display:grid;grid-template-columns:90px minmax(0,1fr);gap:6px 10px;font-size:12px;align-items:baseline">
+    <span style="color:#6B7280">JSON API</span><code style="font:400 12px 'IBM Plex Mono',monospace;word-break:break-all;user-select:all">{{.Data.QAOrigin}}/api/qa/projects</code>
+    <span style="color:#6B7280">MCP server</span><code style="font:400 12px 'IBM Plex Mono',monospace;word-break:break-all;user-select:all">{{.Data.QAOrigin}}/mcp/qa</code>
+  </div>
+  <pre style="margin:0;padding:9px 11px;background:#F9FAFB;border-radius:6px;font:400 11.5px 'IBM Plex Mono',monospace;color:#374151;overflow-x:auto">{"mcpServers": {"lotus-qa": {"type": "http", "url": "{{.Data.QAOrigin}}/mcp/qa",
+  "headers": {"Authorization": "Bearer &lt;token&gt;"}}}}</pre>
+{{template "lotus_card_section_close" .}}
+
 {{if .Data.CanManageOrg}}
 {{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
   <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
