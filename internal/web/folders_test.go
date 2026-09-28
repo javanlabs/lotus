@@ -87,7 +87,7 @@ func TestFolders_ViewerCannotCreate_MemberCannotDelete(t *testing.T) {
 		t.Fatalf("membership: %v", err)
 	}
 	memberRaw := seedSession(t, db, orgID, memberID)
-	app.Test(folderFormReq(host, "/folders", memberRaw, url.Values{"name": {"Old"}}, false))
+	app.Test(folderFormReq(host, "/folders", memberRaw, url.Values{"name": {"Old"}}, false), -1)
 	id := folderIDNamed(t, db, orgID, "Old")
 
 	resp, _ = app.Test(folderFormReq(host, "/folders/"+id.String()+"/delete", memberRaw, nil, false))
@@ -105,9 +105,15 @@ func TestFolders_ViewerRefusedOnEveryWrite(t *testing.T) {
 	ownerRaw := seedSession(t, db, orgID, ownerID)
 	host := "acme-viewer-w." + dashboardTestDomain
 
-	app.Test(folderFormReq(host, "/folders", ownerRaw, url.Values{"name": {"Product"}}, false))
+	// No timeout: app.Test's default second can run out under a loaded full
+	// run, and the folder must exist before it is looked up.
+	for _, name := range []string{"Product", "Other"} {
+		resp, err := app.Test(folderFormReq(host, "/folders", ownerRaw, url.Values{"name": {name}}, false), -1)
+		if err != nil || resp.StatusCode >= 400 {
+			t.Fatalf("create folder %q: %v %v", name, err, resp)
+		}
+	}
 	product := folderIDNamed(t, db, orgID, "Product")
-	app.Test(folderFormReq(host, "/folders", ownerRaw, url.Values{"name": {"Other"}}, false))
 	other := folderIDNamed(t, db, orgID, "Other")
 	var projectID uuid.UUID
 	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
@@ -149,9 +155,9 @@ func TestFolders_RejectionsComeBackIntoTheDialogForHtmx(t *testing.T) {
 	orgID, userID := seedMember(t, db, "acme-rej", "owner")
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme-rej." + dashboardTestDomain
-	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"Product"}}, false))
+	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"Product"}}, false), -1)
 	product := folderIDNamed(t, db, orgID, "Product")
-	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"Inner"}, "parent_id": {product.String()}}, false))
+	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"Inner"}, "parent_id": {product.String()}}, false), -1)
 	inner := folderIDNamed(t, db, orgID, "Inner")
 
 	cases := []struct {
