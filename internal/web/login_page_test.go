@@ -58,7 +58,7 @@ func TestLoginPage_SSOOnlyWithTheLotusBrand(t *testing.T) {
 	if strings.Contains(page, `action="/login/email"`) {
 		t.Errorf("the email login form is shown next to SSO")
 	}
-	for _, want := range []string{`href="/login/sso?return=`, "Continue with SSO", "every metric, surfaced", "Javan Cipta Solusi", `<svg viewBox="18 44 164 106"`} {
+	for _, want := range []string{`href="/login/sso?return=`, "Continue with SSO", "software metrics, surfaced", "Test cases", "Javan Cipta Solusi", `<svg viewBox="18 44 164 106"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("login page lacks %q", want)
 		}
