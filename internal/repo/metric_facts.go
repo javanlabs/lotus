@@ -24,6 +24,9 @@ import (
 func InsertMetricFacts(ctx context.Context, s tenant.Scope, componentID, bindingID uuid.UUID, kind string, r collector.Result) error {
 	facts := flattenFacts(r)
 	now := time.Now()
+	if at, ok := observedAt(ctx); ok {
+		now = at
+	}
 
 	return s.Tx(ctx, func(tx *sqlx.Tx) error {
 		if err := seedDeclaredMetricKeys(ctx, tx, s.OrgID(), kind); err != nil {
@@ -101,7 +104,8 @@ func upsertObservedMetricKey(ctx context.Context, tx *sqlx.Tx, orgID uuid.UUID, 
 		INSERT INTO metric_keys (org_id, kind, key, unit, declared, first_seen_at, last_seen_at, active)
 		VALUES ($1, $2, $3, $4, false, $5, $5, true)
 		ON CONFLICT (org_id, kind, key) DO UPDATE SET
-			last_seen_at = $5, active = true,
+			first_seen_at = LEAST(metric_keys.first_seen_at, $5),
+			last_seen_at = GREATEST(metric_keys.last_seen_at, $5), active = true,
 			unit = CASE WHEN metric_keys.unit = '' THEN EXCLUDED.unit ELSE metric_keys.unit END`,
 		orgID, kind, key, unit, now)
 	return err

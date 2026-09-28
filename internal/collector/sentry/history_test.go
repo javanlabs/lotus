@@ -107,3 +107,37 @@ func TestSentryHistory_LatestAndAsOf(t *testing.T) {
 		t.Errorf("dates = %v, %v; want today", dates, err)
 	}
 }
+
+// An import (WithObservedAt) records Sentry snapshots at their own time,
+// never touches a later live snapshot, and leaves the latest view to the
+// live sync.
+func TestSentryHistory_ImportAtObservedTime(t *testing.T) {
+	db := dbtest.Open(t)
+	orgID, componentID, bindingID := seedSentryFixture(t, db, "acme-sentry-import")
+	s := tenant.FromRun(db, orgID)
+	ctx := context.Background()
+
+	if err := repo.ReplaceSentrySnapshots(ctx, s, componentID, bindingID, collector.Headline{},
+		[]repo.NewSentrySnapshot{sentrySnap(componentID, "production", "live", 3)}); err != nil {
+		t.Fatal(err)
+	}
+	earlier := time.Now().Add(-3 * time.Hour).Truncate(time.Second)
+	if err := repo.ReplaceSentrySnapshots(repo.WithObservedAt(ctx, earlier), s, componentID, bindingID, collector.Headline{},
+		[]repo.NewSentrySnapshot{sentrySnap(componentID, "production", "live", 3, "x")}); err != nil {
+		t.Fatal(err)
+	}
+
+	latest, _ := repo.SentrySnapshotsAt(ctx, s, bindingID, nil)
+	if len(latest) != 1 || latest[0].CapturedAt.Equal(earlier) {
+		t.Fatalf("latest = %+v; want the live snapshot", latest)
+	}
+	then := earlier.Add(time.Minute)
+	old, _ := repo.SentrySnapshotsAt(ctx, s, bindingID, &then)
+	if len(old) != 1 || !old[0].CapturedAt.Equal(earlier) || !old[0].CollectedAt.Equal(earlier) {
+		t.Fatalf("as of the import = %+v; want the imported snapshot at %v", old, earlier)
+	}
+	issues, _ := repo.ListSentryIssuesForSnapshot(ctx, s, old[0].ID)
+	if len(issues) != 1 || !issues[0].SnapshotCapturedAt.Equal(earlier) {
+		t.Errorf("imported issues = %+v", issues)
+	}
+}

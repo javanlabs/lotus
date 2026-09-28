@@ -115,6 +115,14 @@ type NewSentrySnapshot struct {
 // collected_at, which is how SentrySnapshotsAt tells the latest sync's
 // environments from ones that have since gone.
 func ReplaceSentrySnapshots(ctx context.Context, s tenant.Scope, componentID, bindingID uuid.UUID, headline collector.Headline, snaps []NewSentrySnapshot) error {
+	// A historical write (WithObservedAt) happens at `at`: its predecessor
+	// is the latest snapshot captured by then — never a later live one —
+	// and it leaves the dashboard's current state alone.
+	at, historical := observedAt(ctx)
+	var atArg *time.Time
+	if historical {
+		atArg = &at
+	}
 	return s.Tx(ctx, func(tx *sqlx.Tx) error {
 		for _, snap := range snaps {
 			var latestID uuid.UUID
@@ -122,8 +130,9 @@ func ReplaceSentrySnapshots(ctx context.Context, s tenant.Scope, componentID, bi
 			err := tx.QueryRowContext(ctx, `
 				SELECT id, content_hash FROM sentry_snapshots
 				WHERE binding_id = $1 AND environment = $2 AND service_name = $3
+				  AND ($4::timestamptz IS NULL OR captured_at <= $4)
 				ORDER BY captured_at DESC LIMIT 1`,
-				bindingID, snap.Environment, snap.ServiceName).Scan(&latestID, &latestHash)
+				bindingID, snap.Environment, snap.ServiceName, atArg).Scan(&latestID, &latestHash)
 			if err != nil && !isNoRows(err) {
 				return err
 			}
@@ -131,7 +140,9 @@ func ReplaceSentrySnapshots(ctx context.Context, s tenant.Scope, componentID, bi
 				// Unchanged: bump collected_at only — never captured_at,
 				// the partition key (snapshot_write.go's dedupeOrTouch
 				// applies the same rule to the other three kinds).
-				if _, err := tx.ExecContext(ctx, `UPDATE sentry_snapshots SET collected_at = now() WHERE id = $1`, latestID); err != nil {
+				if _, err := tx.ExecContext(ctx, `
+					UPDATE sentry_snapshots SET collected_at = CASE WHEN $2::timestamptz IS NULL THEN now() ELSE GREATEST(collected_at, $2) END
+					WHERE id = $1`, latestID, atArg); err != nil {
 					return err
 				}
 				continue
@@ -143,17 +154,17 @@ func ReplaceSentrySnapshots(ctx context.Context, s tenant.Scope, componentID, bi
 					org_id, binding_id, component_id, content_hash, environment, service_name,
 					sentry_project_id, project_slug, project_name, platform, sentry_org,
 					team_id, team_slug, status_filter, generated_at, total_issues,
-					score, grade, load
+					score, grade, load, captured_at, collected_at
 				) VALUES (
 					$1, $2, $3, $4, $5, $6,
 					$7, $8, $9, $10, $11,
 					$12, $13, $14, $15, $16,
-					$17, $18, $19
+					$17, $18, $19, COALESCE($20::timestamptz, now()), COALESCE($20::timestamptz, now())
 				) RETURNING id, captured_at`,
 				s.OrgID(), bindingID, snap.ComponentID, snap.ContentHash, snap.Environment, snap.ServiceName,
 				snap.SentryProjectID, snap.ProjectSlug, snap.ProjectName, snap.Platform, snap.SentryOrg,
 				snap.TeamID, snap.TeamSlug, snap.StatusFilter, snap.GeneratedAt, snap.TotalIssues,
-				snap.Score, snap.Grade, snap.Load).Scan(&snapID, &capturedAt)
+				snap.Score, snap.Grade, snap.Load, atArg).Scan(&snapID, &capturedAt)
 			if err != nil {
 				return err
 			}
@@ -168,6 +179,9 @@ func ReplaceSentrySnapshots(ctx context.Context, s tenant.Scope, componentID, bi
 					return err
 				}
 			}
+		}
+		if historical {
+			return nil // the dashboard's current state is live collection's
 		}
 		projectID, err := componentProjectID(ctx, tx, componentID)
 		if err != nil {

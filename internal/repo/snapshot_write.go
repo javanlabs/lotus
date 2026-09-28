@@ -40,6 +40,17 @@ func snapshotWrite(
 				return derr
 			}
 			inserted = true
+			if at, ok := observedAt(ctx); ok {
+				// A historical write (WithObservedAt): the row was
+				// observed at `at`, not now. captured_at is the partition
+				// key, so Postgres moves the row to at's month.
+				if _, derr = tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET captured_at = $2, collected_at = $2 WHERE id = $1`, table), id, at); derr != nil {
+					return derr
+				}
+			}
+		}
+		if _, historical := observedAt(ctx); historical {
+			return nil // the dashboard's current state is live collection's
 		}
 		projectID, derr := componentProjectID(ctx, tx, componentID)
 		if derr != nil {
@@ -72,7 +83,15 @@ func dedupeOrTouch(ctx context.Context, tx *sqlx.Tx, table string, bindingID uui
 	var latestID uuid.UUID
 	var latestHash sql.NullString
 	q := fmt.Sprintf(`SELECT id, content_hash FROM %s WHERE binding_id = $1 ORDER BY collected_at DESC LIMIT 1`, table)
-	err = tx.QueryRowContext(ctx, q, bindingID).Scan(&latestID, &latestHash)
+	args := []any{bindingID}
+	at, historical := observedAt(ctx)
+	if historical {
+		// Only the history up to `at` is this observation's predecessor;
+		// a later (live) row must never be touched with an old time.
+		q = fmt.Sprintf(`SELECT id, content_hash FROM %s WHERE binding_id = $1 AND captured_at <= $2 ORDER BY captured_at DESC LIMIT 1`, table)
+		args = append(args, at)
+	}
+	err = tx.QueryRowContext(ctx, q, args...).Scan(&latestID, &latestHash)
 	if err != nil {
 		if isNoRows(err) {
 			return uuid.Nil, false, nil
@@ -83,7 +102,12 @@ func dedupeOrTouch(ctx context.Context, tx *sqlx.Tx, table string, bindingID uui
 		return uuid.Nil, false, nil
 	}
 	touchQ := fmt.Sprintf(`UPDATE %s SET collected_at = now() WHERE id = $1`, table)
-	if _, err := tx.ExecContext(ctx, touchQ, latestID); err != nil {
+	touchArgs := []any{latestID}
+	if historical {
+		touchQ = fmt.Sprintf(`UPDATE %s SET collected_at = GREATEST(collected_at, $2) WHERE id = $1`, table)
+		touchArgs = append(touchArgs, at)
+	}
+	if _, err := tx.ExecContext(ctx, touchQ, touchArgs...); err != nil {
 		return uuid.Nil, false, err
 	}
 	return latestID, true, nil
