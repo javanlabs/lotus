@@ -153,13 +153,16 @@
      Rows can be dragged by whoever may move them, and folder rows accept
      drops (lotusTree's dragStart/dragOver/drop). "List" says which filter
      shows the row: "all" for the level's contents, "fail" for the Failing
-     list. Takes (dict "R" <dashboardRow> "VM" <view model> "List" …). */}}
+     list. The page opens on "all", so a "fail" row is x-cloak: hidden from
+     the first paint, not only once Alpine runs, or every failing project
+     flashes up a second time. Takes (dict "R" <dashboardRow> "VM" <view
+     model> "List" …). */}}
 {{define "folder_view_row"}}
 {{$r := .R}}{{$vm := .VM}}
 {{$canDrag := or (and $r.IsFolder $vm.CanEditFolder) (and (not $r.IsFolder) $vm.CanMoveProjects)}}
 <div class="lotus-repo-row lotus-repo-row-selectable" data-node="{{$r.NodeID}}"
      data-kind="{{if $r.IsFolder}}folder{{else}}project{{end}}" {{if $r.IsFolder}}data-folder="1"{{end}}
-     x-show="filter==='{{.List}}'"
+     x-show="filter==='{{.List}}'"{{if ne .List "all"}} x-cloak{{end}}
      {{if $canDrag}}draggable="true" @dragstart="dragStart($event, $el)" @dragend="dragEnd()"{{end}}
      {{if and $r.IsFolder (or $vm.CanMoveProjects $vm.CanEditFolder)}}@dragover="dragOver($event, $el.dataset.node)" @dragleave="dragLeave($event, $el.dataset.node)" @drop="drop($event, $el.dataset.node)"
      :class="{ 'lotus-drop-target': dropTarget === $el.dataset.node }"{{end}}>
