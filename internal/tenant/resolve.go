@@ -317,7 +317,11 @@ func (c *orgCache) get(label string) (*global.Org, bool) {
 func (c *orgCache) set(label string, org *global.Org) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[label] = cacheEntry{org: org, expiresAt: time.Now().Add(c.ttl)}
+	// Clone: label usually comes from c.Hostname(), which Fiber hands out
+	// zero-copy over a request buffer the next request overwrites. Kept
+	// as is, the stored key would change under the map and another
+	// subdomain's lookup could land on this organization.
+	c.entries[strings.Clone(label)] = cacheEntry{org: org, expiresAt: time.Now().Add(c.ttl)}
 }
 
 func (c *orgCache) invalidate(label string) {
