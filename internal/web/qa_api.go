@@ -65,6 +65,10 @@ func apiJSONErrors(c *fiber.Ctx) error {
 	if err == nil {
 		return nil
 	}
+	var rows *apiRowErrors
+	if errors.As(err, &rows) {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "some cases were refused; nothing was created", "errors": rows.rows})
+	}
 	status, msg := apiErrStatus(err)
 	if status == fiber.StatusUnauthorized {
 		c.Set(fiber.HeaderWWWAuthenticate, `Bearer realm="lotus"`)
@@ -517,4 +521,5 @@ func registerQAAPIRoutes(app *fiber.App, authDeps authn.Deps) {
 	read("/api/qa/projects/:id/runs/:rid", true, func(c *fiber.Ctx, call qaCall) (any, error) {
 		return qaOpGetRun(c, call, c.Params("rid"), c.Query("status"))
 	})
+	registerQAAPIWriteRoutes(app, authDeps)
 }

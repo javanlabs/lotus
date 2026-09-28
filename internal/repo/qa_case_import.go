@@ -31,13 +31,21 @@ func (e *QASectionArchivedError) Error() string { return fmt.Sprintf("section %q
 // Keys continue from the project's highest. It returns how many cases and
 // sections it created.
 func ImportQACases(ctx context.Context, s tenant.Scope, projectID uuid.UUID, rows []QACaseImport, createdBy *uuid.UUID) (cases, sections int, err error) {
+	keys, sections, err := ImportQACasesKeys(ctx, s, projectID, rows, createdBy)
+	return len(keys), sections, err
+}
+
+// ImportQACasesKeys is ImportQACases returning the created cases' keys, in
+// row order. They are consecutive: key allocation is locked per project
+// for the whole transaction.
+func ImportQACasesKeys(ctx context.Context, s tenant.Scope, projectID uuid.UUID, rows []QACaseImport, createdBy *uuid.UUID) (keys []int, sections int, err error) {
 	inputs := make([]QACaseInput, len(rows))
 	for i, r := range rows {
 		if len(r.SectionPath) == 0 || len(r.SectionPath) > MaxQASectionDepth {
-			return 0, 0, ErrInvalidInput
+			return nil, 0, ErrInvalidInput
 		}
 		if inputs[i], err = r.Case.normalized(); err != nil {
-			return 0, 0, err
+			return nil, 0, err
 		}
 	}
 	err = s.Tx(ctx, func(tx *sqlx.Tx) error {
@@ -98,13 +106,13 @@ func ImportQACases(ctx context.Context, s tenant.Scope, projectID uuid.UUID, row
 				s.OrgID(), projectID, *parent, key, in.Title, in.Precondition, in.Notes, in.Steps, in.Priority, in.Negative, createdBy); err != nil {
 				return err
 			}
+			keys = append(keys, key)
 			key++
-			cases++
 		}
 		return nil
 	})
 	if err != nil {
-		return 0, 0, qaWriteErr(err)
+		return nil, 0, qaWriteErr(err)
 	}
-	return cases, sections, nil
+	return keys, sections, nil
 }
