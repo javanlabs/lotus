@@ -273,3 +273,19 @@ func MoveQACases(ctx context.Context, s tenant.Scope, ids []uuid.UUID, sectionID
 	})
 	return int(n), qaWriteErr(err)
 }
+
+// QACaseKeys is the key of each of ids that exists.
+func QACaseKeys(ctx context.Context, s tenant.Scope, ids []uuid.UUID) (map[uuid.UUID]int, error) {
+	var rows []struct {
+		ID  uuid.UUID `db:"id"`
+		Key int       `db:"key"`
+	}
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &rows, `SELECT id, key FROM qa_cases WHERE id = ANY($1)`, ids)
+	})
+	out := make(map[uuid.UUID]int, len(rows))
+	for _, r := range rows {
+		out[r.ID] = r.Key
+	}
+	return out, err
+}

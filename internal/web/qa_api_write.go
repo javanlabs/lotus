@@ -1,6 +1,8 @@
 package web
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -50,6 +52,15 @@ func checkAPICase(n int, in *apiCaseIn) string {
 	}
 	in.SectionPath = path
 	in.Title = strings.TrimSpace(in.Title)
+	texts := append([]string{in.Title, in.Precondition, in.Notes}, path...)
+	for _, s := range in.Steps {
+		texts = append(texts, s.Action, s.Expected)
+	}
+	for _, s := range texts {
+		if strings.ContainsRune(s, 0) {
+			return fail("text cannot contain a NUL character.")
+		}
+	}
 	switch {
 	case len(path) == 0:
 		return fail("section_path is required.")
@@ -202,10 +213,17 @@ func qaOpCreateIssue(c *fiber.Ctx, call qaCall, a qaCreateIssueArgs) (any, error
 		"severity": is.Severity, "status": is.Status, "source": is.Source, "plan_id": is.PlanID}, nil
 }
 
-// bodyInto decodes the JSON body into v.
+// bodyInto decodes the JSON body into v as strictly as MCP decodes tool
+// arguments: an unknown field is refused, so a misspelt one never becomes
+// hundreds of cases created without it.
 func bodyInto(c *fiber.Ctx, v any) error {
-	if err := c.BodyParser(v); err != nil {
-		return apiErr(fiber.StatusBadRequest, "the body must be JSON: %v", err)
+	if !strings.HasPrefix(c.Get(fiber.HeaderContentType), fiber.MIMEApplicationJSON) {
+		return apiErr(fiber.StatusUnsupportedMediaType, "send the body as application/json")
+	}
+	dec := json.NewDecoder(bytes.NewReader(c.Body()))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return apiErr(fiber.StatusBadRequest, "the body must be JSON with the documented fields: %v", err)
 	}
 	return nil
 }

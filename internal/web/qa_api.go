@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"fmt"
+	"log"
 	"slices"
 	"strconv"
 	"strings"
@@ -59,6 +60,9 @@ func apiErrStatus(err error) (int, string) {
 	return repoErrStatus(err)
 }
 
+// qaAPILogf records an error the API did not expect (tests replace it).
+var qaAPILogf = log.Printf
+
 // apiJSONErrors answers every error below it as {"error": "…"}.
 func apiJSONErrors(c *fiber.Ctx) error {
 	err := c.Next()
@@ -70,6 +74,9 @@ func apiJSONErrors(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "some cases were refused; nothing was created", "errors": rows.rows})
 	}
 	status, msg := apiErrStatus(err)
+	if status >= fiber.StatusInternalServerError {
+		qaAPILogf("qa api: %s %s: %v", c.Method(), c.Path(), err)
+	}
 	if status == fiber.StatusUnauthorized {
 		c.Set(fiber.HeaderWWWAuthenticate, `Bearer realm="lotus"`)
 	}
@@ -121,6 +128,11 @@ func newQACall(c *fiber.Ctx, raw string, needProject bool) (qaCall, error) {
 	if p.PinnedProjectID != uuid.Nil && p.PinnedProjectID != id {
 		return call, errAPINotFound
 	}
+	if p.PinnedProjectID == uuid.Nil && p.PinnedComponentID != uuid.Nil {
+		// A component pin is an ingest credential, not QA access to the
+		// organization: it reaches no project.
+		return call, errAPINotFound
+	}
 	if authz.IsProjectScoped(p) {
 		member, err := repo.IsProjectMember(c.Context(), s, id, p.UserID)
 		if err != nil {
@@ -143,6 +155,9 @@ func newQACall(c *fiber.Ctx, raw string, needProject bool) (qaCall, error) {
 func qaAPIProjectScope(c *fiber.Ctx, call qaCall) ([]uuid.UUID, error) {
 	if call.p.PinnedProjectID != uuid.Nil {
 		return []uuid.UUID{call.p.PinnedProjectID}, nil
+	}
+	if call.p.PinnedComponentID != uuid.Nil {
+		return []uuid.UUID{}, nil // see newQACall
 	}
 	if authz.IsProjectScoped(call.p) {
 		return repo.ListProjectIDsForMember(c.Context(), call.s, call.p.UserID)
@@ -441,14 +456,32 @@ func qaOpListRuns(c *fiber.Ctx, call qaCall, rawPlan string) (any, error) {
 
 var qaItemStatuses = []string{"untested", "passed", "failed", "blocked", "skipped"}
 
-// qaOpGetRun is a run with its items, optionally only those in status.
-func qaOpGetRun(c *fiber.Ctx, call qaCall, rawRun, status string) (any, error) {
-	runID, err := qaOwned(c, call.s, call.project, repo.QAKindRun, rawRun)
+// qaRunArgs picks a run and a page of its items, optionally only those in
+// one status.
+type qaRunArgs struct {
+	RunID  string `json:"run_id"`
+	Status string `json:"status"`
+	Limit  int    `json:"limit"`
+	Offset int    `json:"offset"`
+}
+
+// qaOpGetRun is a run, its progress, and a page of its items (100 by
+// default, at most 500): a real run holds over a thousand, more than an
+// assistant can read in one answer.
+func qaOpGetRun(c *fiber.Ctx, call qaCall, a qaRunArgs) (any, error) {
+	runID, err := qaOwned(c, call.s, call.project, repo.QAKindRun, a.RunID)
 	if err != nil {
 		return nil, errAPINotFound
 	}
+	status := a.Status
 	if status != "" && !slices.Contains(qaItemStatuses, status) {
 		return nil, apiErr(fiber.StatusBadRequest, "status must be one of %s", strings.Join(qaItemStatuses, ", "))
+	}
+	if a.Limit == 0 {
+		a.Limit = 100
+	}
+	if a.Limit < 0 || a.Limit > qaAPIMaxLimit || a.Offset < 0 {
+		return nil, apiErr(fiber.StatusBadRequest, "limit must be 1 to %d and offset 0 or more", qaAPIMaxLimit)
 	}
 	run, err := repo.GetQARun(c.Context(), call.s, runID)
 	if err != nil {
@@ -458,27 +491,32 @@ func qaOpGetRun(c *fiber.Ctx, call qaCall, rawRun, status string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	cases, err := repo.ListQACases(c.Context(), call.s, call.project.ID, repo.QACaseFilter{IncludeArchived: true})
+	var progress repo.QAProgress
+	var matching []repo.QARunItem
+	for _, it := range all {
+		progress.Count(it.Status)
+		if status == "" || it.Status == status {
+			matching = append(matching, it)
+		}
+	}
+	page := matching[min(a.Offset, len(matching)):min(a.Offset+a.Limit, len(matching))]
+	caseIDs := make([]uuid.UUID, len(page))
+	for i, it := range page {
+		caseIDs[i] = it.CaseID
+	}
+	keys, err := repo.QACaseKeys(c.Context(), call.s, caseIDs)
 	if err != nil {
 		return nil, err
 	}
-	refs := make(map[uuid.UUID]string, len(cases))
-	for _, k := range cases {
-		refs[k.ID] = fmt.Sprintf("TC-%d", k.Key)
-	}
-	var progress repo.QAProgress
 	items := []apiRunItem{}
-	for _, it := range all {
-		progress.Count(it.Status)
-		if status != "" && it.Status != status {
-			continue
-		}
-		items = append(items, apiRunItem{ID: it.ID, CaseID: it.CaseID, CaseRef: refs[it.CaseID], Group: it.GroupName,
+	for _, it := range page {
+		items = append(items, apiRunItem{ID: it.ID, CaseID: it.CaseID, CaseRef: fmt.Sprintf("TC-%d", keys[it.CaseID]), Group: it.GroupName,
 			Title: it.Title, Precondition: it.Precondition, Steps: it.Steps, Status: it.Status, AssigneeID: it.AssigneeID})
 	}
 	return fiber.Map{
 		"id": run.ID, "plan_id": run.PlanID, "name": run.Name, "cycle": run.Cycle, "retest_of": run.RetestOf,
-		"closed": run.ClosedAt != nil, "progress": toAPIProgress(progress), "items": items,
+		"closed": run.ClosedAt != nil, "progress": toAPIProgress(progress),
+		"total": len(matching), "limit": a.Limit, "offset": a.Offset, "items": items,
 	}, nil
 }
 
@@ -519,7 +557,15 @@ func registerQAAPIRoutes(app *fiber.App, authDeps authn.Deps) {
 		return qaOpListRuns(c, call, c.Params("pid"))
 	})
 	read("/api/qa/projects/:id/runs/:rid", true, func(c *fiber.Ctx, call qaCall) (any, error) {
-		return qaOpGetRun(c, call, c.Params("rid"), c.Query("status"))
+		limit, err := queryInt(c, "limit")
+		if err != nil {
+			return nil, err
+		}
+		offset, err := queryInt(c, "offset")
+		if err != nil {
+			return nil, err
+		}
+		return qaOpGetRun(c, call, qaRunArgs{RunID: c.Params("rid"), Status: c.Query("status"), Limit: limit, Offset: offset})
 	})
 	registerQAAPIWriteRoutes(app, authDeps)
 }

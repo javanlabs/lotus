@@ -156,7 +156,8 @@ func qaWriteErr(err error) error {
 			return ErrQANameTaken
 		case "23503":
 			return ErrNotFound
-		case "23514", "22P02":
+		case "23514", "22P02", "22021", "22P05":
+			// 22021/22P05: a NUL character, which text and jsonb cannot hold.
 			return ErrInvalidInput
 		}
 	}

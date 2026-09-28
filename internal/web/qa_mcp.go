@@ -109,11 +109,6 @@ type mcpPlanArgs struct {
 	PlanID string `json:"plan_id"`
 }
 
-type mcpRunArgs struct {
-	RunID  string `json:"run_id"`
-	Status string `json:"status"`
-}
-
 var mcpTools = []mcpTool{
 	{
 		Name: "list_projects", Perm: "qa.read",
@@ -185,14 +180,15 @@ var mcpTools = []mcpTool{
 	},
 	{
 		Name: "get_run", Perm: "qa.read",
-		Description: "Get a run with its items (one per case: steps, status, assignee), optionally only items in one status.",
+		Description: "Get a run's progress and a page of its items (one per case: steps, status, assignee; " +
+			"100 by default, at most 500; total says how many match), optionally only items in one status.",
 		Schema: mcpObject([]string{"project_id", "run_id"}, map[string]any{
 			"project_id": mcpProject, "run_id": mcpString,
 			"status": map[string]any{"type": "string", "enum": qaItemStatuses},
+			"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": qaAPIMaxLimit},
+			"offset": map[string]any{"type": "integer", "minimum": 0},
 		}),
-		Run: mcpProjectTool(func(c *fiber.Ctx, call qaCall, a mcpRunArgs) (any, error) {
-			return qaOpGetRun(c, call, a.RunID, a.Status)
-		}),
+		Run: mcpProjectTool(qaOpGetRun),
 	},
 	{
 		Name: "record_result", Perm: "qa.execute",
@@ -241,7 +237,7 @@ func mcpReply(c *fiber.Ctx, id json.RawMessage, result any, rpcErr *mcpRPCError)
 }
 
 // mcpToolError is a tool's failure as a result the assistant reads.
-func mcpToolError(err error) fiber.Map {
+func mcpToolError(c *fiber.Ctx, err error) fiber.Map {
 	var rows *apiRowErrors
 	msg := ""
 	switch {
@@ -250,6 +246,9 @@ func mcpToolError(err error) fiber.Map {
 	default:
 		status, m := apiErrStatus(err)
 		msg = m
+		if status >= fiber.StatusInternalServerError {
+			qaAPILogf("qa mcp: %s %s: %v", c.Method(), c.Path(), err)
+		}
 		if status == fiber.StatusForbidden {
 			msg = "this token lacks the permission for this tool (" + m + ")"
 		}
@@ -310,11 +309,11 @@ func qaMCP() fiber.Handler {
 			}
 			tool := mcpTools[i]
 			if !p.Can(tool.Perm) {
-				return mcpReply(c, req.ID, mcpToolError(apiErr(fiber.StatusForbidden, "missing permission: %s", tool.Perm)), nil)
+				return mcpReply(c, req.ID, mcpToolError(c, apiErr(fiber.StatusForbidden, "missing permission: %s", tool.Perm)), nil)
 			}
 			out, err := tool.Run(c, params.Arguments)
 			if err != nil {
-				return mcpReply(c, req.ID, mcpToolError(err), nil)
+				return mcpReply(c, req.ID, mcpToolError(c, err), nil)
 			}
 			text, _ := json.Marshal(out)
 			return mcpReply(c, req.ID, fiber.Map{
