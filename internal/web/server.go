@@ -190,6 +190,7 @@ func New(d Deps) *fiber.App {
 	registerScoringDocsRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
 	registerIngestRoutes(app, d, authDeps)
+	registerQAAPIRoutes(app, authDeps)
 
 	return app
 }

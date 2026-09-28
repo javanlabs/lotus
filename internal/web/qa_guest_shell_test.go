@@ -42,6 +42,12 @@ func TestGuestShell_CrawlEveryGetRoute(t *testing.T) {
 				}
 			case route.Path == "/projects":
 				// The landing page sends a guest home (TestGuestShell_HomeIsMyWork).
+			case strings.HasPrefix(route.Path, "/api/qa/"):
+				// The QA API takes API tokens only; a browser session is
+				// no credential there (TestQAAPI_TokensOnlyAndJSONErrors).
+				if status != http.StatusUnauthorized {
+					t.Errorf("guest session GET %s = %d, want 401", route.Path, status)
+				}
 			case status != http.StatusNotFound:
 				t.Errorf("guest GET %s (project listed=%v) = %d, want 404", route.Path, project == listed, status)
 			}
