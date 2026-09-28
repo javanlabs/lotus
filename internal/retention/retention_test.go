@@ -285,3 +285,26 @@ func TestDropOldPartitions_IsFastRegardlessOfRowCount(t *testing.T) {
 		t.Error("gitlab_snapshots_2019_03 should have been dropped")
 	}
 }
+
+// The snapshot window follows organizations.retention_days (Settings →
+// Organization). Partitions hold every organization's rows for a month,
+// so the longest window among live organizations decides; with none set
+// the 90-day default holds.
+func TestHeadlineAge_FollowsTheLongestOrganizationRetention(t *testing.T) {
+	db := openDDL(t)
+	ctx := context.Background()
+	if got := retention.HeadlineAge(ctx, db); got != retention.DefaultHeadlineAge {
+		t.Errorf("no organizations: %v; want the %v default", got, retention.DefaultHeadlineAge)
+	}
+	for sub, days := range map[string]int{"acme": 90, "beta": 365} {
+		if _, err := db.Exec(`INSERT INTO organizations (subdomain, name, retention_days) VALUES ($1, $1, $2)`, sub, days); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO organizations (subdomain, name, retention_days, deleted_at) VALUES ('gone', 'gone', 1000, now())`); err != nil {
+		t.Fatal(err)
+	}
+	if got := retention.HeadlineAge(ctx, db); got != 365*24*time.Hour {
+		t.Errorf("HeadlineAge = %v; want 365 days (a deleted organization does not count)", got)
+	}
+}

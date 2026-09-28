@@ -6,18 +6,18 @@
 // (migration 00018's own comment: the difference between a 3-second
 // maintenance window and a vacuum incident).
 //
-// v1 uses one hardcoded global window for every organization rather than
-// reading organizations.retention_days: a partition holds every org's
+// One window serves every organization: a partition holds every org's
 // rows for that month, so honoring a per-org window here would mean
 // either per-org partitioning or falling back to row-level DELETE for
-// the orgs that differ — exactly the cost this design avoids. The column
-// exists in the schema now (task 3.6's own explicit ask) so that
-// redesign, if it's ever needed, is additive rather than a migration on
-// top of the biggest tables in the system.
+// the orgs that differ — exactly the cost this design avoids. That one
+// window is the longest organizations.retention_days (HeadlineAge), so
+// the Settings value is honored for the organization that asked for the
+// most and exceeded for the rest.
 package retention
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"time"
@@ -39,7 +39,8 @@ const (
 	// DefaultRawDetailAge is task 3.6's "raw detail blob 30 hari" window.
 	DefaultRawDetailAge = 30 * 24 * time.Hour
 	// DefaultHeadlineAge is task 3.6's "headline resolusi penuh 90 hari"
-	// window — v1 drops the row outright at this age rather than rolling
+	// window, used when no organization sets retention_days (see
+	// HeadlineAge) — v1 drops the row outright at this age rather than rolling
 	// it up to a daily aggregate first; task 3.7's own rollup machinery
 	// is where that daily-rollup tier belongs once it exists (see this
 	// package's own TENSION note, logged to ActiveCollab).
@@ -68,15 +69,30 @@ func (o *Options) setDefaults() {
 	if o.RawDetailAge <= 0 {
 		o.RawDetailAge = DefaultRawDetailAge
 	}
-	if o.HeadlineAge <= 0 {
-		o.HeadlineAge = DefaultHeadlineAge
-	}
 	if o.SyncRunAge <= 0 {
 		o.SyncRunAge = DefaultSyncRunAge
 	}
 	if o.PartitionMonthsAhead <= 0 {
 		o.PartitionMonthsAhead = DefaultPartitionMonthsAhead
 	}
+}
+
+// HeadlineAge is how long snapshot rows are kept: the longest
+// organizations.retention_days among live organizations (Settings →
+// Organization), DefaultHeadlineAge when none is set or it cannot be
+// read. The longest, because a monthly partition holds every
+// organization's rows (see this package's doc comment) — an organization
+// with a shorter window keeps more than it asked for, never less.
+func HeadlineAge(ctx context.Context, db *sqlx.DB) time.Duration {
+	var days sql.NullInt64
+	if err := db.GetContext(ctx, &days, `SELECT max(retention_days) FROM organizations WHERE deleted_at IS NULL`); err != nil {
+		log.Printf("retention: read retention_days: %v", err)
+		return DefaultHeadlineAge
+	}
+	if !days.Valid || days.Int64 < 1 {
+		return DefaultHeadlineAge
+	}
+	return time.Duration(days.Int64) * 24 * time.Hour
 }
 
 // Run executes one retention pass immediately, then repeats every
@@ -108,7 +124,11 @@ func runOnce(ctx context.Context, db *sqlx.DB, opts Options) {
 	if err := DropStaleRawDetail(ctx, db, now.Add(-opts.RawDetailAge)); err != nil {
 		log.Printf("retention: drop stale raw detail: %v", err)
 	}
-	if err := DropOldPartitions(ctx, db, now.Add(-opts.HeadlineAge)); err != nil {
+	headlineAge := opts.HeadlineAge
+	if headlineAge <= 0 {
+		headlineAge = HeadlineAge(ctx, db)
+	}
+	if err := DropOldPartitions(ctx, db, now.Add(-headlineAge)); err != nil {
 		log.Printf("retention: drop old partitions: %v", err)
 	}
 	if err := DeleteOldSyncRuns(ctx, db, now.Add(-opts.SyncRunAge)); err != nil {
