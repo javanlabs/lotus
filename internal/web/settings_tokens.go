@@ -1,6 +1,8 @@
 package web
 
 import (
+	"database/sql"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -208,7 +210,15 @@ func revokeTokenUI(d Deps) fiber.Handler {
 		if err != nil {
 			return fiber.ErrNotFound
 		}
-		if err := global.RevokeAPIToken(c.Context(), d.DB, id); err != nil {
+		chrome, err := loadSettingsChrome(c)
+		if err != nil {
+			return err
+		}
+		p := chrome.Principal
+		if err := global.RevokeAPIToken(c.Context(), d.DB, id, p.UserID, chrome.OrgID, p.Can("token.manage.org")); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fiber.ErrNotFound
+			}
 			return writeRepoErr(c, err)
 		}
 		return c.Redirect("/settings/tokens", fiber.StatusFound)

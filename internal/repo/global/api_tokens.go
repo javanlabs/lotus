@@ -2,6 +2,7 @@ package global
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
@@ -87,9 +88,23 @@ func TouchAPITokenUsage(ctx context.Context, db *sqlx.DB, id uuid.UUID, ip strin
 	return err
 }
 
-func RevokeAPIToken(ctx context.Context, db *sqlx.DB, id uuid.UUID) error {
-	_, err := db.ExecContext(ctx, `UPDATE api_tokens SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL`, id)
-	return err
+// Only what the caller may revoke is: its own personal token, or, with
+// manageOrg, a service token of orgID. Anything else, including another
+// user's or organization's token, is sql.ErrNoRows.
+func RevokeAPIToken(ctx context.Context, db *sqlx.DB, id, userID, orgID uuid.UUID, manageOrg bool) error {
+	res, err := db.ExecContext(ctx, `
+		UPDATE api_tokens SET revoked_at = now()
+		WHERE id = $1 AND revoked_at IS NULL
+		  AND ((kind = 'pat' AND user_id = $2) OR ($4 AND kind = 'service' AND org_id = $3))`, id, userID, orgID, manageOrg)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // ListAPITokensForUser lists a user's own live PATs — Settings -> Tokens
