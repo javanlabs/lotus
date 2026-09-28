@@ -276,8 +276,12 @@ func nullTimeFrom(t *time.Time) sql.NullTime {
 // collect look different and defeat dedupe entirely for this kind (the
 // other three kinds don't have this problem: none of them stamp a
 // collect-time timestamp into their own Detail).
+// environmentContentHash is what decides whether a sync changed anything:
+// the environment and its issues. The score, grade and load are left out
+// with the generation time — they decay as issues age, so hashing them made
+// every sync "changed" and every sync a new snapshot.
 func environmentContentHash(d environmentDetail) string {
-	d.GeneratedAt = nil
+	d.GeneratedAt, d.Score, d.Grade, d.Load = nil, nil, nil, nil
 	b, _ := json.Marshal(d)
 	return collector.ContentHash(collector.Result{Detail: b})
 }

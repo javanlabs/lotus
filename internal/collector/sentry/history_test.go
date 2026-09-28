@@ -141,3 +141,24 @@ func TestSentryHistory_ImportAtObservedTime(t *testing.T) {
 		t.Errorf("imported issues = %+v", issues)
 	}
 }
+
+// An unchanged sync refreshes the latest snapshot's score, grade and load
+// (they decay with time) without adding a row.
+func TestSentryHistory_UnchangedSyncRefreshesTheScore(t *testing.T) {
+	db := dbtest.Open(t)
+	orgID, componentID, bindingID := seedSentryFixture(t, db, "acme-sentry-refresh")
+	s := tenant.FromRun(db, orgID)
+	ctx := context.Background()
+	for _, score := range []int{91, 84} {
+		snap := sentrySnap(componentID, "production", "same-issues", 1, "a")
+		sc, grade, load := score, "A", float64(100-score)
+		snap.Score, snap.Grade, snap.Load = &sc, &grade, &load
+		if err := repo.ReplaceSentrySnapshots(ctx, s, componentID, bindingID, collector.Headline{}, []repo.NewSentrySnapshot{snap}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	latest, _ := repo.SentrySnapshotsAt(ctx, s, bindingID, nil)
+	if len(latest) != 1 || latest[0].Score == nil || *latest[0].Score != 84 || *latest[0].Load != 16 {
+		t.Fatalf("latest = %+v; want one snapshot with the refreshed score 84", latest)
+	}
+}

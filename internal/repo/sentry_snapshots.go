@@ -140,9 +140,13 @@ func ReplaceSentrySnapshots(ctx context.Context, s tenant.Scope, componentID, bi
 				// Unchanged: bump collected_at only — never captured_at,
 				// the partition key (snapshot_write.go's dedupeOrTouch
 				// applies the same rule to the other three kinds).
+				// The score, grade and load decay with time and are not in
+				// the hash: refresh them on the latest snapshot.
 				if _, err := tx.ExecContext(ctx, `
-					UPDATE sentry_snapshots SET collected_at = CASE WHEN $2::timestamptz IS NULL THEN now() ELSE GREATEST(collected_at, $2) END
-					WHERE id = $1`, latestID, atArg); err != nil {
+					UPDATE sentry_snapshots SET
+						collected_at = CASE WHEN $2::timestamptz IS NULL THEN now() ELSE GREATEST(collected_at, $2) END,
+						generated_at = $3, score = $4, grade = $5, load = $6
+					WHERE id = $1`, latestID, atArg, snap.GeneratedAt, snap.Score, snap.Grade, snap.Load); err != nil {
 					return err
 				}
 				continue
