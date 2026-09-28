@@ -1,63 +1,66 @@
 {{define "content"}}
-<main class="mx-auto flex max-w-sm flex-col gap-6 px-6 py-16">
-  <div>
-    <h1 class="text-xl font-semibold text-slate-900">Log in to {{.Data.OrgName}}</h1>
-    <p class="mt-1 text-sm text-slate-600">We'll email you a link — no password needed.</p>
-  </div>
+{{/* Single mode's login. For now it is SSO only: the email (magic link)
+     form shows only when no SSO provider is configured, since hiding it
+     then would leave no way in at all. POST /login/email stays registered. */}}
+<div class="lotus-page-bloom"></div>
+<main style="position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:48px 16px;box-sizing:border-box">
+  <div style="width:100%;max-width:400px;display:flex;flex-direction:column;align-items:center;gap:28px">
 
-  {{if .Data.Notice}}
-  <div role="alert" class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-    {{.Data.Notice}}
-  </div>
-  {{end}}
+    <div style="display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center">
+      <div style="display:flex;align-items:center;gap:14px">
+        {{template "lotus_logo" (dict "ID" "login" "Width" 74 "Height" 48)}}
+        <span style="font-size:36px;font-weight:700;letter-spacing:-.03em;color:#43284E;line-height:1">Lotus</span>
+      </div>
+      <p style="margin:0;font-size:17px;font-weight:500;letter-spacing:-.01em;color:#5B4A63">every metric, surfaced</p>
+    </div>
 
-  <form method="post" action="/login/email" class="flex flex-col gap-3">
-    <input type="hidden" name="return" value="{{.Data.ReturnPath}}">
-    <input type="email" name="email" required autofocus autocomplete="email"
-           placeholder="you@example.com"
-           class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none">
-    <button type="submit"
-            class="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
-      Email me a login link
-    </button>
-  </form>
+    {{template "lotus_card_open" (dict "Padding" "28px 28px 24px" "Style" "width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:18px")}}
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:var(--text-label)">LOG IN</span>
+        <h1 style="margin:0;font-size:21px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{.Data.OrgName}}</h1>
+        {{if .Data.Providers}}
+        <p style="margin:0;font-size:12.5px;color:#6B7280">Sign in with the organization's single sign-on.</p>
+        {{else}}
+        <p style="margin:0;font-size:12.5px;color:#6B7280">A login link is emailed; no password.</p>
+        {{end}}
+      </div>
 
-  {{if .Data.Providers}}
-  <div class="flex items-center gap-3">
-    <span class="h-px flex-1 bg-slate-200"></span>
-    <span class="text-xs uppercase tracking-wide text-slate-400">or</span>
-    <span class="h-px flex-1 bg-slate-200"></span>
-  </div>
-  <div class="flex flex-col gap-3">
-    {{range .Data.Providers}}
-    <a href="/login/{{.}}?return={{$.Data.ReturnPath}}"
-       class="w-full rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-900 hover:bg-slate-50">
-      Continue with {{providerLabel .}}
-    </a>
-    {{end}}
-  </div>
-  {{end}}
+      {{if .Data.Notice}}
+      <div role="alert" style="padding:10px 12px;border-radius:8px 3px 8px 3px;background:var(--status-fail-bg);color:#9E2B47;font-size:12.5px">{{.Data.Notice}}</div>
+      {{end}}
 
-  {{if .Data.DevUsers}}
-  <div class="rounded-md border border-amber-300 bg-amber-50 p-4">
-    <p class="text-xs font-medium uppercase tracking-wide text-amber-800">Dev mode</p>
-    <p class="mt-1 text-xs text-amber-900">
-      Seeded test accounts. This list only ever shows <code>@lotus.test</code> addresses and
-      is not registered outside <code>LOTUS_DEV=1</code>.
-    </p>
-    <div class="mt-3 flex flex-col gap-2">
-      {{range .Data.DevUsers}}
-      <form method="post" action="/login/dev/{{.ID}}">
-        <input type="hidden" name="return" value="{{$.Data.ReturnPath}}">
-        <button type="submit"
-                class="flex w-full items-center justify-between rounded-md border border-amber-300 bg-white px-3 py-2 text-left text-sm hover:bg-amber-100">
-          <span class="font-medium text-slate-900">{{.Name}}</span>
-          <span class="text-xs uppercase tracking-wide text-amber-800">{{.Role}}</span>
-        </button>
+      {{if .Data.Providers}}
+      <div style="display:flex;flex-direction:column;gap:10px">
+        {{range $i, $p := .Data.Providers}}
+        <a href="/login/{{$p}}?return={{$.Data.ReturnPath}}" class="btn-lotus {{if eq $i 0}}btn-lotus-primary{{else}}btn-lotus-secondary{{end}}"
+           style="width:100%;box-sizing:border-box;justify-content:center;padding:11px 16px;font-size:13.5px">Continue with {{providerLabel $p}}</a>
+        {{end}}
+      </div>
+      {{else}}
+      <form method="post" action="/login/email" style="display:flex;flex-direction:column;gap:10px">
+        <input type="hidden" name="return" value="{{.Data.ReturnPath}}">
+        <input type="email" name="email" required autofocus autocomplete="email" placeholder="rizky@alurkerja.com" aria-label="Email" class="lotus-input">
+        <button type="submit" class="btn-lotus btn-lotus-primary" style="width:100%;justify-content:center;padding:11px 16px;font-size:13.5px">Email a login link</button>
       </form>
       {{end}}
-    </div>
+
+      {{if .Data.DevUsers}}
+      <div style="display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--ink-100)">
+        <span style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#9E2B47">DEV MODE · SEEDED ACCOUNTS</span>
+        {{range .Data.DevUsers}}
+        <form method="post" action="/login/dev/{{.ID}}">
+          <input type="hidden" name="return" value="{{$.Data.ReturnPath}}">
+          <button type="submit" class="btn-lotus btn-lotus-secondary" style="width:100%;justify-content:space-between">
+            <span>{{.Name}}</span>
+            <span style="font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#9CA3AF;text-transform:uppercase">{{.Role}}</span>
+          </button>
+        </form>
+        {{end}}
+      </div>
+      {{end}}
+    {{template "lotus_card_close" .}}
+
+    <p style="margin:0;font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">GitLab · Sonar · Trivy · Sentry · QA</p>
   </div>
-  {{end}}
 </main>
 {{end}}
