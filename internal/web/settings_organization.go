@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -70,6 +71,7 @@ func settingsOrgPage(d Deps) fiber.Handler {
 			Data: struct {
 				SettingsNav            []settingsNavItem
 				Profile                *global.OrgProfile
+				Timezones              []httpx.SelectOption
 				DefaultIntervalMinutes string
 				TransferTargets        []httpx.SelectOption
 				CanUpdate              bool
@@ -80,6 +82,7 @@ func settingsOrgPage(d Deps) fiber.Handler {
 				Error                  string
 			}{
 				SettingsNav: buildSettingsNav("organization"), Profile: profile, DefaultIntervalMinutes: defaultInterval,
+				Timezones:       timezoneOptions(profile.Timezone),
 				TransferTargets: transferTargets,
 				CanUpdate:       chrome.Principal.Can("org.settings.update"),
 				CanChangeSlug:   chrome.Principal.Can("org.slug.change"),
@@ -103,6 +106,29 @@ func redirectWithOrgError(c *fiber.Ctx, msg string) error {
 	return c.Redirect("/settings/organization?error="+url.QueryEscape(msg), fiber.StatusSeeOther)
 }
 
+// orgTimezones are the timezones an organization can choose: UTC and
+// Indonesia's three zones.
+var orgTimezones = []httpx.SelectOption{
+	{Value: "UTC", Label: "UTC"},
+	{Value: "Asia/Jakarta", Label: "WIB — Asia/Jakarta (UTC+7)"},
+	{Value: "Asia/Makassar", Label: "WITA — Asia/Makassar (UTC+8)"},
+	{Value: "Asia/Jayapura", Label: "WIT — Asia/Jayapura (UTC+9)"},
+}
+
+// timezoneOptions is orgTimezones, plus the organization's current one if
+// it predates the list, so saving the form never changes it unasked.
+func timezoneOptions(current string) []httpx.SelectOption {
+	for _, o := range orgTimezones {
+		if o.Value == current {
+			return orgTimezones
+		}
+	}
+	if current == "" {
+		return orgTimezones
+	}
+	return append(append([]httpx.SelectOption{}, orgTimezones...), httpx.SelectOption{Value: current, Label: current + " (current)"})
+}
+
 func updateOrgProfileUI(d Deps) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		chrome, err := loadSettingsChrome(c)
@@ -113,6 +139,13 @@ func updateOrgProfileUI(d Deps) fiber.Handler {
 		timezone := strings.TrimSpace(c.FormValue("timezone"))
 		if name == "" || timezone == "" {
 			return redirectWithOrgError(c, "name and timezone are required")
+		}
+		current, err := global.OrgProfileByID(c.Context(), d.DB, chrome.OrgID)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+		if !slices.ContainsFunc(timezoneOptions(current.Timezone), func(o httpx.SelectOption) bool { return o.Value == timezone }) {
+			return redirectWithOrgError(c, "choose a timezone from the list")
 		}
 		retentionDays, err := strconv.Atoi(c.FormValue("retention_days", "90"))
 		if err != nil || retentionDays < 1 {
