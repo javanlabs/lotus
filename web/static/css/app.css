@@ -428,6 +428,35 @@ body {
    tab" included). The checkbox and the actions button are raised above
    that overlay. */
 .lotus-repo-row-selectable { position: relative; }
+/* QA page header: title | segmented control | actions. The control sits in
+   its own centred column and the actions in a right-aligned one, so moving
+   between QA pages leaves both where they were — the buttons never shift
+   because the title is longer or the control narrower. Actions that do not
+   fit their column wrap downward inside it, still flush right. Narrow screens stack
+   the control under the title and actions. */
+.lotus-qa-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /* start, not end: a page with more buttons wraps them downward instead
+     of pushing the control and the first buttons lower. */
+  align-items: start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.lotus-qa-header-nav { justify-self: center; }
+.lotus-qa-header-actions {
+  justify-self: end;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+@media (max-width: 1100px) {
+  .lotus-qa-header { grid-template-columns: minmax(0, 1fr) auto; }
+  .lotus-qa-header-nav { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+}
+
 .lotus-row-link { color: inherit; text-decoration: none; }
 .lotus-row-link::after { content: ""; position: absolute; inset: 0; }
 .lotus-row-link:focus-visible { outline: none; }

@@ -2,12 +2,13 @@
 {{template "shell_open" .}}
 {{$d := .Data}}
 
-<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
-  <div style="flex:1;min-width:220px">
+<header class="lotus-qa-header">
+  <div style="min-width:0">
     <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Project.Name}}</h1>
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">QA · {{$d.Summary.Cases}} case{{if ne $d.Summary.Cases 1}}s{{end}} · {{$d.Summary.Scenarios}} scenario{{if ne $d.Summary.Scenarios 1}}s{{end}}</p>
   </div>
-  {{template "qa_subnav" (dict "Base" $d.Base "Active" "overview")}}
+  <div class="lotus-qa-header-nav">{{template "qa_subnav" (dict "Base" $d.Base "Active" "overview")}}</div>
+  <div class="lotus-qa-header-actions"></div>
 </header>
 
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">

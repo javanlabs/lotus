@@ -2,17 +2,19 @@
 {{template "shell_open" .}}
 {{$d := .Data}}
 
-<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
-  <div style="flex:1;min-width:220px">
+<header class="lotus-qa-header">
+  <div style="min-width:0">
     <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Project.Name}}</h1>
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">Plans · {{len $d.Rows}}{{if $d.Phase}} in this phase{{end}}</p>
   </div>
-  {{if $d.CanWrite}}
-  {{template "lotus_modal_open" (dict "Name" "new-plan" "Title" "New plan" "Trigger" "New plan")}}
-    {{template "qa_plan_form" $d.Form}}
-  {{template "lotus_modal_close" .}}
-  {{end}}
-  {{template "qa_subnav" (dict "Base" $d.Base "Active" "plans")}}
+  <div class="lotus-qa-header-nav">{{template "qa_subnav" (dict "Base" $d.Base "Active" "plans")}}</div>
+  <div class="lotus-qa-header-actions">
+    {{if $d.CanWrite}}
+    {{template "lotus_modal_open" (dict "Name" "new-plan" "Title" "New plan" "Trigger" "New plan")}}
+      {{template "qa_plan_form" $d.Form}}
+    {{template "lotus_modal_close" .}}
+    {{end}}
+  </div>
 </header>
 
 {{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}

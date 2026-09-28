@@ -2,64 +2,66 @@
 {{template "shell_open" .}}
 {{$d := .Data}}
 
-<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
-  <div style="flex:1;min-width:220px">
+<header class="lotus-qa-header">
+  <div style="min-width:0">
     <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Plan.Name}}</h1>
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.PhaseLabel}}{{if $d.Plan.Environment}} · {{$d.Plan.Environment}}{{end}}{{if $d.Plan.Build}} · <span style="font-family:'IBM Plex Mono',monospace">{{$d.Plan.Build}}</span>{{end}}{{if $d.Window}} · {{$d.Window}}{{end}}{{if $d.Plan.ClosedAt}} · closed {{$d.Plan.ClosedAt.Format "02 Jan 2006"}}{{end}}</p>
   </div>
-  {{if $d.CanWrite}}
-  <a href="{{$d.Base}}/plans/{{$d.Plan.ID}}/runs/new" class="btn-lotus btn-lotus-primary">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>New run
-  </a>
-  <div x-data="lotusModal('edit-plan')" style="display:contents">
-    <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Edit plan…</button>
-    <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="edit-plan-title">
-      <div class="lotus-modal-head">
-        <div class="lotus-modal-title" id="edit-plan-title">Edit plan</div>
-        <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
-        </button>
-      </div>
-      {{template "qa_plan_form" $d.Form}}
-    </dialog>
+  <div class="lotus-qa-header-nav">{{template "qa_subnav" (dict "Base" $d.Base "Active" "plans")}}</div>
+  <div class="lotus-qa-header-actions">
+    {{if $d.CanWrite}}
+    <a href="{{$d.Base}}/plans/{{$d.Plan.ID}}/runs/new" class="btn-lotus btn-lotus-primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>New run
+    </a>
+    <div x-data="lotusModal('edit-plan')" style="display:contents">
+      <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Edit plan…</button>
+      <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="edit-plan-title">
+        <div class="lotus-modal-head">
+          <div class="lotus-modal-title" id="edit-plan-title">Edit plan</div>
+          <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+          </button>
+        </div>
+        {{template "qa_plan_form" $d.Form}}
+      </dialog>
+    </div>
+    {{end}}
+    {{if $d.CanCopy}}
+    <div x-data="lotusModal('duplicate-plan')" style="display:contents">
+      <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Duplicate…</button>
+      <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="duplicate-plan-title">
+        <div class="lotus-modal-head">
+          <div class="lotus-modal-title" id="duplicate-plan-title">Duplicate plan</div>
+          <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+          </button>
+        </div>
+        <div class="lotus-modal-form">
+          <form method="post" action="{{$d.Base}}/plans/{{$d.Plan.ID}}/duplicate" hx-post="{{$d.Base}}/plans/{{$d.Plan.ID}}/duplicate" hx-target="#duplicate-plan-error" hx-swap="innerHTML">
+            <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
+              <div id="duplicate-plan-error"></div>
+              <p style="margin:0;font-size:12px;color:#6B7280">Copies the phase, environment, build and scenarios. Dates and runs start empty.</p>
+              <label style="display:flex;flex-direction:column;gap:6px">
+                <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
+                <input type="text" name="name" required maxlength="200" value="{{$d.CopyName}}" class="lotus-input">
+              </label>
+            </div>
+            <div class="lotus-modal-foot">
+              <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+              <button type="submit" class="btn-lotus btn-lotus-primary">Duplicate</button>
+            </div>
+          </form>
+        </div>
+      </dialog>
+    </div>
+    {{end}}
+    {{if $d.CanWrite}}
+    <form method="post" action="{{$d.Base}}/plans/{{$d.Plan.ID}}/close">
+      <button type="submit" class="btn-lotus btn-lotus-secondary">Close plan</button>
+    </form>
+    {{end}}
+    <a href="{{$d.Base}}/plans/{{$d.Plan.ID}}/report" class="btn-lotus btn-lotus-secondary">Report</a>
   </div>
-  {{end}}
-  {{if $d.CanCopy}}
-  <div x-data="lotusModal('duplicate-plan')" style="display:contents">
-    <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Duplicate…</button>
-    <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="duplicate-plan-title">
-      <div class="lotus-modal-head">
-        <div class="lotus-modal-title" id="duplicate-plan-title">Duplicate plan</div>
-        <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
-        </button>
-      </div>
-      <div class="lotus-modal-form">
-        <form method="post" action="{{$d.Base}}/plans/{{$d.Plan.ID}}/duplicate" hx-post="{{$d.Base}}/plans/{{$d.Plan.ID}}/duplicate" hx-target="#duplicate-plan-error" hx-swap="innerHTML">
-          <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
-            <div id="duplicate-plan-error"></div>
-            <p style="margin:0;font-size:12px;color:#6B7280">Copies the phase, environment, build and scenarios. Dates and runs start empty.</p>
-            <label style="display:flex;flex-direction:column;gap:6px">
-              <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
-              <input type="text" name="name" required maxlength="200" value="{{$d.CopyName}}" class="lotus-input">
-            </label>
-          </div>
-          <div class="lotus-modal-foot">
-            <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
-            <button type="submit" class="btn-lotus btn-lotus-primary">Duplicate</button>
-          </div>
-        </form>
-      </div>
-    </dialog>
-  </div>
-  {{end}}
-  {{if $d.CanWrite}}
-  <form method="post" action="{{$d.Base}}/plans/{{$d.Plan.ID}}/close">
-    <button type="submit" class="btn-lotus btn-lotus-secondary">Close plan</button>
-  </form>
-  {{end}}
-  <a href="{{$d.Base}}/plans/{{$d.Plan.ID}}/report" class="btn-lotus btn-lotus-secondary">Report</a>
-  {{template "qa_subnav" (dict "Base" $d.Base "Active" "plans")}}
 </header>
 
 <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:14px;align-items:start">

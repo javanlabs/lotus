@@ -2,63 +2,65 @@
 {{template "shell_open" .}}
 {{$d := .Data}}
 
-<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
-  <div style="flex:1;min-width:220px">
+<header class="lotus-qa-header">
+  <div style="min-width:0">
     <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Scenario.Name}}</h1>
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.PhaseLabel}} · {{$d.Cases}} case{{if ne $d.Cases 1}}s{{end}}{{if $d.Scenario.ArchivedAt}} · archived{{end}}</p>
   </div>
-  {{if $d.CanWrite}}
-  {{template "lotus_modal_open" (dict "Name" "add-cases" "Title" "Add cases" "Trigger" "Add cases…")}}
-    <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:12px;min-width:min(560px,80vw)">
-      <div id="add-cases-error"></div>
-      <form method="get" action="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/picker" hx-get="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/picker"
-            hx-target="#picker-results" hx-trigger="submit, input changed delay:300ms from:find input[name=q]" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px">
-        <input type="search" name="q" placeholder="Search titles" aria-label="Search titles" class="lotus-input">
-        {{template "lotus_select" (dict "Placeholder" "All sections" "Name" "section" "ID" "picker-section" "Value" "" "Label" "Section" "AutoSubmit" true "Options" (selectOptions $d.SectionOptions))}}
-      </form>
-      <div id="picker-results" hx-get="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/picker" hx-trigger="load"></div>
-      <form id="add-cases" method="post" action="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/cases" hx-post="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/cases"
-            hx-target="#add-cases-error" hx-swap="innerHTML" style="display:flex;gap:8px;align-items:center;justify-content:flex-end">
-        <span style="font-size:12px;color:#6B7280">Into</span>
-        <div style="min-width:180px">{{template "lotus_select" (dict "Name" "group_id" "ID" "add-cases-group" "Value" "" "Label" "Group" "Options" (selectOptions $d.GroupOptions))}}</div>
-        <button type="submit" class="btn-lotus btn-lotus-primary">Add selected</button>
-      </form>
-    </div>
-  {{template "lotus_modal_close" .}}
-  {{template "lotus_modal_open" (dict "Name" "new-group" "Title" "New group" "Trigger" "New group" "Variant" "secondary")}}
-    <div class="lotus-modal-form">
-      <form method="post" action="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/groups" hx-post="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/groups" hx-target="#new-group-error" hx-swap="innerHTML">
-        <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
-          <div id="new-group-error"></div>
-          <label style="display:flex;flex-direction:column;gap:6px">
-            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
-            <input type="text" name="name" required maxlength="200" placeholder="Day 1" class="lotus-input">
-          </label>
-        </div>
-        <div class="lotus-modal-foot">
-          <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
-          <button type="submit" class="btn-lotus btn-lotus-primary">Add group</button>
-        </div>
-      </form>
-    </div>
-  {{template "lotus_modal_close" .}}
-  <div x-data="lotusModal('edit-scenario')" style="display:contents">
-    <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Edit scenario…</button>
-    <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="edit-scenario-title">
-      <div class="lotus-modal-head">
-        <div class="lotus-modal-title" id="edit-scenario-title">Edit scenario</div>
-        <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
-        </button>
+  <div class="lotus-qa-header-nav">{{template "qa_subnav" (dict "Base" $d.Base "Active" "scenarios")}}</div>
+  <div class="lotus-qa-header-actions">
+    {{if $d.CanWrite}}
+    {{template "lotus_modal_open" (dict "Name" "add-cases" "Title" "Add cases" "Trigger" "Add cases…")}}
+      <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:12px;min-width:min(560px,80vw)">
+        <div id="add-cases-error"></div>
+        <form method="get" action="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/picker" hx-get="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/picker"
+              hx-target="#picker-results" hx-trigger="submit, input changed delay:300ms from:find input[name=q]" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px">
+          <input type="search" name="q" placeholder="Search titles" aria-label="Search titles" class="lotus-input">
+          {{template "lotus_select" (dict "Placeholder" "All sections" "Name" "section" "ID" "picker-section" "Value" "" "Label" "Section" "AutoSubmit" true "Options" (selectOptions $d.SectionOptions))}}
+        </form>
+        <div id="picker-results" hx-get="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/picker" hx-trigger="load"></div>
+        <form id="add-cases" method="post" action="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/cases" hx-post="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/cases"
+              hx-target="#add-cases-error" hx-swap="innerHTML" style="display:flex;gap:8px;align-items:center;justify-content:flex-end">
+          <span style="font-size:12px;color:#6B7280">Into</span>
+          <div style="min-width:180px">{{template "lotus_select" (dict "Name" "group_id" "ID" "add-cases-group" "Value" "" "Label" "Group" "Options" (selectOptions $d.GroupOptions))}}</div>
+          <button type="submit" class="btn-lotus btn-lotus-primary">Add selected</button>
+        </form>
       </div>
-      {{template "qa_scenario_form" (dict "Action" (printf "%s/scenarios/%s" $d.Base $d.Scenario.ID) "Err" "edit-scenario-error" "Name" $d.Scenario.Name "Phase" $d.Scenario.Phase "Description" $d.Scenario.Description "PhaseOptions" $d.PhaseOptions "Submit" "Save")}}
-    </dialog>
+    {{template "lotus_modal_close" .}}
+    {{template "lotus_modal_open" (dict "Name" "new-group" "Title" "New group" "Trigger" "New group" "Variant" "secondary")}}
+      <div class="lotus-modal-form">
+        <form method="post" action="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/groups" hx-post="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/groups" hx-target="#new-group-error" hx-swap="innerHTML">
+          <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
+            <div id="new-group-error"></div>
+            <label style="display:flex;flex-direction:column;gap:6px">
+              <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
+              <input type="text" name="name" required maxlength="200" placeholder="Day 1" class="lotus-input">
+            </label>
+          </div>
+          <div class="lotus-modal-foot">
+            <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn-lotus btn-lotus-primary">Add group</button>
+          </div>
+        </form>
+      </div>
+    {{template "lotus_modal_close" .}}
+    <div x-data="lotusModal('edit-scenario')" style="display:contents">
+      <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Edit scenario…</button>
+      <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="edit-scenario-title">
+        <div class="lotus-modal-head">
+          <div class="lotus-modal-title" id="edit-scenario-title">Edit scenario</div>
+          <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+          </button>
+        </div>
+        {{template "qa_scenario_form" (dict "Action" (printf "%s/scenarios/%s" $d.Base $d.Scenario.ID) "Err" "edit-scenario-error" "Name" $d.Scenario.Name "Phase" $d.Scenario.Phase "Description" $d.Scenario.Description "PhaseOptions" $d.PhaseOptions "Submit" "Save")}}
+      </dialog>
+    </div>
+    <form method="post" action="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/archive">
+      <button type="submit" class="btn-lotus btn-lotus-secondary">Archive</button>
+    </form>
+    {{end}}
   </div>
-  <form method="post" action="{{$d.Base}}/scenarios/{{$d.Scenario.ID}}/archive">
-    <button type="submit" class="btn-lotus btn-lotus-secondary">Archive</button>
-  </form>
-  {{end}}
-  {{template "qa_subnav" (dict "Base" $d.Base "Active" "scenarios")}}
 </header>
 
 {{if $d.Scenario.Description}}<p style="margin:0 0 14px;max-width:760px;font-size:12.5px;color:#374151;white-space:pre-wrap">{{$d.Scenario.Description}}</p>{{end}}

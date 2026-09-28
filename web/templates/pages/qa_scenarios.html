@@ -2,17 +2,19 @@
 {{template "shell_open" .}}
 {{$d := .Data}}
 
-<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
-  <div style="flex:1;min-width:220px">
+<header class="lotus-qa-header">
+  <div style="min-width:0">
     <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Project.Name}}</h1>
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">Scenarios · {{len $d.Rows}} {{if $d.Archived}}including archived{{else}}live{{end}}</p>
   </div>
-  {{if $d.CanWrite}}
-  {{template "lotus_modal_open" (dict "Name" "new-scenario" "Title" "New scenario" "Trigger" "New scenario")}}
-    {{template "qa_scenario_form" (dict "Action" (printf "%s/scenarios" $d.Base) "Err" "new-scenario-error" "Name" "" "Phase" "regression" "Description" "" "PhaseOptions" $d.PhaseOptions "Submit" "Create scenario")}}
-  {{template "lotus_modal_close" .}}
-  {{end}}
-  {{template "qa_subnav" (dict "Base" $d.Base "Active" "scenarios")}}
+  <div class="lotus-qa-header-nav">{{template "qa_subnav" (dict "Base" $d.Base "Active" "scenarios")}}</div>
+  <div class="lotus-qa-header-actions">
+    {{if $d.CanWrite}}
+    {{template "lotus_modal_open" (dict "Name" "new-scenario" "Title" "New scenario" "Trigger" "New scenario")}}
+      {{template "qa_scenario_form" (dict "Action" (printf "%s/scenarios" $d.Base) "Err" "new-scenario-error" "Name" "" "Phase" "regression" "Description" "" "PhaseOptions" $d.PhaseOptions "Submit" "Create scenario")}}
+    {{template "lotus_modal_close" .}}
+    {{end}}
+  </div>
 </header>
 
 {{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}

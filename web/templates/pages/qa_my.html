@@ -2,12 +2,13 @@
 {{template "shell_open" .}}
 {{$d := .Data}}
 
-<header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
-  <div style="flex:1;min-width:220px">
+<header class="lotus-qa-header">
+  <div style="min-width:0">
     <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">My work</h1>
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Total}} untested item{{if ne $d.Total 1}}s{{end}} assigned to you in open runs</p>
   </div>
-  {{template "qa_home_nav" "my"}}
+  <div class="lotus-qa-header-nav">{{template "qa_home_nav" "my"}}</div>
+  <div class="lotus-qa-header-actions"></div>
 </header>
 
 {{if not $d.Projects}}
