@@ -2,6 +2,7 @@ package legacylotus_test
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -30,8 +31,20 @@ type fixture struct {
 // bindings seed-services creates. No trivy binding: the import makes them.
 func newFixture(t *testing.T) fixture {
 	t.Helper()
+	return newFixtureTZ(t, "")
+}
+
+// newFixtureTZ is newFixture with the DDL connection's session in tz, as
+// production's database runs in Asia/Jakarta: partition bounds written as
+// dates are read in the session's zone.
+func newFixtureTZ(t *testing.T, tz string) fixture {
+	t.Helper()
 	dsn := dbtest.DSN(t)
-	ddl, err := sqlx.Open("pgx", dsn)
+	ddlDSN := dsn
+	if tz != "" {
+		ddlDSN += "&timezone=" + url.QueryEscape(tz)
+	}
+	ddl, err := sqlx.Open("pgx", ddlDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,5 +319,21 @@ func TestImport_HoldsTheLockTheBackgroundJobsCheck(t *testing.T) {
 	release()
 	if lotusdb.LegacyImportRunning(ctx, f.ddl) {
 		t.Error("the lock outlives the import")
+	}
+}
+
+// Production's database runs in Asia/Jakarta, so a month's partition ends
+// at midnight WIB — 17:00 UTC on the last day. A row in those last hours
+// of the UTC month belongs to the next month's partition, which the import
+// must have made (the first production run stopped there).
+func TestImport_LastHoursOfAUTCMonthInAWIBDatabase(t *testing.T) {
+	f := newFixtureTZ(t, "Asia/Jakarta")
+	late := `{"kind":"meta","exported_at":"2026-09-28T13:10:00Z"}
+{"kind":"sonar","service":"bpm-service","captured_at":"2026-05-31 10:00:00+00:00","coverage":60}
+{"kind":"sonar","service":"bpm-service","captured_at":"2026-05-31 17:38:06.590235095+00:00","coverage":61}
+`
+	rep, err := legacylotus.Import(context.Background(), f.app, f.ddl, f.s.OrgID(), strings.NewReader(late), legacylotus.Options{})
+	if err != nil || rep.Imported != 2 {
+		t.Fatalf("report = %+v, %v; want both rows imported", rep, err)
 	}
 }

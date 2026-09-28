@@ -539,10 +539,14 @@ func (im *importer) enterMonth(ctx context.Context, at time.Time) error {
 	if err := im.finishMonth(ctx); err != nil {
 		return err
 	}
-	if err := retention.EnsurePartitions(ctx, im.ddl, month, 1); err != nil {
+	// This month's partitions and the next's: bounds are written as dates
+	// and read in the database session's zone (Asia/Jakarta in
+	// production), so the last hours of a UTC month already fall in the
+	// next month's partition.
+	if err := retention.EnsurePartitions(ctx, im.ddl, month, 2); err != nil {
 		return err
 	}
-	if err := timeseries.EnsurePartitions(ctx, im.ddl, month, 1); err != nil {
+	if err := timeseries.EnsurePartitions(ctx, im.ddl, month, 2); err != nil {
 		return err
 	}
 	im.month = month
