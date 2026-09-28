@@ -28,3 +28,15 @@ func LegacyImportRunning(ctx context.Context, q sqlx.QueryerContext) bool {
 		LegacyImportLockClass, LegacyImportLockID)
 	return err != nil || held
 }
+
+// SeesAllTenants reports whether the connection's role reads every
+// organization's rows through FORCE ROW LEVEL SECURITY — a superuser or a
+// BYPASSRLS role. The retention and timeseries passes read and roll up
+// across organizations without setting app.org_id; on a role that cannot,
+// every tenant table reads as empty and they silently do nothing
+// (production ran that way until lotuscheck_migrate got BYPASSRLS).
+func SeesAllTenants(ctx context.Context, q sqlx.QueryerContext) (bool, error) {
+	var ok bool
+	err := sqlx.GetContext(ctx, q, &ok, `SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user`)
+	return ok, err
+}

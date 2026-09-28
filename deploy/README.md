@@ -208,6 +208,32 @@ the site and a `25m` location for the QA upload routes. Backups:
 `/etc/systemd/system/lotuscheck-web.service.bak-20260927` and
 `/root/nginx-lotuscheck.bak-20260927`.
 
+Applied on collab on 2026-09-28, for the legacy Lotus migration:
+`ALTER ROLE lotuscheck_migrate BYPASSRLS` — the retention and timeseries
+passes run as that role across organizations, and under FORCE ROW LEVEL
+SECURITY they had been reading every tenant table as empty (no rollups,
+no raw-detail aging) since the first deploy; `bootstrap.sh` now grants it,
+and both passes log an error at startup if their role cannot see tenant
+rows. Organization `retention_days` set to 365. Partitions
+`*_2026_06` and `metric_facts_2026_07/08` created by hand as
+`lotuscheck_migrate` (the importer now makes the next month's itself).
+
+## Migrating from the legacy Lotus (lotus.alurkerja.com)
+
+Done on 2026-09-28; kept for reference. On collab, in order:
+
+1. Settings → Organization → Snapshot retention ≥ the history's age
+   (365 days); `import-legacy` refuses otherwise.
+2. `lotus seed-connections` with `/etc/lotuscheck/lotuscheck.env` and
+   `/etc/lotus/lotus.env` loaded and `LOTUS_DEV=1` for that one command —
+   the tokens never leave the server.
+3. `lotus seed-services --file=/opt/lotus/services.yaml --only=alurkerja --org=javan`.
+4. `sudo python3 deploy/legacy-lotus-export.py /opt/lotus/data/lotus.db > /root/legacy-import/legacy.jsonl`
+   (read-only; the metric tables only).
+5. `lotus import-legacy --org=javan --file=… --dry-run`, then without
+   `--dry-run`, as a `systemd-run` unit with the env file. Rerunning it
+   resumes, and refills every month's rollups.
+
 ## The KEK
 
 `LOTUS_KEK` wraps every organization's data-encryption key, which in turn

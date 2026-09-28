@@ -94,6 +94,12 @@ done
 
 psql_c "GRANT lotus_app TO lotuscheck_app" >/dev/null
 psql_c "GRANT lotus_migrate TO lotuscheck_migrate" >/dev/null
+# The retention and timeseries passes run as the migrate role and work
+# across organizations without app.org_id; under FORCE ROW LEVEL SECURITY
+# a role without BYPASSRLS reads every tenant table as empty, and they
+# silently do nothing. The role owns those tables and could lift RLS
+# anyway, so this adds no reach it did not have.
+psql_c "ALTER ROLE lotuscheck_migrate BYPASSRLS" >/dev/null
 
 db_exists="$(psql_c "SELECT 1 FROM pg_database WHERE datname='lotuscheck'")"
 if [[ "${db_exists}" != "1" ]]; then

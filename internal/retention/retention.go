@@ -107,6 +107,9 @@ func HeadlineAge(ctx context.Context, db *sqlx.DB) time.Duration {
 // racing each other lose nothing beyond a redundant DDL statement.
 func Run(ctx context.Context, db *sqlx.DB, opts Options) {
 	opts.setDefaults()
+	if ok, err := lotusdb.SeesAllTenants(ctx, db); err != nil || !ok {
+		log.Printf("retention: ERROR: this connection's role cannot read tenant rows through row-level security (it needs BYPASSRLS, as deploy/bootstrap.sh grants the migrate role); every pass will find nothing to do (err: %v)", err)
+	}
 	runOnce(ctx, db, opts)
 
 	ticker := time.NewTicker(opts.Every)
