@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -44,7 +43,11 @@ func TestSentryDetail_DatePicker(t *testing.T) {
 		}
 	}
 	page := "/p/" + projectID.String() + "/c/" + componentID.String() + "/m/" + bindingID.String()
-	today := time.Now().Format("2006-01-02")
+	// The picker lists calendar days in the database's timezone.
+	var today string
+	if err := db.Get(&today, `SELECT to_char(now(), 'YYYY-MM-DD')`); err != nil {
+		t.Fatal(err)
+	}
 
 	status, body := getPage(t, app, host, page, raw)
 	if status != http.StatusOK || !strings.Contains(body, `id="lotus-combobox-date"`) || !strings.Contains(body, `data-value="`+today+`"`) {

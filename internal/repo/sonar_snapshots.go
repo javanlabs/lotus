@@ -149,3 +149,16 @@ func SonarSnapshotDatesForBinding(ctx context.Context, s tenant.Scope, bindingID
 	})
 	return out, err
 }
+
+// EndOfSnapshotDay is the last instant of a date the picker listed — the
+// end of that day in the database's timezone, the same clock the
+// *SnapshotDatesForBinding lists format captured_at with. Taking the day
+// in the server process's zone instead shows the neighbouring day's
+// snapshot whenever the two zones differ.
+func EndOfSnapshotDay(ctx context.Context, s tenant.Scope, date string) (time.Time, error) {
+	var out time.Time
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.GetContext(ctx, &out, `SELECT ($1::date + 1)::timestamptz - interval '1 microsecond'`, date)
+	})
+	return out, err
+}

@@ -77,11 +77,12 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 	selectedDate := strings.TrimSpace(c.Query("date"))
 	var asOf *time.Time
 	if selectedDate != "" {
-		if t, err := time.ParseInLocation("2006-01-02", selectedDate, time.Local); err == nil {
-			cutoff := t.Add(24*time.Hour - time.Nanosecond)
-			asOf = &cutoff
+		if _, err := time.Parse("2006-01-02", selectedDate); err != nil {
+			selectedDate = "" // unparseable — fall back to the latest
+		} else if cutoff, err := repo.EndOfSnapshotDay(c.Context(), s, selectedDate); err != nil {
+			return writeRepoErr(c, err)
 		} else {
-			selectedDate = ""
+			asOf = &cutoff
 		}
 	}
 	snaps, err := repo.SentrySnapshotsAt(c.Context(), s, chrome.Binding.ID, asOf)

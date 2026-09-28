@@ -70,7 +70,12 @@ test('Sonar date picker switches between historical snapshots', async ({ page, c
   const { sessionToken, orgId, subdomain } = await seedOwnerSession('metric-sonar-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   const ids = await seedComponentWithBinding(orgId, 'sonarqube', 'sonarqube', 'alurkerja/billing-api');
+  // The picker lists calendar days in the database's timezone, so the
+  // date to pick comes from there too, not from UTC.
+  let tenDaysAgo = '';
   await withDB(async (client) => {
+    const r = await client.query(`SELECT to_char(now() - interval '10 days', 'YYYY-MM-DD') AS d`);
+    tenDaysAgo = r.rows[0].d;
     await client.query(
       `INSERT INTO sonar_snapshots (org_id, binding_id, component_id, captured_at, quality_gate, bugs, coverage)
        VALUES ($1, $2, $3, now() - interval '10 days', 'OK', 1, 77.7)`,
@@ -87,7 +92,6 @@ test('Sonar date picker switches between historical snapshots', async ({ page, c
   await page.goto(`${origin}${detailPath(ids)}`);
 
   await expect(page.getByText('12.3%')).toBeVisible();
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   await chooseFromDropdown(page, 'date', tenDaysAgo);
   await expect(page.getByText('77.7%')).toBeVisible();
   await expect(page.getByText('12.3%')).not.toBeVisible();

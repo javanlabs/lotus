@@ -102,8 +102,14 @@ func TestSentryHistory_LatestAndAsOf(t *testing.T) {
 	if got := envs(then); len(got) != 2 || got["production"] != 5 || got["staging"] != 2 {
 		t.Errorf("as of the first sync = %v; want production=5, staging=2", got)
 	}
+	// The dates are calendar days in the database's timezone, so "today"
+	// is the database's too — Go's local date differs near midnight.
+	var today string
+	if err := db.Get(&today, `SELECT to_char(now(), 'YYYY-MM-DD')`); err != nil {
+		t.Fatal(err)
+	}
 	dates, err := repo.SentrySnapshotDatesForBinding(ctx, s, bindingID)
-	if err != nil || len(dates) != 1 || dates[0] != time.Now().Format("2006-01-02") {
+	if err != nil || len(dates) != 1 || dates[0] != today {
 		t.Errorf("dates = %v, %v; want today", dates, err)
 	}
 }
