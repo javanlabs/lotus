@@ -29,12 +29,14 @@ func InsertMetricFacts(ctx context.Context, s tenant.Scope, componentID, binding
 	}
 
 	return s.Tx(ctx, func(tx *sqlx.Tx) error {
-		if err := seedDeclaredMetricKeys(ctx, tx, s.OrgID(), kind); err != nil {
-			return err
+		if metricKeyOnce(ctx, "declared:"+kind) {
+			if err := seedDeclaredMetricKeys(ctx, tx, s.OrgID(), kind); err != nil {
+				return err
+			}
 		}
 		seen := make(map[string]bool, len(facts))
 		for _, f := range facts {
-			if !seen[f.Key] {
+			if !seen[f.Key] && metricKeyOnce(ctx, "observed:"+kind+":"+f.Key) {
 				seen[f.Key] = true
 				if err := upsertObservedMetricKey(ctx, tx, s.OrgID(), kind, f.Key, f.Unit, now); err != nil {
 					return err

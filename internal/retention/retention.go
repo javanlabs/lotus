@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+
+	lotusdb "github.com/uyab/lotus/internal/db"
 )
 
 // snapshotTables is every table partitioned by migration 00018.
@@ -79,20 +81,23 @@ func (o *Options) setDefaults() {
 
 // HeadlineAge is how long snapshot rows are kept: the longest
 // organizations.retention_days among live organizations (Settings →
-// Organization), DefaultHeadlineAge when none is set or it cannot be
-// read. The longest, because a monthly partition holds every
-// organization's rows (see this package's doc comment) — an organization
-// with a shorter window keeps more than it asked for, never less.
+// Organization), never less than DefaultHeadlineAge — a small number typed
+// into Settings must not start deleting history. The longest, because a
+// monthly partition holds every organization's rows (see this package's
+// doc comment): an organization with a shorter window keeps more than it
+// asked for, never less. Zero when it cannot be read: the caller skips
+// dropping rather than guess.
 func HeadlineAge(ctx context.Context, db *sqlx.DB) time.Duration {
 	var days sql.NullInt64
 	if err := db.GetContext(ctx, &days, `SELECT max(retention_days) FROM organizations WHERE deleted_at IS NULL`); err != nil {
 		log.Printf("retention: read retention_days: %v", err)
-		return DefaultHeadlineAge
+		return 0
 	}
-	if !days.Valid || days.Int64 < 1 {
-		return DefaultHeadlineAge
+	age := DefaultHeadlineAge
+	if days.Valid && time.Duration(days.Int64)*24*time.Hour > age {
+		age = time.Duration(days.Int64) * 24 * time.Hour
 	}
-	return time.Duration(days.Int64) * 24 * time.Hour
+	return age
 }
 
 // Run executes one retention pass immediately, then repeats every
@@ -128,8 +133,16 @@ func runOnce(ctx context.Context, db *sqlx.DB, opts Options) {
 	if headlineAge <= 0 {
 		headlineAge = HeadlineAge(ctx, db)
 	}
-	if err := DropOldPartitions(ctx, db, now.Add(-headlineAge)); err != nil {
-		log.Printf("retention: drop old partitions: %v", err)
+	switch {
+	case headlineAge <= 0:
+		// retention_days could not be read: dropping on a guessed window
+		// can delete history that cannot be restored, so skip this pass.
+	case lotusdb.LegacyImportRunning(ctx, db):
+		log.Printf("retention: a legacy import is running; not dropping partitions this pass")
+	default:
+		if err := DropOldPartitions(ctx, db, now.Add(-headlineAge)); err != nil {
+			log.Printf("retention: drop old partitions: %v", err)
+		}
 	}
 	if err := DeleteOldSyncRuns(ctx, db, now.Add(-opts.SyncRunAge)); err != nil {
 		log.Printf("retention: delete old sync_runs: %v", err)

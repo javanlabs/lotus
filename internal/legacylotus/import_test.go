@@ -14,6 +14,7 @@ import (
 	"github.com/uyab/lotus/internal/dbtest"
 	"github.com/uyab/lotus/internal/legacylotus"
 	"github.com/uyab/lotus/internal/repo"
+	"github.com/uyab/lotus/internal/retention"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -41,7 +42,9 @@ func newFixture(t *testing.T) fixture {
 	}
 	t.Cleanup(func() { app.Close() })
 	var orgID uuid.UUID
-	if err := app.Get(&orgID, `INSERT INTO organizations (subdomain, name) VALUES ('javan', 'Javan') RETURNING id`); err != nil {
+	// retention_days 365, as production sets it before importing — the
+	// import refuses a window shorter than its history.
+	if err := app.Get(&orgID, `INSERT INTO organizations (subdomain, name, retention_days) VALUES ('javan', 'Javan', 365) RETURNING id`); err != nil {
 		t.Fatal(err)
 	}
 	f := fixture{app: app, ddl: ddl, s: tenant.FromRun(app, orgID)}
@@ -195,5 +198,113 @@ func TestImport_AlongsideLiveCollection(t *testing.T) {
 	}
 	if n := count(t, f, `SELECT count(*) FROM component_metrics_current WHERE component_id = $1`, f.bpm); n != 1 {
 		t.Errorf("current state rows = %d; want the live one", n)
+	}
+}
+
+// Production starts live collection (seed-services) before the export is
+// made, so a binding's live rows can begin inside the legacy range. The
+// history is imported up to the first live observation and no further —
+// never mixed with, nor hidden behind, what live collection already holds.
+// The dry run tells the same story.
+func TestImport_StopsAtTheFirstLiveObservation(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	june := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
+	if err := retention.EnsurePartitions(ctx, f.ddl, june, 1); err != nil {
+		t.Fatal(err)
+	}
+	// A live sonar row captured mid-June, touched ever since.
+	if err := f.s.Tx(ctx, func(tx *sqlx.Tx) error {
+		_, err := tx.Exec(`INSERT INTO sonar_snapshots (org_id, binding_id, component_id, content_hash, coverage, captured_at, collected_at)
+			VALUES ($1, $2, $3, 'live', 77, $4, now())`, f.s.OrgID(), f.sonarBinding, f.bpm, june)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, dry := range []bool{true, false} {
+		rep, err := legacylotus.Import(ctx, f.app, f.ddl, f.s.OrgID(), strings.NewReader(export), legacylotus.Options{DryRun: dry})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// May's two sonar rows, gitlab and trivy in; July's sonar row is
+		// after the live one began.
+		if rep.Imported != 4 || rep.AfterLive != 1 {
+			t.Errorf("dry=%v: report = %+v; want 4 imported, 1 after live collection began", dry, rep)
+		}
+	}
+	var captured []time.Time
+	if err := f.s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.Select(&captured, `SELECT captured_at FROM sonar_snapshots WHERE binding_id = $1 ORDER BY captured_at`, f.sonarBinding)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(captured) != 2 || captured[0].Month() != time.May || !captured[1].Equal(june) {
+		t.Errorf("sonar snapshots at %v; want May's and the live one", captured)
+	}
+}
+
+// An import cut off part way (the process killed, a connection lost) and
+// run again ends where a single run would have: nothing twice, nothing
+// missing, and the months rolled up whole.
+func TestImport_ResumedEqualsWhole(t *testing.T) {
+	ctx := context.Background()
+	whole := newFixture(t)
+	if _, err := legacylotus.Import(ctx, whole.app, whole.ddl, whole.s.OrgID(), strings.NewReader(export), legacylotus.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	cut := newFixture(t)
+	lines := strings.SplitAfter(export, "\n")
+	partial := strings.Join(lines[:3], "") + "{not json"
+	if _, err := legacylotus.Import(ctx, cut.app, cut.ddl, cut.s.OrgID(), strings.NewReader(partial), legacylotus.Options{}); err == nil {
+		t.Fatal("a broken export must fail the import")
+	}
+	if _, err := legacylotus.Import(ctx, cut.app, cut.ddl, cut.s.OrgID(), strings.NewReader(export), legacylotus.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`SELECT count(*) FROM sonar_snapshots`, `SELECT count(*) FROM gitlab_snapshots`, `SELECT count(*) FROM trivy_snapshots`,
+		`SELECT count(*) FROM metric_facts`, `SELECT count(*) FROM metric_facts_daily`,
+	} {
+		if a, b := count(t, whole, q), count(t, cut, q); a != b {
+			t.Errorf("%s: whole %d, resumed %d", q, a, b)
+		}
+	}
+}
+
+// History older than the retention window would be dropped by the next
+// retention pass; the import refuses rather than write it.
+func TestImport_RefusesHistoryOlderThanRetention(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	if _, err := f.ddl.Exec(`UPDATE organizations SET retention_days = 90`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := legacylotus.Import(ctx, f.app, f.ddl, f.s.OrgID(), strings.NewReader(export), legacylotus.Options{})
+	if err == nil || !strings.Contains(err.Error(), "retention") {
+		t.Fatalf("err = %v; want a refusal naming retention", err)
+	}
+	if n := count(t, f, `SELECT count(*) FROM sonar_snapshots`); n != 0 {
+		t.Errorf("snapshots written = %d", n)
+	}
+}
+
+// While an import runs, the live server's timeseries and retention passes
+// must not drop the partitions it is writing into.
+func TestImport_HoldsTheLockTheBackgroundJobsCheck(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	if lotusdb.LegacyImportRunning(ctx, f.ddl) {
+		t.Fatal("no import running, yet the lock reads as held")
+	}
+	release, err := legacylotus.LockImport(ctx, f.ddl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !lotusdb.LegacyImportRunning(ctx, f.ddl) {
+		t.Error("an import holds the lock, yet it reads as free")
+	}
+	release()
+	if lotusdb.LegacyImportRunning(ctx, f.ddl) {
+		t.Error("the lock outlives the import")
 	}
 }

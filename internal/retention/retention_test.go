@@ -296,6 +296,12 @@ func TestHeadlineAge_FollowsTheLongestOrganizationRetention(t *testing.T) {
 	if got := retention.HeadlineAge(ctx, db); got != retention.DefaultHeadlineAge {
 		t.Errorf("no organizations: %v; want the %v default", got, retention.DefaultHeadlineAge)
 	}
+	if _, err := db.Exec(`INSERT INTO organizations (subdomain, name, retention_days) VALUES ('tiny', 'tiny', 7)`); err != nil {
+		t.Fatal(err)
+	}
+	if got := retention.HeadlineAge(ctx, db); got != retention.DefaultHeadlineAge {
+		t.Errorf("an organization asking for 7 days: %v; want the %v floor", got, retention.DefaultHeadlineAge)
+	}
 	for sub, days := range map[string]int{"acme": 90, "beta": 365} {
 		if _, err := db.Exec(`INSERT INTO organizations (subdomain, name, retention_days) VALUES ($1, $1, $2)`, sub, days); err != nil {
 			t.Fatal(err)

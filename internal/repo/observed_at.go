@@ -23,3 +23,27 @@ func observedAt(ctx context.Context) (time.Time, bool) {
 	t, ok := ctx.Value(observedAtKey{}).(time.Time)
 	return t, ok
 }
+
+type metricKeyMemoKey struct{}
+
+// WithMetricKeyMemo lets a long run of InsertMetricFacts calls (an
+// import) seed and upsert each metric_keys row once instead of on every
+// call — hundreds of thousands of updates of the same few rows otherwise,
+// contending with live collection. Not safe for concurrent use.
+func WithMetricKeyMemo(ctx context.Context) context.Context {
+	return context.WithValue(ctx, metricKeyMemoKey{}, map[string]bool{})
+}
+
+// metricKeyOnce reports whether key is the first sighting under ctx's
+// memo, recording it; always true without a memo.
+func metricKeyOnce(ctx context.Context, key string) bool {
+	memo, ok := ctx.Value(metricKeyMemoKey{}).(map[string]bool)
+	if !ok {
+		return true
+	}
+	if memo[key] {
+		return false
+	}
+	memo[key] = true
+	return true
+}

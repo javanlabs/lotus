@@ -83,8 +83,8 @@ func printLegacyReport(rep legacylotus.Report, dry bool, took time.Duration) {
 	}
 	fmt.Printf("\nexport of %s, %s to %s\n", rep.ExportedAt.Format(time.RFC3339),
 		rep.From.Format("2006-01-02"), rep.To.Format("2006-01-02"))
-	fmt.Printf("%d rows read · %d %s · %d already imported · %d unusable · %s\n",
-		rep.Read, rep.Imported, verb, rep.AlreadyImported, rep.Unusable, took.Round(time.Second))
+	fmt.Printf("%d rows read · %d %s · %d already imported · %d after live collection began · %d unusable · %s\n",
+		rep.Read, rep.Imported, verb, rep.AlreadyImported, rep.AfterLive, rep.Unusable, took.Round(time.Second))
 	for label, list := range map[string][]string{
 		"unknown services (no component has this legacy name)":        rep.UnknownServices,
 		"unknown Harbor images (no component mapping)":                rep.UnknownImages,

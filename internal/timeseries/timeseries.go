@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+
+	lotusdb "github.com/uyab/lotus/internal/db"
 )
 
 const (
@@ -109,6 +111,13 @@ func runOnce(ctx context.Context, db *sqlx.DB, opts Options) {
 		log.Printf("timeseries: rollup daily: %v", err)
 	}
 
+	if lotusdb.LegacyImportRunning(ctx, db) {
+		// `lotus import-legacy` is writing history into past months'
+		// partitions and rolls them up as it goes; dropping them now would
+		// lose what it just wrote. The next pass after it ends catches up.
+		log.Printf("timeseries: a legacy import is running; skipping this pass's aging")
+		return
+	}
 	if err := DropOldFactPartitions(ctx, db, now.Add(-opts.RawRetention)); err != nil {
 		log.Printf("timeseries: drop old fact partitions: %v", err)
 	}

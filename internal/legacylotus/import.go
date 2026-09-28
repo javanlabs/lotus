@@ -31,6 +31,7 @@ import (
 	gitlabcollector "github.com/uyab/lotus/internal/collector/gitlab"
 	sonarcollector "github.com/uyab/lotus/internal/collector/sonarqube"
 	trivycollector "github.com/uyab/lotus/internal/collector/trivy"
+	lotusdb "github.com/uyab/lotus/internal/db"
 	"github.com/uyab/lotus/internal/repo"
 	"github.com/uyab/lotus/internal/retention"
 	"github.com/uyab/lotus/internal/tenant"
@@ -51,7 +52,8 @@ type Report struct {
 	ExportedAt      time.Time
 	Read            int      // snapshot rows in the export
 	Imported        int      // written (new snapshots and seen-again ones)
-	AlreadyImported int      // at or before what a binding already holds
+	AlreadyImported int      // at or before what an earlier run imported
+	AfterLive       int      // at or after the binding\'s first live observation
 	Unusable        int      // rows a collector refuses (no measures at all)
 	UnknownServices []string // no component carries this legacy name
 	UnknownImages   []string // Harbor images with no component mapping
@@ -176,6 +178,15 @@ type bindingKey struct {
 	component         uuid.UUID
 }
 
+// progress is where a binding's legacy history stands: imported up to
+// importedTo (legacy_import_progress), and live collection's first
+// observation, if any — legacy rows at or after it are left out, so the
+// two never overlap.
+type progress struct {
+	importedTo time.Time
+	liveFrom   *time.Time
+}
+
 type importer struct {
 	app, ddl   *sqlx.DB
 	s          tenant.Scope
@@ -183,32 +194,74 @@ type importer struct {
 	rep        Report
 	components map[string]uuid.UUID // legacy name, and slug, -> component
 	bindings   map[bindingKey]uuid.UUID
-	highwater  map[uuid.UUID]time.Time // binding -> last observation already held
+	progress   map[uuid.UUID]*progress
 	harborConn uuid.UUID
 	unknownSvc map[string]bool
 	unknownImg map[string]bool
 	missing    map[string]bool
-	month      time.Time // the month being imported (UTC)
-	monthFrom  time.Time // first and last observation imported in it
-	monthTo    time.Time
-	monthCount int
+	oldestOK   bool      // the retention window was checked against the oldest row
+	month      time.Time // the calendar month being imported (UTC)
 }
 
 // Import reads an export from r and writes its history into the
 // organization orgID. app is the RLS-restricted application connection;
 // ddl can create partitions and roll up (the migrate role, as the
-// retention and timeseries jobs use). Rows at or before what a binding
-// already holds (up to the export time) are skipped, so an interrupted
+// retention and timeseries jobs use). It holds the legacy-import lock
+// (LockImport) for the whole run, so those jobs leave partitions alone,
+// and rolls every calendar month it touches up whole, so an interrupted
 // import is resumed by running it again.
 func Import(ctx context.Context, app, ddl *sqlx.DB, orgID uuid.UUID, r io.Reader, opts Options) (Report, error) {
 	im := &importer{
 		app: app, ddl: ddl, s: tenant.FromRun(app, orgID), opts: opts,
-		components: map[string]uuid.UUID{}, bindings: map[bindingKey]uuid.UUID{}, highwater: map[uuid.UUID]time.Time{},
+		components: map[string]uuid.UUID{}, bindings: map[bindingKey]uuid.UUID{}, progress: map[uuid.UUID]*progress{},
 		unknownSvc: map[string]bool{}, unknownImg: map[string]bool{}, missing: map[string]bool{},
+	}
+	if !opts.DryRun {
+		release, err := LockImport(ctx, ddl)
+		if err != nil {
+			return im.rep, err
+		}
+		defer release()
 	}
 	if err := im.load(ctx); err != nil {
 		return im.rep, err
 	}
+	err := im.read(ctx, r)
+	// Roll up the month in hand even when the read failed part way: its
+	// raw facts would otherwise age out before a rerun reaches it.
+	if ferr := im.finishMonth(ctx); err == nil {
+		err = ferr
+	}
+	im.rep.UnknownServices = sortedKeys(im.unknownSvc)
+	im.rep.UnknownImages = sortedKeys(im.unknownImg)
+	im.rep.MissingBindings = sortedKeys(im.missing)
+	return im.rep, err
+}
+
+// LockImport takes the legacy-import advisory lock on a connection of its
+// own and returns its release; it fails at once if another import holds it.
+func LockImport(ctx context.Context, ddl *sqlx.DB) (func(), error) {
+	conn, err := ddl.Connx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var got bool
+	if err := conn.GetContext(ctx, &got, `SELECT pg_try_advisory_lock($1, $2)`, lotusdb.LegacyImportLockClass, lotusdb.LegacyImportLockID); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	if !got {
+		conn.Close()
+		return nil, errors.New("another legacy import is running")
+	}
+	return func() {
+		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1, $2)`, lotusdb.LegacyImportLockClass, lotusdb.LegacyImportLockID)
+		conn.Close()
+	}, nil
+}
+
+func (im *importer) read(ctx context.Context, r io.Reader) error {
+	ctx = repo.WithMetricKeyMemo(ctx)
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	line := 0
@@ -219,22 +272,25 @@ func Import(ctx context.Context, app, ddl *sqlx.DB, orgID uuid.UUID, r io.Reader
 		}
 		var rw row
 		if err := json.Unmarshal(sc.Bytes(), &rw); err != nil {
-			return im.rep, fmt.Errorf("line %d: %w", line, err)
+			return fmt.Errorf("line %d: %w", line, err)
 		}
 		if rw.Kind == "meta" {
 			t, err := parseTime(rw.ExportedAt)
 			if err != nil {
-				return im.rep, fmt.Errorf("line %d: exported_at: %w", line, err)
+				return fmt.Errorf("line %d: exported_at: %w", line, err)
 			}
 			im.rep.ExportedAt = t
 			continue
 		}
 		if im.rep.ExportedAt.IsZero() {
-			return im.rep, errors.New("the export has no meta line with exported_at (was it made by deploy/legacy-lotus-export.py?)")
+			return errors.New("the export has no meta line with exported_at (was it made by deploy/legacy-lotus-export.py?)")
 		}
 		at, err := parseTime(rw.CapturedAt)
 		if err != nil {
-			return im.rep, fmt.Errorf("line %d: captured_at: %w", line, err)
+			return fmt.Errorf("line %d: captured_at: %w", line, err)
+		}
+		if err := im.checkRetention(ctx, at); err != nil {
+			return err
 		}
 		im.rep.Read++
 		if im.rep.From.IsZero() || at.Before(im.rep.From) {
@@ -244,19 +300,28 @@ func Import(ctx context.Context, app, ddl *sqlx.DB, orgID uuid.UUID, r io.Reader
 			im.rep.To = at
 		}
 		if err := im.row(ctx, rw, at); err != nil {
-			return im.rep, fmt.Errorf("line %d (%s at %s): %w", line, rw.Kind, rw.CapturedAt, err)
+			return fmt.Errorf("line %d (%s at %s): %w", line, rw.Kind, rw.CapturedAt, err)
 		}
 	}
-	if err := sc.Err(); err != nil {
-		return im.rep, err
+	return sc.Err()
+}
+
+// checkRetention refuses history the retention pass would drop: the
+// export is oldest first, so its first row decides.
+func (im *importer) checkRetention(ctx context.Context, oldest time.Time) error {
+	if im.oldestOK {
+		return nil
 	}
-	if err := im.finishMonth(ctx); err != nil {
-		return im.rep, err
+	age := retention.HeadlineAge(ctx, im.ddl)
+	if age <= 0 {
+		return errors.New("could not read the organizations' snapshot retention (retention_days)")
 	}
-	im.rep.UnknownServices = sortedKeys(im.unknownSvc)
-	im.rep.UnknownImages = sortedKeys(im.unknownImg)
-	im.rep.MissingBindings = sortedKeys(im.missing)
-	return im.rep, nil
+	if need := time.Since(oldest); need > age {
+		return fmt.Errorf("the snapshot retention window (%d days) does not reach back to %s: set Settings → Organization → Snapshot retention to at least %d days first, or the next retention pass drops the imported history",
+			int(age.Hours()/24), oldest.Format("2006-01-02"), int(need.Hours()/24)+1)
+	}
+	im.oldestOK = true
+	return nil
 }
 
 func sortedKeys(m map[string]bool) []string {
@@ -315,7 +380,8 @@ func (im *importer) load(ctx context.Context) error {
 func isNoRows(err error) bool { return err != nil && strings.Contains(err.Error(), "no rows") }
 
 // binding is the binding a row writes to, created for a Trivy repository
-// the first time it is seen; uuid.Nil when there is none.
+// the first time it is seen (not on a dry run); uuid.Nil component when
+// there is none.
 func (im *importer) binding(ctx context.Context, rw row) (uuid.UUID, uuid.UUID, error) {
 	switch rw.Kind {
 	case "sonar", "gitlab":
@@ -351,11 +417,13 @@ func (im *importer) binding(ctx context.Context, rw row) (uuid.UUID, uuid.UUID, 
 		}
 		var id uuid.UUID
 		if err := im.s.Tx(ctx, func(tx *sqlx.Tx) error {
+			// An existing binding is reused as it is — enabled or not is the
+			// admin's call, not the import's.
 			return tx.GetContext(ctx, &id, `
 				INSERT INTO metric_bindings (org_id, component_id, connection_id, kind, external_key, config)
 				VALUES ($1, $2, $3, 'trivy', $4, '{}')
 				ON CONFLICT (component_id, kind, external_key) WHERE deleted_at IS NULL
-				DO UPDATE SET enabled = true
+				DO UPDATE SET enabled = metric_bindings.enabled
 				RETURNING id`, im.s.OrgID(), comp, im.harborConn, rw.Repo)
 		}); err != nil {
 			return uuid.Nil, uuid.Nil, err
@@ -366,33 +434,58 @@ func (im *importer) binding(ctx context.Context, rw row) (uuid.UUID, uuid.UUID, 
 	return uuid.Nil, uuid.Nil, fmt.Errorf("unknown kind %q", rw.Kind)
 }
 
-// held is the last observation a binding already holds, up to the export
-// time — anything later is live collection's, not a previous import's.
-func (im *importer) held(ctx context.Context, kind string, bindingID uuid.UUID) (time.Time, error) {
-	if t, ok := im.highwater[bindingID]; ok {
-		return t, nil
+var snapshotTable = map[string]string{"sonar": "sonar_snapshots", "gitlab": "gitlab_snapshots", "trivy": "trivy_snapshots"}
+
+// progressOf reads a binding's progress the first time it is met. The
+// first live observation is the earliest snapshot after what was imported
+// — except one captured exactly at the row in hand, which is the import's
+// own write from a run cut off before it could record its progress.
+func (im *importer) progressOf(ctx context.Context, kind string, bindingID uuid.UUID, at time.Time) (*progress, error) {
+	if p, ok := im.progress[bindingID]; ok {
+		return p, nil
 	}
-	table := map[string]string{"sonar": "sonar_snapshots", "gitlab": "gitlab_snapshots", "trivy": "trivy_snapshots"}[kind]
-	var t *time.Time
-	err := im.s.Tx(ctx, func(tx *sqlx.Tx) error {
-		return tx.GetContext(ctx, &t, fmt.Sprintf(
-			`SELECT max(collected_at) FROM %s WHERE binding_id = $1 AND collected_at <= $2`, table), bindingID, im.rep.ExportedAt)
-	})
-	if err != nil {
-		return time.Time{}, err
+	p := &progress{}
+	if bindingID != uuid.Nil { // a Trivy binding a dry run has not made yet
+		err := im.s.Tx(ctx, func(tx *sqlx.Tx) error {
+			err := tx.GetContext(ctx, &p.importedTo, `SELECT imported_to FROM legacy_import_progress WHERE binding_id = $1`, bindingID)
+			if err != nil && !isNoRows(err) {
+				return err
+			}
+			return tx.GetContext(ctx, &p.liveFrom, fmt.Sprintf(`
+				SELECT min(captured_at) FROM %s WHERE binding_id = $1 AND captured_at > $2 AND captured_at <> $3`,
+				snapshotTable[kind]), bindingID, p.importedTo, at)
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
-	var out time.Time
-	if t != nil {
-		out = *t
-	}
-	im.highwater[bindingID] = out
-	return out, nil
+	im.progress[bindingID] = p
+	return p, nil
 }
 
 func (im *importer) row(ctx context.Context, rw row, at time.Time) error {
 	comp, bindingID, err := im.binding(ctx, rw)
 	if err != nil || comp == uuid.Nil {
 		return err
+	}
+	if !im.opts.DryRun {
+		// Every month the export holds is rolled up whole, even one whose
+		// rows were all imported by an earlier, interrupted run.
+		if err := im.enterMonth(ctx, at); err != nil {
+			return err
+		}
+	}
+	p, err := im.progressOf(ctx, rw.Kind, bindingID, at)
+	if err != nil {
+		return err
+	}
+	switch {
+	case !at.After(p.importedTo):
+		im.rep.AlreadyImported++
+		return nil
+	case p.liveFrom != nil && !at.Before(*p.liveFrom):
+		im.rep.AfterLive++
+		return nil
 	}
 	result, err := buildResult(rw)
 	if err != nil {
@@ -402,13 +495,6 @@ func (im *importer) row(ctx context.Context, rw row, at time.Time) error {
 	if im.opts.DryRun {
 		im.rep.Imported++
 		return nil
-	}
-	if !at.After(mustHeld(im.held(ctx, rw.Kind, bindingID))) {
-		im.rep.AlreadyImported++
-		return nil
-	}
-	if err := im.enterMonth(ctx, at); err != nil {
-		return err
 	}
 	octx := repo.WithObservedAt(ctx, at)
 	var persist func(context.Context, tenant.Scope, uuid.UUID, uuid.UUID, collector.Result) error
@@ -427,29 +513,24 @@ func (im *importer) row(ctx context.Context, rw row, at time.Time) error {
 	if err := repo.InsertMetricFacts(octx, im.s, comp, bindingID, kind, result); err != nil {
 		return err
 	}
-	im.highwater[bindingID] = at
+	// Recorded last: a run cut off between the writes above and here
+	// redoes this one row, whose snapshot then dedupes onto itself.
+	if err := im.s.Tx(ctx, func(tx *sqlx.Tx) error {
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO legacy_import_progress (binding_id, org_id, imported_to) VALUES ($1, $2, $3)
+			ON CONFLICT (binding_id) DO UPDATE SET imported_to = EXCLUDED.imported_to, updated_at = now()`,
+			bindingID, im.s.OrgID(), at)
+		return err
+	}); err != nil {
+		return err
+	}
+	p.importedTo = at
 	im.rep.Imported++
-	im.monthCount++
-	if im.monthFrom.IsZero() || at.Before(im.monthFrom) {
-		im.monthFrom = at
-	}
-	if at.After(im.monthTo) {
-		im.monthTo = at
-	}
 	return nil
 }
 
-// mustHeld hides held's error on the dry path, where it is never called.
-func mustHeld(t time.Time, err error) time.Time {
-	if err != nil {
-		panic(err)
-	}
-	return t
-}
-
 // enterMonth makes sure at's month has its partitions, and rolls up the
-// month before once the import has moved past it — before the live
-// server's own passes can age its raw facts out.
+// month before once the import has moved past it.
 func (im *importer) enterMonth(ctx context.Context, at time.Time) error {
 	month := time.Date(at.Year(), at.Month(), 1, 0, 0, 0, 0, time.UTC)
 	if month.Equal(im.month) {
@@ -464,26 +545,38 @@ func (im *importer) enterMonth(ctx context.Context, at time.Time) error {
 	if err := timeseries.EnsurePartitions(ctx, im.ddl, month, 1); err != nil {
 		return err
 	}
-	im.month, im.monthFrom, im.monthTo, im.monthCount = month, time.Time{}, time.Time{}, 0
+	im.month = month
 	return nil
 }
 
-// finishMonth rolls the month just imported up into the hourly and daily
-// tiers the charts read for ranges wider than the raw tier keeps.
+// finishMonth rolls the whole calendar month in hand up into the daily
+// tier, and into the hourly tier for the part the live server keeps
+// hourly rollups for (the last 45 days) — older hourly buckets would be
+// deleted by its next pass anyway.
 func (im *importer) finishMonth(ctx context.Context) error {
-	if im.month.IsZero() || im.monthCount == 0 {
+	if im.month.IsZero() {
 		return nil
 	}
-	to := im.monthTo.Add(time.Hour)
-	if err := timeseries.BackfillHourly(ctx, im.ddl, im.monthFrom, to); err != nil {
-		return err
+	from, to := im.month, im.month.AddDate(0, 1, 0)
+	if now := time.Now(); to.After(now) {
+		to = now.Truncate(time.Hour)
 	}
-	if err := timeseries.BackfillDaily(ctx, im.ddl, im.monthFrom, to); err != nil {
+	hourlyFrom := from
+	if keep := time.Now().Add(-timeseries.DefaultHourlyRetention).Truncate(time.Hour); keep.After(hourlyFrom) {
+		hourlyFrom = keep
+	}
+	if hourlyFrom.Before(to) {
+		if err := timeseries.BackfillHourly(ctx, im.ddl, hourlyFrom, to); err != nil {
+			return err
+		}
+	}
+	if err := timeseries.BackfillDaily(ctx, im.ddl, from, to); err != nil {
 		return err
 	}
 	if im.opts.Progress != nil {
-		im.opts.Progress(im.month, im.monthCount)
+		im.opts.Progress(im.month, im.rep.Imported)
 	}
+	im.month = time.Time{}
 	return nil
 }
 
