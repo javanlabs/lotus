@@ -309,7 +309,30 @@ type qaItemPanelData struct {
 	CanExecute    bool
 	Error         string
 	Progress      qaRunProgressData
-	OOB           bool // also refresh the row status and the progress header
+	OOB           bool // also refresh the row status, the progress header and the group's header
+	GroupIndex    int  // the item's group, in the run page's order (group-progress-<n>)
+	GroupProgress repo.QAProgress
+}
+
+// qaGroupProgress finds groupName among the run's groups, in the order the
+// run page lists them, and counts its items' statuses.
+func qaGroupProgress(c *fiber.Ctx, s tenant.Scope, runID uuid.UUID, groupName string) (int, repo.QAProgress, error) {
+	items, err := repo.ListQARunItems(c.Context(), s, runID, repo.QAItemFilter{})
+	if err != nil {
+		return 0, repo.QAProgress{}, err
+	}
+	index, seen := -1, map[string]int{}
+	var p repo.QAProgress
+	for _, it := range items {
+		if _, ok := seen[it.GroupName]; !ok {
+			seen[it.GroupName] = len(seen)
+		}
+		if it.GroupName == groupName {
+			index = seen[it.GroupName]
+			p.Count(it.Status)
+		}
+	}
+	return index, p, nil
 }
 
 func itemPanel(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, run *repo.QARun, item *repo.QARunItem) (qaItemPanelData, error) {
@@ -460,6 +483,9 @@ func recordQAResultUI(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		data.OOB = true
+		if data.GroupIndex, data.GroupProgress, err = qaGroupProgress(c, s, run.ID, item.GroupName); err != nil {
+			return writeRepoErr(c, err)
+		}
 		c.Type("html")
 		return d.Renderer.RenderNamed(c, "qa_item_panel", data)
 	}

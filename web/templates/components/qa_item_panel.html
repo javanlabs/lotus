@@ -74,5 +74,6 @@
 {{if .OOB}}
 {{template "qa_status" (dict "Status" $i.Status "Tone" $i.Tone "ID" (printf "item-status-%s" $i.ID) "OOB" true)}}
 {{template "qa_run_progress" .Progress}}
+<span id="group-progress-{{.GroupIndex}}" hx-swap-oob="true" style="width:170px">{{template "qa_progress" .GroupProgress}}</span>
 {{end}}
 {{end}}

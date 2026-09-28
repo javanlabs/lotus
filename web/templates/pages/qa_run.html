@@ -71,13 +71,13 @@
     <button type="submit" class="btn-lotus btn-lotus-secondary">Assign</button>
   </form>
   {{end}}
-  {{range $g := $d.Groups}}
+  {{range $gi, $g := $d.Groups}}
   {{if $g.Items}}
   <details{{if not $d.Collapsed}} open{{end}} x-data>
     <summary class="lotus-table-head" style="display:flex;align-items:center;gap:12px;cursor:pointer">
       {{if $d.CanManage}}<input type="checkbox" aria-label="Select the whole group" @click.stop @change="$el.closest('details').querySelectorAll('input[name=item_id]').forEach(b => b.checked = $el.checked)" style="accent-color:var(--text-brand)">{{end}}
       <span style="flex:1">{{if $g.Name}}{{$g.Name}}{{else}}CASES{{end}}</span>
-      <span style="width:170px">{{template "qa_progress" $g.Progress}}</span>
+      <span id="group-progress-{{$gi}}" style="width:170px">{{template "qa_progress" $g.Progress}}</span>
     </summary>
     {{range $g.Items}}
     <div data-item-row x-data="{ open: false }" style="display:flex;align-items:stretch">

@@ -28,7 +28,9 @@
        shows the option's full Label (data-label), and typing filters on it.
        "Placeholder" text shown in the box while the empty-value option is
                     the choice — a folder picker's "Top level", which the
-                    combobox otherwise leaves blank
+                    combobox otherwise leaves blank. Without one, the
+                    empty-value option's own label ("Everyone", "Any
+                    status") is shown, so the box is never blank
        "Label"      accessible name for screen readers, when the visible
                     label is a sibling <span> rather than a wrapping <label>
        "ID"         element id suffix, when two dropdowns on one page
@@ -45,12 +47,14 @@
 {{$size := ternary (eq (printf "%v" .Size) "sm") "lotus-combobox-sm" ""}}
 {{$id := printf "lotus-combobox-%s" (or .ID .Name)}}
 {{$value := .Value}}
+{{$placeholder := .Placeholder}}
+{{if and (not $placeholder) (eq (printf "%v" $value) "")}}{{range .Options}}{{if and (eq .Value "") (not $placeholder)}}{{$placeholder = .Label}}{{end}}{{end}}{{end}}
 <div id="{{$id}}" class="combobox lotus-combobox {{$size}}" data-auto-highlight="true"
      {{if .AutoSubmit}}onchange="this.closest('form') && this.closest('form').requestSubmit()"{{end}}>
   <input type="text" role="combobox" autocomplete="off" autocorrect="off" spellcheck="false"
          aria-autocomplete="list" aria-expanded="false" aria-controls="{{$id}}-listbox"
          {{if .Label}}aria-label="{{.Label}}"{{end}}
-         {{if .Placeholder}}placeholder="{{.Placeholder}}"{{end}}>
+         {{with $placeholder}}placeholder="{{.}}"{{end}}>
   <svg class="combobox-trigger-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9s-4.419 6-6 6s-6-6-6-6"></path>
   </svg>
