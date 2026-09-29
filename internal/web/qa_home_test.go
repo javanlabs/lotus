@@ -9,14 +9,27 @@ import (
 	"github.com/uyab/lotus/internal/repo"
 )
 
-func TestNav_ProjectsQAIntegrationsActivityOnly(t *testing.T) {
+func TestNav_ProjectsQAIntegrationsMembersActivityOnly(t *testing.T) {
 	var keys []string
 	for _, it := range buildNav("projects", 3).Items {
 		keys = append(keys, it.Key+"="+it.Href)
 	}
-	want := "projects=/projects qa_tools=/qa integrations=/settings/connections activity=/activity"
+	want := "projects=/projects qa_tools=/qa integrations=/settings/connections members=/settings/members activity=/activity"
 	if got := strings.Join(keys, " "); got != want {
 		t.Fatalf("nav = %s\nwant  %s", got, want)
+	}
+}
+
+// Members has its own sidebar entry, lit on its page (the settings tab
+// stays too, for anyone arriving through Settings).
+func TestNav_MembersPageLightsTheMembersItem(t *testing.T) {
+	e := newQAEnv(t, "acme-nav-members")
+	status, body := e.get(t, e.owner, "/settings/members")
+	if status != http.StatusOK {
+		t.Fatalf("status = %d", status)
+	}
+	if !strings.Contains(body, `class="lotus-nav-item is-active" href="/settings/members"`) && !strings.Contains(body, `href="/settings/members" class="lotus-nav-item is-active"`) {
+		t.Fatalf("Members is not the active sidebar item:\n%s", body)
 	}
 }
 

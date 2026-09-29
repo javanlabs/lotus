@@ -15,14 +15,16 @@ test('settings sub-nav links to all five screens', async ({ page, context }) => 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
 
   await page.goto(`${origin}/settings/organization`);
-  await expect(page.getByRole('link', { name: 'Connections' })).toBeVisible();
-  await page.getByRole('link', { name: 'Connections' }).click();
+  // Scoped to the tab strip: Members is also a sidebar item.
+  const tabs = page.getByRole('navigation', { name: 'Settings' });
+  await expect(tabs.getByRole('link', { name: 'Connections' })).toBeVisible();
+  await tabs.getByRole('link', { name: 'Connections' }).click();
   await expect(page).toHaveURL(`${origin}/settings/connections`);
-  await page.getByRole('link', { name: 'Members' }).click();
+  await tabs.getByRole('link', { name: 'Members' }).click();
   await expect(page).toHaveURL(`${origin}/settings/members`);
-  await page.getByRole('link', { name: 'Tokens' }).click();
+  await tabs.getByRole('link', { name: 'Tokens' }).click();
   await expect(page).toHaveURL(`${origin}/settings/tokens`);
-  await page.getByRole('link', { name: 'Ingest' }).click();
+  await tabs.getByRole('link', { name: 'Ingest' }).click();
   await expect(page).toHaveURL(`${origin}/settings/ingest`);
 });
 
