@@ -122,7 +122,7 @@ func (im *Importer) importLibrary(ctx context.Context, w *repo.QAImportWriter, l
 		}
 		sid, err := w.InsertSection(repo.QASection{
 			ProjectID: st.projectID, ParentID: parent, Name: name, SortOrder: m.SortOrder,
-			ArchivedAt: archived, CreatedAt: m.CreatedAt,
+			ArchivedAt: archived, CreatedAt: m.CreatedAt, PicID: im.user(m.PicID),
 		})
 		if err != nil {
 			return fmt.Errorf("section %q: %w", name, err)
@@ -177,6 +177,7 @@ func (im *Importer) importLibrary(ctx context.Context, w *repo.QAImportWriter, l
 			Precondition: CleanText(c.Precondition), Notes: notes, Steps: qsteps,
 			Priority: CasePriority(c.Priority), Negative: strings.EqualFold(c.Tag, "NEGATIVE"), Version: 1,
 			ArchivedAt: archived, CreatedBy: im.user(c.CreatedBy), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+			PicID: im.user(c.PicID),
 		}
 		id, err := w.InsertCase(qc)
 		if err != nil {
