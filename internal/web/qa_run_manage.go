@@ -12,7 +12,8 @@ import (
 	"github.com/uyab/lotus/internal/repo"
 )
 
-// Managing a run (qa.plan.write): assign items, start a retest, close it.
+// Managing a run (qa.plan.write): edit it, assign or remove items, start a
+// retest, close it, delete it.
 
 // assignQAItemsUI gives every ticked item (item_id, repeated) to one
 // person, or to nobody. Ids of another run's items are skipped by the
@@ -135,5 +136,116 @@ func saveQARunAsScenarioUI(d Deps) fiber.Handler {
 		}
 		setFlash(c, "qa.scenario.created", sc.Name)
 		return redirectAfterCreate(c, qaBase(project)+"/scenarios/"+sc.ID.String())
+	}
+}
+
+// updateQARunUI saves an open run's name, notes and assignee. A new
+// assignee takes over the items that followed the previous one (the repo
+// moves them in the same transaction) and is told by email.
+func updateQARunUI(d Deps) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		s, project, err := loadQAProject(c)
+		if err != nil {
+			return err
+		}
+		run, err := loadQARun(c, s, project)
+		if err != nil {
+			return err
+		}
+		if run.ClosedAt != nil {
+			return qaFormError(c, d, fiber.StatusConflict, "This run is closed.")
+		}
+		assignee, err := qaRunAssignee(c, d, s, project)
+		if err != nil {
+			return err
+		}
+		saved, changed, err := repo.UpdateQARun(c.Context(), s, run.ID, repo.QARunUpdate{
+			Name: c.FormValue("name"), Notes: c.FormValue("notes"), Assignee: assignee,
+		})
+		if errors.Is(err, repo.ErrQAClosed) {
+			return qaFormError(c, d, fiber.StatusConflict, "This run is closed.")
+		}
+		if err != nil {
+			if status, msg, ok := qaRunErrMessage(err, repo.QARunInput{}); ok {
+				return qaFormError(c, d, status, msg)
+			}
+			return writeRepoErr(c, err)
+		}
+		if changed {
+			plan, err := repo.GetQAPlan(c.Context(), s, saved.PlanID)
+			if err != nil {
+				return writeRepoErr(c, err)
+			}
+			notifyQARunAssignee(c, d, s, project, plan, saved)
+		}
+		setFlash(c, "qa.run.saved", saved.Name)
+		return redirectAfterMutation(c, runURL(project, run))
+	}
+}
+
+// removeQARunItemsUI takes the ticked items (item_id, repeated) out of an
+// open run, with their results and files. Issues reported from them stay;
+// only the links to the removed items go.
+func removeQARunItemsUI(d Deps) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		s, project, err := loadQAProject(c)
+		if err != nil {
+			return err
+		}
+		run, err := loadQARun(c, s, project)
+		if err != nil {
+			return err
+		}
+		ids, err := formUUIDs(c, "item_id")
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return qaFormError(c, d, fiber.StatusUnprocessableEntity, "Select at least one item.")
+		}
+		n, err := repo.RemoveQARunItems(c.Context(), s, d.Blob, run.ID, ids)
+		if errors.Is(err, repo.ErrQAClosed) {
+			return qaFormError(c, d, fiber.StatusConflict, "This run is closed.")
+		}
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+		if n > 0 {
+			raw, _ := json.Marshal(fiber.Map{"name": run.Name, "removed": n, "plan_id": run.PlanID, "project_id": project.ID})
+			if err := repo.RecordAuditEvent(c.Context(), s, qaActor(c), "qa.run.items.remove", "qa_run", &run.ID, raw); err != nil {
+				return writeRepoErr(c, err)
+			}
+		}
+		setFlash(c, "qa.items.removed", strconv.Itoa(n))
+		return redirectAfterMutation(c, runURL(project, run))
+	}
+}
+
+// deleteQARunUI deletes a run, open or closed, and opens its plan. Its
+// items, results and files go with it; issues reported from it stay, and
+// a retest of it stays, no longer marked as one.
+func deleteQARunUI(d Deps) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		s, project, err := loadQAProject(c)
+		if err != nil {
+			return err
+		}
+		run, err := loadQARun(c, s, project)
+		if err != nil {
+			return err
+		}
+		plan, err := repo.GetQAPlan(c.Context(), s, run.PlanID)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+		if err := repo.DeleteQARun(c.Context(), s, d.Blob, run.ID); err != nil {
+			return writeRepoErr(c, err)
+		}
+		raw, _ := json.Marshal(fiber.Map{"name": run.Name, "cycle": run.Cycle, "plan_id": run.PlanID, "project_id": project.ID})
+		if err := repo.RecordAuditEvent(c.Context(), s, qaActor(c), "qa.run.delete", "qa_run", &run.ID, raw); err != nil {
+			return writeRepoErr(c, err)
+		}
+		setFlash(c, "qa.run.deleted", run.Name)
+		return redirectAfterCreate(c, planURL(project, plan))
 	}
 }

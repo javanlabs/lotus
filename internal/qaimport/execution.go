@@ -121,7 +121,7 @@ func (im *Importer) importExecution(ctx context.Context, w *repo.QAImportWriter,
 		}
 		id, err := w.InsertRun(repo.QARun{
 			PlanID: planID, Name: name, Cycle: cycles[planID], Notes: RunNotes(r.Description, r.Version, r.Browser),
-			ClosedAt: closed, CreatedBy: im.user(r.CreatedBy), CreatedAt: r.CreatedAt,
+			AssigneeID: im.user(r.AssigneeID), ClosedAt: closed, CreatedBy: im.user(r.CreatedBy), CreatedAt: r.CreatedAt,
 		})
 		if err != nil {
 			return fmt.Errorf("run %q: %w", name, err)

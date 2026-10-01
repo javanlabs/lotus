@@ -133,9 +133,9 @@ func (w *QAImportWriter) InsertPlan(v QAPlan) (uuid.UUID, error) {
 
 func (w *QAImportWriter) InsertRun(v QARun) (uuid.UUID, error) {
 	return w.insert(`
-		INSERT INTO qa_runs (org_id, plan_id, name, cycle, retest_of, notes, closed_at, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-		w.orgID, v.PlanID, v.Name, v.Cycle, v.RetestOf, v.Notes, v.ClosedAt, v.CreatedBy, v.CreatedAt)
+		INSERT INTO qa_runs (org_id, plan_id, name, cycle, retest_of, notes, assignee_id, closed_at, created_by, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		w.orgID, v.PlanID, v.Name, v.Cycle, v.RetestOf, v.Notes, v.AssigneeID, v.ClosedAt, v.CreatedBy, v.CreatedAt)
 }
 
 func (w *QAImportWriter) InsertRunItem(v QARunItem) (uuid.UUID, error) {

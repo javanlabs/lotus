@@ -21,7 +21,7 @@ CREATE TABLE releases (id uuid PRIMARY KEY, project_id uuid, name varchar, start
   is_archive boolean NOT NULL DEFAULT false, deleted_at timestamp, created_by uuid, created_at timestamp);
 CREATE TABLE test_runs (id uuid PRIMARY KEY, project_id uuid, title varchar, description varchar, test_plan_id uuid,
   release_id uuid, version varchar, browser varchar, is_archive boolean NOT NULL DEFAULT false,
-  deleted_at timestamp, created_by uuid, created_at timestamp);
+  deleted_at timestamp, created_by uuid, created_at timestamp, assignee_id uuid);
 CREATE TABLE test_run_details (id uuid PRIMARY KEY, test_run_id uuid, test_case_id uuid, assignee_id uuid,
   status varchar, updated_status_at timestamp, deleted_at timestamp, created_at timestamp);
 CREATE TABLE results (id uuid PRIMARY KEY, test_run_detail_id uuid, status varchar, comment_test text,

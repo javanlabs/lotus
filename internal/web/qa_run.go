@@ -134,6 +134,7 @@ type qaRunData struct {
 	Run        repo.QARun
 	Plan       repo.QAPlan
 	PhaseLabel string
+	Assignee   string // the run's assignee, "" for nobody
 	Progress   qaRunProgressData
 	Groups     []qaItemGroup
 	Shown      int
@@ -145,11 +146,15 @@ type qaRunData struct {
 	URL        string
 	Collapsed  bool // groups start closed: a large run seen unfiltered
 
-	// Managing the run (qa.plan.write): assignment, retest, close.
+	// Managing the run (qa.plan.write): edit, assignment, removal, retest,
+	// close, delete. Editing and removing items need the run open.
 	CanManage  bool
 	People     []httpx.SelectOption
 	RetestOf   string
 	RetestHref string
+	AssigneeID string // the edit form's choice, "" for nobody
+	NotesMax   int
+	Items      int // how many items deleting the run deletes
 
 	// Save as scenario (qa.case.write).
 	CanSaveScenario bool
@@ -198,7 +203,7 @@ func qaRunPage(d Deps) fiber.Handler {
 		}
 		me := mustPrincipal(c).UserID
 		data := qaRunData{Project: *project, Base: qaBase(project), Run: *run, Plan: *plan, PhaseLabel: qaPhaseLabels[plan.Phase],
-			Who: c.Query("who"), Status: c.Query("status"), Group: c.Query("group"),
+			Assignee: personLabel(labels, run.AssigneeID), NotesMax: repo.MaxQARunNotesLength, Who: c.Query("who"), Status: c.Query("status"), Group: c.Query("group"),
 			CanExecute: mustPrincipal(c).Can("qa.execute") && run.ClosedAt == nil, URL: runURL(project, run)}
 		if data.Progress, err = runProgress(c, s, run, labels); err != nil {
 			return writeRepoErr(c, err)
@@ -216,6 +221,9 @@ func qaRunPage(d Deps) fiber.Handler {
 			people, err := qaPeople(c, d, s, project)
 			if err != nil {
 				return writeRepoErr(c, err)
+			}
+			if run.AssigneeID != nil {
+				data.AssigneeID = run.AssigneeID.String()
 			}
 			data.People = []httpx.SelectOption{{Value: "", Label: "Nobody"}}
 			for _, p := range people {
@@ -258,6 +266,7 @@ func qaRunPage(d Deps) fiber.Handler {
 			})
 			data.Shown++
 		}
+		data.Items = len(items)
 		data.Collapsed = len(items) > qaCollapseAbove && data.Who == "" && data.Status == "" && data.Group == ""
 		org, user, err := shellChrome(c, d.DB)
 		if err != nil {
@@ -299,19 +308,20 @@ func humanSize(n int64) string {
 }
 
 type qaItemPanelData struct {
-	Item          qaItemRow
-	Issues        []qaIssueRow // issues linked to this item
-	ReportHref    string       // report an issue from it (qa.issue.report)
-	MaxFileBytes  int          // the browser refuses larger files before sending
-	MaxTotalBytes int          // … and files adding up to more than one request carries
-	Action        string
-	History       []qaHistoryEntry
-	CanExecute    bool
-	Error         string
-	Progress      qaRunProgressData
-	OOB           bool // also refresh the row status, the progress header and the group's header
-	GroupIndex    int  // the item's group, in the run page's order (group-progress-<n>)
-	GroupProgress repo.QAProgress
+	Item             qaItemRow
+	Issues           []qaIssueRow // issues linked to this item
+	ReportHref       string       // report an issue from it (qa.issue.report)
+	MaxFileBytes     int          // the browser refuses larger files before sending
+	MaxTotalBytes    int          // … and files adding up to more than one request carries
+	MaxCommentLength int          // characters a result's comment may hold
+	Action           string
+	History          []qaHistoryEntry
+	CanExecute       bool
+	Error            string
+	Progress         qaRunProgressData
+	OOB              bool // also refresh the row status, the progress header and the group's header
+	GroupIndex       int  // the item's group, in the run page's order (group-progress-<n>)
+	GroupProgress    repo.QAProgress
 }
 
 // qaGroupProgress finds groupName among the run's groups, in the order the
@@ -350,7 +360,7 @@ func itemPanel(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, run 
 		Item: qaItemRow{QARunItem: *item, Key: ref.Key, Changed: ref.Version > item.CaseVersion, Tone: qaStatusTone(item.Status),
 			Assignee: personLabel(labels, item.AssigneeID), Panel: url},
 		Action: url + "/result", CanExecute: mustPrincipal(c).Can("qa.execute") && run.ClosedAt == nil,
-		MaxFileBytes: repo.MaxQAAttachmentBytes, MaxTotalBytes: qaMaxUploadTotal,
+		MaxFileBytes: repo.MaxQAAttachmentBytes, MaxTotalBytes: qaMaxUploadTotal, MaxCommentLength: repo.MaxQACommentLength,
 	}
 	if mustPrincipal(c).Can("qa.issue.report") {
 		data.ReportHref = qaBase(project) + "/issues/new?item=" + item.ID.String()
@@ -461,6 +471,9 @@ func recordQAResultUI(d Deps) fiber.Handler {
 		})
 		if errors.Is(err, repo.ErrQAClosed) {
 			return refuse(fiber.StatusConflict, "This run is closed.")
+		}
+		if errors.Is(err, repo.ErrQACommentTooLong) {
+			return refuse(fiber.StatusUnprocessableEntity, fmt.Sprintf("A comment can be at most %d characters.", repo.MaxQACommentLength))
 		}
 		if err != nil {
 			return writeRepoErr(c, err)

@@ -207,6 +207,11 @@ func TestImport_Execution(t *testing.T) {
 		t.Fatalf("group name = %q; want the section path", items[0].GroupName)
 	}
 	admin, _ := global.UserByEmail(ctx, e.db, "admin@javan.co.id")
+	// The run's assignee goes through the same users map as the items':
+	// u02 is merged into the admin.
+	if runs[0].AssigneeID == nil || *runs[0].AssigneeID != admin.ID {
+		t.Fatalf("run assignee = %v; want the alias-merged admin", runs[0].AssigneeID)
+	}
 	for _, it := range items {
 		if it.Title == "Deleted but referenced" {
 			if it.ExecutedBy == nil || *it.ExecutedBy != admin.ID || it.StatusAt == nil {

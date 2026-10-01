@@ -88,7 +88,7 @@
       <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">{{.Cycle}}</span>
       <span style="min-width:0;display:flex;flex-direction:column">
         <a href="{{.Href}}" class="lotus-row-link" style="font-size:12.5px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}{{if .ClosedAt}} <span class="lotus-badge lotus-badge-none">closed</span>{{end}}</a>
-        {{if .RetestOf}}<span style="font-size:11px;color:#6B7280">retest of {{.RetestOf}}</span>{{end}}
+        {{if or .Assignee .RetestOf}}<span style="font-size:11px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{if .Assignee}}assigned to {{.Assignee}}{{end}}{{if and .Assignee .RetestOf}} · {{end}}{{if .RetestOf}}retest of {{.RetestOf}}{{end}}</span>{{end}}
       </span>
       {{template "qa_progress" .Progress}}
     </div>

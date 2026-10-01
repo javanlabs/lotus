@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
+	"github.com/uyab/lotus/internal/blob"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -19,19 +20,20 @@ const (
 )
 
 type QARun struct {
-	ID        uuid.UUID  `db:"id"`
-	OrgID     uuid.UUID  `db:"org_id"`
-	PlanID    uuid.UUID  `db:"plan_id"`
-	Name      string     `db:"name"`
-	Cycle     int        `db:"cycle"`
-	RetestOf  *uuid.UUID `db:"retest_of"`
-	Notes     string     `db:"notes"`
-	ClosedAt  *time.Time `db:"closed_at"`
-	CreatedBy *uuid.UUID `db:"created_by"`
-	CreatedAt time.Time  `db:"created_at"`
+	ID         uuid.UUID  `db:"id"`
+	OrgID      uuid.UUID  `db:"org_id"`
+	PlanID     uuid.UUID  `db:"plan_id"`
+	Name       string     `db:"name"`
+	Cycle      int        `db:"cycle"`
+	RetestOf   *uuid.UUID `db:"retest_of"`
+	Notes      string     `db:"notes"`
+	AssigneeID *uuid.UUID `db:"assignee_id"` // the lead tester; the default for items
+	ClosedAt   *time.Time `db:"closed_at"`
+	CreatedBy  *uuid.UUID `db:"created_by"`
+	CreatedAt  time.Time  `db:"created_at"`
 }
 
-const qaRunCols = `id, org_id, plan_id, name, cycle, retest_of, notes, closed_at, created_by, created_at`
+const qaRunCols = `id, org_id, plan_id, name, cycle, retest_of, notes, assignee_id, closed_at, created_by, created_at`
 
 type QARunInput struct {
 	Name         string
@@ -39,6 +41,7 @@ type QARunInput struct {
 	ScenarioIDs  []uuid.UUID // subset of the plan's; empty = all
 	Testers      []uuid.UUID
 	Distribution string
+	Assignee     *uuid.UUID // the run's lead; gets every item distribution leaves unassigned
 }
 
 // runSource is one case to snapshot, in run order.
@@ -62,7 +65,15 @@ func nextQACycle(ctx context.Context, tx *sqlx.Tx, planID uuid.UUID) (int, error
 	return c, err
 }
 
-func insertQARun(ctx context.Context, tx *sqlx.Tx, orgID, planID uuid.UUID, name, notes string, retestOf, createdBy *uuid.UUID, items []runSource) (*QARun, error) {
+// validQARunNotes holds notes written in Lotus to MaxQARunNotesLength.
+func validQARunNotes(notes string) error {
+	if utf8.RuneCountInString(notes) > MaxQARunNotesLength {
+		return ErrQANotesTooLong
+	}
+	return nil
+}
+
+func insertQARun(ctx context.Context, tx *sqlx.Tx, orgID, planID uuid.UUID, name, notes string, assignee, retestOf, createdBy *uuid.UUID, items []runSource) (*QARun, error) {
 	name, err := normalizeQAName(name, MaxQANameLength)
 	if err != nil {
 		return nil, err
@@ -76,9 +87,9 @@ func insertQARun(ctx context.Context, tx *sqlx.Tx, orgID, planID uuid.UUID, name
 	}
 	var run QARun
 	if err := tx.GetContext(ctx, &run, `
-		INSERT INTO qa_runs (org_id, plan_id, name, cycle, retest_of, notes, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING `+qaRunCols,
-		orgID, planID, name, cycle, retestOf, notes, createdBy); err != nil {
+		INSERT INTO qa_runs (org_id, plan_id, name, cycle, retest_of, notes, assignee_id, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING `+qaRunCols,
+		orgID, planID, name, cycle, retestOf, notes, assignee, createdBy); err != nil {
 		return nil, err
 	}
 	for i, it := range items {
@@ -93,6 +104,9 @@ func insertQARun(ctx context.Context, tx *sqlx.Tx, orgID, planID uuid.UUID, name
 }
 
 func validQADistribution(in QARunInput) error {
+	if err := validQARunNotes(in.Notes); err != nil {
+		return err
+	}
 	switch in.Distribution {
 	case "", DistributeNone:
 	case DistributeRoundRobin, DistributeByGroup:
@@ -185,7 +199,8 @@ func CreateQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARun
 			return err
 		}
 		distribute(items, in.Testers, in.Distribution)
-		run, err := insertQARun(ctx, tx, s.OrgID(), planID, in.Name, in.Notes, nil, createdBy, items)
+		fillAssignee(items, in.Assignee)
+		run, err := insertQARun(ctx, tx, s.OrgID(), planID, in.Name, in.Notes, in.Assignee, nil, createdBy, items)
 		out = run
 		return err
 	})
@@ -216,6 +231,7 @@ func PreviewQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARu
 			return err
 		}
 		distribute(items, in.Testers, in.Distribution)
+		fillAssignee(items, in.Assignee)
 		out.Cases = len(items)
 		for _, it := range items {
 			if it.Assignee == nil {
@@ -227,6 +243,19 @@ func PreviewQARun(ctx context.Context, s tenant.Scope, planID uuid.UUID, in QARu
 		return nil
 	})
 	return out, qaWriteErr(err)
+}
+
+// fillAssignee gives the run's assignee every item still without one.
+func fillAssignee(items []runSource, assignee *uuid.UUID) {
+	if assignee == nil {
+		return
+	}
+	for i := range items {
+		if items[i].Assignee == nil {
+			a := *assignee
+			items[i].Assignee = &a
+		}
+	}
 }
 
 // distribute sets Assignee on items in place.
@@ -286,7 +315,7 @@ func CreateQARetest(ctx context.Context, s tenant.Scope, runID uuid.UUID, create
 			items[i] = r.runSource
 			items[i].Assignee = r.Executor
 		}
-		run, err := insertQARun(ctx, tx, s.OrgID(), orig.PlanID, qaRetestName(orig.Name), "", &runID, createdBy, items)
+		run, err := insertQARun(ctx, tx, s.OrgID(), orig.PlanID, qaRetestName(orig.Name), "", orig.AssigneeID, &runID, createdBy, items)
 		out = run
 		return err
 	})
@@ -324,6 +353,144 @@ func CloseQARun(ctx context.Context, s tenant.Scope, id uuid.UUID) error {
 		return checkRowsAffected(res)
 	})
 	return qaWriteErr(err)
+}
+
+// QARunUpdate is what editing a run changes: its name, notes and
+// assignee (nil: nobody).
+type QARunUpdate struct {
+	Name     string
+	Notes    string
+	Assignee *uuid.UUID
+}
+
+// UpdateQARun saves a run's name, notes and assignee, and reports whether
+// the assignee changed. When it does, the items that still followed the
+// previous assignee (assigned to them, or unassigned when there was none)
+// move to the new one in the same transaction; items given to someone else
+// stay theirs. A closed run is ErrQAClosed.
+func UpdateQARun(ctx context.Context, s tenant.Scope, id uuid.UUID, in QARunUpdate) (*QARun, bool, error) {
+	name, err := normalizeQAName(in.Name, MaxQANameLength)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := validQARunNotes(in.Notes); err != nil {
+		return nil, false, err
+	}
+	var out QARun
+	changed := false
+	err = s.Tx(ctx, func(tx *sqlx.Tx) error {
+		var prev QARun
+		if err := tx.GetContext(ctx, &prev, `SELECT `+qaRunCols+` FROM qa_runs WHERE id = $1 FOR UPDATE`, id); err != nil {
+			return err
+		}
+		if prev.ClosedAt != nil {
+			return ErrQAClosed
+		}
+		if err := tx.GetContext(ctx, &out, `
+			UPDATE qa_runs SET name = $2, notes = $3, assignee_id = $4 WHERE id = $1 RETURNING `+qaRunCols,
+			id, name, in.Notes, in.Assignee); err != nil {
+			return err
+		}
+		if sameQAUser(prev.AssigneeID, in.Assignee) {
+			return nil
+		}
+		changed = true
+		_, err := tx.ExecContext(ctx, `
+			UPDATE qa_run_items SET assignee_id = $3 WHERE run_id = $1 AND assignee_id IS NOT DISTINCT FROM $2`,
+			id, prev.AssigneeID, in.Assignee)
+		return err
+	})
+	if err != nil {
+		return nil, false, qaWriteErr(err)
+	}
+	return &out, changed, nil
+}
+
+func sameQAUser(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// qaResultFileKeys are the stored files of the results of the items
+// matched by where (on qa_run_items i, with args), which deleting those
+// items is about to drop with them.
+func qaResultFileKeys(ctx context.Context, tx *sqlx.Tx, where string, args ...any) ([]string, error) {
+	var keys []string
+	err := tx.SelectContext(ctx, &keys, `
+		SELECT a.storage_key FROM qa_attachments a
+		JOIN qa_results r ON r.id = a.result_id
+		JOIN qa_run_items i ON i.id = r.item_id
+		WHERE `+where, args...)
+	return keys, err
+}
+
+// deleteQAFiles removes stored files whose rows are gone, best effort (as
+// DeleteQAAttachment does): the rows are the source of truth, and a file
+// left behind is unreachable, not wrong. A nil store leaves them all.
+func deleteQAFiles(ctx context.Context, store blob.Store, keys []string) {
+	if store == nil {
+		return
+	}
+	for _, k := range keys {
+		store.Delete(ctx, k) //nolint:errcheck // best effort; see above
+	}
+}
+
+// RemoveQARunItems takes items out of an open run, with their results and
+// files, and returns how many went. Ids of another run's items are
+// ignored. Issues reported from an item stay; only the link to it goes.
+func RemoveQARunItems(ctx context.Context, s tenant.Scope, store blob.Store, runID uuid.UUID, itemIDs []uuid.UUID) (int, error) {
+	var n int64
+	var keys []string
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		var closed *time.Time
+		if err := tx.GetContext(ctx, &closed, `SELECT closed_at FROM qa_runs WHERE id = $1 FOR UPDATE`, runID); err != nil {
+			return err
+		}
+		if closed != nil {
+			return ErrQAClosed
+		}
+		var err error
+		if keys, err = qaResultFileKeys(ctx, tx, `i.run_id = $1 AND i.id = ANY($2)`, runID, itemIDs); err != nil {
+			return err
+		}
+		res, err := tx.ExecContext(ctx, `DELETE FROM qa_run_items WHERE run_id = $1 AND id = ANY($2)`, runID, itemIDs)
+		if err != nil {
+			return err
+		}
+		n, err = res.RowsAffected()
+		return err
+	})
+	if err != nil {
+		return 0, qaWriteErr(err)
+	}
+	deleteQAFiles(ctx, store, keys)
+	return int(n), nil
+}
+
+// DeleteQARun deletes a run, open or closed, with its items, results and
+// files. Issues reported from its items stay, and a retest of it stays,
+// no longer marked as one.
+func DeleteQARun(ctx context.Context, s tenant.Scope, store blob.Store, id uuid.UUID) error {
+	var keys []string
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		var err error
+		if keys, err = qaResultFileKeys(ctx, tx, `i.run_id = $1`, id); err != nil {
+			return err
+		}
+		res, err := tx.ExecContext(ctx, `DELETE FROM qa_runs WHERE id = $1`, id)
+		if err != nil {
+			return err
+		}
+		return checkRowsAffected(res)
+	})
+	if err != nil {
+		return qaWriteErr(err)
+	}
+	deleteQAFiles(ctx, store, keys)
+	return nil
 }
 
 const qaRetestSuffix = " — retest"
