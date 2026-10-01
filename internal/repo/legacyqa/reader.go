@@ -225,6 +225,7 @@ type Run struct {
 	Version     string     `db:"version"`
 	Browser     string     `db:"browser"`
 	Archived    bool       `db:"is_archive"`
+	AssigneeID  *uuid.UUID `db:"assignee_id"`
 	CreatedBy   *uuid.UUID `db:"created_by"`
 	CreatedAt   time.Time  `db:"created_at"`
 }
@@ -233,7 +234,7 @@ func (r *Reader) Runs(ctx context.Context, projectID uuid.UUID) ([]Run, error) {
 	var out []Run
 	err := r.db.SelectContext(ctx, &out, `
 		SELECT id, COALESCE(title, '') AS title, COALESCE(description, '') AS description, test_plan_id, release_id,
-			COALESCE(version, '') AS version, COALESCE(browser, '') AS browser, is_archive, created_by,
+			COALESCE(version, '') AS version, COALESCE(browser, '') AS browser, is_archive, assignee_id, created_by,
 			COALESCE(created_at, 'epoch') AS created_at
 		FROM test_runs WHERE project_id = $1 AND deleted_at IS NULL ORDER BY created_at, id`, projectID)
 	return out, err
