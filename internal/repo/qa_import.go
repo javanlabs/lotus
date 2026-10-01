@@ -110,18 +110,18 @@ func (w *QAImportWriter) insert(query string, args ...any) (uuid.UUID, error) {
 
 func (w *QAImportWriter) InsertSection(v QASection) (uuid.UUID, error) {
 	return w.insert(`
-		INSERT INTO qa_sections (org_id, project_id, parent_id, name, sort_order, archived_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-		w.orgID, v.ProjectID, v.ParentID, v.Name, v.SortOrder, v.ArchivedAt, v.CreatedAt)
+		INSERT INTO qa_sections (org_id, project_id, parent_id, name, sort_order, archived_at, created_at, pic_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		w.orgID, v.ProjectID, v.ParentID, v.Name, v.SortOrder, v.ArchivedAt, v.CreatedAt, v.PicID)
 }
 
 func (w *QAImportWriter) InsertCase(v QACase) (uuid.UUID, error) {
 	return w.insert(`
 		INSERT INTO qa_cases (org_id, project_id, section_id, key, title, precondition, notes, steps, priority,
-			negative, version, archived_at, created_by, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+			negative, version, archived_at, created_by, created_at, updated_at, pic_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
 		w.orgID, v.ProjectID, v.SectionID, v.Key, v.Title, v.Precondition, v.Notes, v.Steps, v.Priority,
-		v.Negative, v.Version, v.ArchivedAt, v.CreatedBy, v.CreatedAt, v.UpdatedAt)
+		v.Negative, v.Version, v.ArchivedAt, v.CreatedBy, v.CreatedAt, v.UpdatedAt, v.PicID)
 }
 
 func (w *QAImportWriter) InsertPlan(v QAPlan) (uuid.UUID, error) {

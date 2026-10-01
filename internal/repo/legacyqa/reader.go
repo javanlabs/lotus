@@ -103,13 +103,34 @@ type Module struct {
 	Archived  bool       `db:"is_archive"`
 	DeletedAt *time.Time `db:"deleted_at"`
 	CreatedAt time.Time  `db:"created_at"`
+	PicID     *uuid.UUID `db:"pic_id"`
+}
+
+// picColumn is how to read table's pic_id: the column, prefixed with
+// alias, when the dump has it — QA Tools started filling modules.pic_id
+// and test_cases.pic_id on 2026-09-04, older dumps lack them — else NULL.
+func (r *Reader) picColumn(ctx context.Context, table, alias string) (string, error) {
+	var ok bool
+	if err := r.db.GetContext(ctx, &ok, `
+		SELECT EXISTS (SELECT 1 FROM information_schema.columns
+			WHERE table_schema = current_schema() AND table_name = $1 AND column_name = 'pic_id')`, table); err != nil {
+		return "", err
+	}
+	if !ok {
+		return "NULL::uuid", nil
+	}
+	return alias + "pic_id", nil
 }
 
 func (r *Reader) Modules(ctx context.Context, projectID uuid.UUID) ([]Module, error) {
+	pic, err := r.picColumn(ctx, "modules", "")
+	if err != nil {
+		return nil, err
+	}
 	var out []Module
-	err := r.db.SelectContext(ctx, &out, `
+	err = r.db.SelectContext(ctx, &out, `
 		SELECT id, parent_id, COALESCE(module_name, '') AS module_name, "order" AS sort_order, is_archive,
-			deleted_at, COALESCE(created_at, updated_at, 'epoch') AS created_at
+			deleted_at, COALESCE(created_at, updated_at, 'epoch') AS created_at, `+pic+` AS pic_id
 		FROM modules WHERE project_id = $1 ORDER BY "order", id`, projectID)
 	return out, err
 }
@@ -128,6 +149,7 @@ type Case struct {
 	CreatedBy    *uuid.UUID `db:"created_by"`
 	CreatedAt    time.Time  `db:"created_at"`
 	UpdatedAt    time.Time  `db:"updated_at"`
+	PicID        *uuid.UUID `db:"pic_id"`
 }
 
 // liveDetails is the set of run details the importer keeps: live details of
@@ -144,14 +166,18 @@ const liveDetails = `
 	ORDER BY d.test_run_id, d.test_case_id, d.created_at, d.id`
 
 func (r *Reader) Cases(ctx context.Context, projectID uuid.UUID) ([]Case, error) {
+	pic, err := r.picColumn(ctx, "test_cases", "c.")
+	if err != nil {
+		return nil, err
+	}
 	var out []Case
-	err := r.db.SelectContext(ctx, &out, `
+	err = r.db.SelectContext(ctx, &out, `
 		WITH kept AS (`+liveDetails+`)
 		SELECT c.id, c.module_id, COALESCE(c.case_code, '') AS case_code, COALESCE(c.title, '') AS title,
 			COALESCE(c.precondition, '') AS precondition, COALESCE(c.description, '') AS description,
 			COALESCE(c.priority, '') AS priority, COALESCE(c.tag, '') AS tag, c.is_archive, c.deleted_at,
 			c.created_by, COALESCE(c.created_at, 'epoch') AS created_at,
-			COALESCE(c.updated_at, c.created_at, 'epoch') AS updated_at
+			COALESCE(c.updated_at, c.created_at, 'epoch') AS updated_at, `+pic+` AS pic_id
 		FROM test_cases c
 		WHERE c.project_id = $1
 		  AND (c.deleted_at IS NULL OR c.id IN (SELECT test_case_id FROM kept))

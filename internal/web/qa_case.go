@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 
 	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/repo"
@@ -31,6 +32,7 @@ type qaCaseForm struct {
 	Precondition   string
 	Notes          string
 	Steps          repo.QASteps
+	PicID          string // the case's own PIC, "" for none (its section's applies)
 	Error          string
 	CanWrite       bool
 	SectionOptions []httpx.SelectOption
@@ -40,6 +42,9 @@ type qaCaseForm struct {
 	// offered in the picker (marked) so the box never shows a bare id, and
 	// the case cannot be restored until it moves to a live section.
 	SectionArchived bool
+	PICOptions      []httpx.SelectOption
+	PIC             *qaPICView // effective: own, else inherited from a section
+	CreatedBy       string     // the author, named; "" when unknown
 }
 
 // Action is where the form posts.
@@ -73,8 +78,13 @@ func qaStepsFromForm(c *fiber.Ctx) repo.QASteps {
 }
 
 // readQACaseForm reads a submitted case. It returns the repo input, or the
-// sentence to show; an unknown or foreign section is 404.
-func readQACaseForm(c *fiber.Ctx, s tenant.Scope, project *repo.Project, f *qaCaseForm) (repo.QACaseInput, error) {
+// sentence to show; an unknown or foreign section is 404. The PIC must be
+// someone who can be one here, or the case's current PIC.
+func readQACaseForm(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, f *qaCaseForm) (repo.QACaseInput, error) {
+	var keep *uuid.UUID
+	if f.Case != nil {
+		keep = f.Case.PicID
+	}
 	f.Title = c.FormValue("title")
 	f.SectionID = c.FormValue("section_id")
 	f.Priority = strings.TrimSpace(c.FormValue("priority"))
@@ -82,6 +92,7 @@ func readQACaseForm(c *fiber.Ctx, s tenant.Scope, project *repo.Project, f *qaCa
 	f.Precondition = c.FormValue("precondition")
 	f.Notes = c.FormValue("notes")
 	f.Steps = qaStepsFromForm(c)
+	f.PicID = strings.TrimSpace(c.FormValue("pic_id"))
 	if strings.TrimSpace(f.SectionID) == "" {
 		f.Error = "Choose a section."
 		return repo.QACaseInput{}, nil
@@ -101,6 +112,17 @@ func readQACaseForm(c *fiber.Ctx, s tenant.Scope, project *repo.Project, f *qaCa
 		in.Priority = &p
 	default:
 		f.Error = "Choose a priority: high, medium or low."
+	}
+	if f.PicID != "" {
+		people, err := qaPeople(c, d, s, project)
+		if err != nil {
+			return in, err
+		}
+		if in.PicID, err = qaPICFrom(people, f.PicID, keep); errors.Is(err, errQAPIC) {
+			f.Error = qaPICErrMessage
+		} else if err != nil {
+			return in, err
+		}
 	}
 	return in, nil
 }
@@ -125,6 +147,9 @@ func renderQACase(c *fiber.Ctx, d Deps, s tenant.Scope, f qaCaseForm, status int
 	tree := qaSectionTree(sections, nil, false, nil)
 	f.SectionOptions = qaSectionOptions(tree, nil)
 	f.PriorityOpts = qaPriorityOptions
+	if err := fillQACasePIC(c, d, s, &f, sections); err != nil {
+		return writeRepoErr(c, err)
+	}
 	for _, r := range tree {
 		if r.ID.String() == f.SectionID {
 			f.SectionPath = r.Path
@@ -158,6 +183,40 @@ func renderQACase(c *fiber.Ctx, d Deps, s tenant.Scope, f qaCaseForm, status int
 	})
 }
 
+// fillQACasePIC names the case's PIC (its own, else its section's) and
+// author, and lists who can be picked as PIC.
+func fillQACasePIC(c *fiber.Ctx, d Deps, s tenant.Scope, f *qaCaseForm, sections []repo.QASection) error {
+	var own, author *uuid.UUID
+	if id, err := uuid.Parse(f.PicID); err == nil {
+		own = &id
+	}
+	if f.Case != nil {
+		author = f.Case.CreatedBy
+	}
+	labels, err := qaUserLabels(c, d, qaPICIDs(sections, own, author))
+	if err != nil {
+		return err
+	}
+	if author != nil {
+		f.CreatedBy = personLabel(labels, author)
+	}
+	sectionID, _ := uuid.Parse(f.SectionID)
+	f.PIC = qaEffectivePICView(sections, sectionID, own, labels)
+	if !f.CanWrite {
+		return nil
+	}
+	people, err := qaPeople(c, d, s, &f.Project)
+	if err != nil {
+		return err
+	}
+	none := "Nobody"
+	if inherited := qaEffectivePICView(sections, sectionID, nil, labels); inherited != nil {
+		none = "Section's PIC (" + inherited.Label + ")"
+	}
+	f.PICOptions = qaPICOptions(people, none, own, labels)
+	return nil
+}
+
 func formFromCase(project *repo.Project, qc *repo.QACase) qaCaseForm {
 	f := qaCaseForm{
 		Project: *project, Base: qaBase(project), Case: qc, Title: qc.Title, SectionID: qc.SectionID.String(),
@@ -166,6 +225,7 @@ func formFromCase(project *repo.Project, qc *repo.QACase) qaCaseForm {
 	if qc.Priority != nil {
 		f.Priority = *qc.Priority
 	}
+	f.PicID = uuidString(qc.PicID)
 	return f
 }
 
@@ -205,7 +265,7 @@ func createQACaseUI(d Deps) fiber.Handler {
 			return err
 		}
 		f := qaCaseForm{Project: *project, Base: qaBase(project), CanWrite: true}
-		in, err := readQACaseForm(c, s, project, &f)
+		in, err := readQACaseForm(c, d, s, project, &f)
 		if err != nil {
 			return err
 		}
@@ -253,7 +313,7 @@ func updateQACaseUI(d Deps) fiber.Handler {
 		}
 		f := formFromCase(project, qc)
 		f.CanWrite = true
-		in, err := readQACaseForm(c, s, project, &f)
+		in, err := readQACaseForm(c, d, s, project, &f)
 		if err != nil {
 			return err
 		}

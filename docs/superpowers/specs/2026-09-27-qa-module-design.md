@@ -87,14 +87,19 @@ All tables: `org_id uuid NOT NULL REFERENCES organizations ON DELETE
 CASCADE`, `UNIQUE (id, org_id)`, composite foreign keys `(x_id, org_id)`
 to every tenant parent, RLS forced with the `NULLIF(current_setting(
 'app.org_id', true), '')::uuid` policy used since migration 00026. User
-references (`*_by`, `assignee_id`) are plain `REFERENCES users(id) ON
+references (`*_by`, `assignee_id`, `pic_id`) are plain `REFERENCES users(id) ON
 DELETE SET NULL` (control plane, no org).
 
 | Table | Columns (besides id, org_id) | Notes |
 |---|---|---|
 | `project_members` | project_id, user_id, created_at | Only consulted for role `guest`. `UNIQUE (project_id, user_id)`. |
-| `qa_sections` | project_id, parent_id NULL, name (1–200), sort_order, archived_at, created_at | Sibling names unique ignoring case (`NULLS NOT DISTINCT`). Depth ≤ 8. |
-| `qa_cases` | project_id, section_id, key int, title (1–500), precondition text, notes text, steps jsonb (array), priority text NULL (`high/medium/low`), negative bool, version int, archived_at, created_by, created_at, updated_at | `UNIQUE (project_id, key)`. `version` +1 whenever title, precondition or steps change. |
+| `qa_sections` | project_id, parent_id NULL, name (1–200), sort_order, archived_at, created_at, pic_id NULL | Sibling names unique ignoring case (`NULLS NOT DISTINCT`). Depth ≤ 8. |
+| `qa_cases` | project_id, section_id, key int, title (1–500), precondition text, notes text, steps jsonb (array), priority text NULL (`high/medium/low`), negative bool, version int, archived_at, created_by, created_at, updated_at, pic_id NULL | `UNIQUE (project_id, key)`. `version` +1 whenever title, precondition or steps change. Effective PIC = the case's `pic_id`, else the nearest ancestor section's. |
+
+`pic_id` (person in charge) was added back on 2026-10-02 (migration
+00032): QA Tools started filling it on 2026-09-04, after the dump §6
+measured. Both are optional; a PIC is anyone who can be given run items
+(owner, admin, member, or a guest listed on the project).
 | `qa_scenarios` | project_id, name (1–200), phase, description, archived_at, created_by, created_at, updated_at | phase ∈ `smoke, sit, uat, regression, other`. |
 | `qa_scenario_groups` | scenario_id, name (1–200), position | Optional; items without a group sit in an unnamed first group. |
 | `qa_scenario_items` | scenario_id, group_id NULL, case_id, position | `UNIQUE (scenario_id, case_id)`. |
@@ -151,9 +156,11 @@ Measured on the 2026-09-26 production dump. "Fill" = non-null share.
 | `test_cases.description` | 41% `-`, most of the rest Taiga links | Becomes `notes`; `-` imported as empty. |
 | `test_cases.case_code` | Strings `TC0001`, 8 live duplicates | Integer `key`; duplicates renumbered. |
 | `test_cases.order_id` | 12 distinct values | Drop; order by key within section. |
-| `test_cases.pic_id`, `id_task_taiga`, `id_assigned_to_taiga`, `assigned_to_taiga` | 0.0% fill | Drop. |
+| `test_cases.pic_id` | 0.0% fill in the 2026-09-26 dump, but QA Tools has filled it since 2026-09-04 | **Kept** (added back 2026-10-02): optional `qa_cases.pic_id`, imported when the dump has the column. |
+| `test_cases.id_task_taiga`, `id_assigned_to_taiga`, `assigned_to_taiga` | 0.0% fill | Drop. |
 | `steps.created_by/updated_by/created_at/updated_at` | Steps belong to the case | Drop; steps move into `qa_cases.steps`. |
-| `modules.id_epicorus_taiga`, `deleted_at_taiga_sync`, `pic_id` | 1.2%, 0%, 0% | Drop (Taiga is decommissioned). |
+| `modules.id_epicorus_taiga`, `deleted_at_taiga_sync` | 1.2%, 0% | Drop (Taiga is decommissioned). |
+| `modules.pic_id` | 0% in the 2026-09-26 dump; used by QA Tools since 2026-09-04 | **Kept** (added back 2026-10-02): optional `qa_sections.pic_id`, imported when the dump has the column. |
 | `projects.id_taiga` | 9.3%, Taiga gone | Drop. |
 | `releases.*` | Used as sprint/phase buckets | Entity dropped; each becomes a plan (name, dates). |
 | `test_plans.code`, `assignment_time`/`expiration_time` naming | 4 distinct codes | Drop code; dates become `starts_on/ends_on`. |

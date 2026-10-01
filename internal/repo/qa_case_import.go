@@ -101,9 +101,9 @@ func ImportQACasesKeys(ctx context.Context, s tenant.Scope, projectID uuid.UUID,
 			}
 			in := inputs[i]
 			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO qa_cases (org_id, project_id, section_id, key, title, precondition, notes, steps, priority, negative, created_by)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-				s.OrgID(), projectID, *parent, key, in.Title, in.Precondition, in.Notes, in.Steps, in.Priority, in.Negative, createdBy); err != nil {
+				INSERT INTO qa_cases (org_id, project_id, section_id, key, title, precondition, notes, steps, priority, negative, created_by, pic_id)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+				s.OrgID(), projectID, *parent, key, in.Title, in.Precondition, in.Notes, in.Steps, in.Priority, in.Negative, createdBy, in.PicID); err != nil {
 				return err
 			}
 			keys = append(keys, key)

@@ -5,7 +5,8 @@
 <header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
   <div style="flex:1;min-width:220px">
     <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{if $d.Case}}<span style="font-family:'IBM Plex Mono',monospace;font-weight:600;color:#9E2B47">TC-{{$d.Case.Key}}</span> {{$d.Case.Title}}{{else}}New case{{end}}</h1>
-    {{with $d.Case}}<p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.SectionPath}} · Version {{.Version}} · updated {{.UpdatedAt.Format "02 Jan 2006"}}{{if .ArchivedAt}} · archived{{end}}</p>{{end}}
+    {{with $d.Case}}<p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.SectionPath}} · Version {{.Version}} · updated {{.UpdatedAt.Format "02 Jan 2006"}}{{with $d.CreatedBy}} · created by {{.}}{{end}}{{if .ArchivedAt}} · archived{{end}}</p>
+    <p style="margin:2px 0 0;font-size:12.5px;color:#6B7280">PIC {{with $d.PIC}}{{.Label}}{{with .From}} (from section {{.}}){{end}}{{else}}—{{end}}</p>{{end}}
   </div>
   {{if and $d.Case $d.CanWrite}}
   {{if and $d.Case.ArchivedAt $d.SectionArchived}}
@@ -26,7 +27,7 @@
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">TITLE</span>
       <input type="text" name="title" required maxlength="500" value="{{$d.Title}}" placeholder="Login with valid credentials" class="lotus-input">
     </label>
-    <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:14px;align-items:end">
+    <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) auto;gap:14px;align-items:end">
       <label style="display:flex;flex-direction:column;gap:6px;min-width:0">
         <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">SECTION</span>
         {{template "lotus_select" (dict "Name" "section_id" "ID" "case-section" "Value" $d.SectionID "Label" "Section" "Options" (selectOptions $d.SectionOptions))}}
@@ -34,6 +35,10 @@
       <label style="display:flex;flex-direction:column;gap:6px">
         <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PRIORITY</span>
         {{template "lotus_select" (dict "Name" "priority" "ID" "case-priority" "Value" $d.Priority "Label" "Priority" "Options" (selectOptions $d.PriorityOpts))}}
+      </label>
+      <label style="display:flex;flex-direction:column;gap:6px;min-width:0">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PIC</span>
+        {{template "lotus_select" (dict "Name" "pic_id" "ID" "case-pic" "Value" $d.PicID "Label" "PIC" "Options" (selectOptions $d.PICOptions))}}
       </label>
       <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#374151;padding-bottom:9px">
         <input type="checkbox" name="negative" value="1"{{if $d.Negative}} checked{{end}} style="accent-color:var(--text-brand)"> Negative case

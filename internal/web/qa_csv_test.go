@@ -65,6 +65,19 @@ func TestParseQACaseCSV_SemicolonsAndHeaderChecks(t *testing.T) {
 	}
 }
 
+func TestParseQACaseCSV_PICColumnIsOptional(t *testing.T) {
+	rows, errs, err := parseQACaseCSV(strings.NewReader("section,title,precondition,steps,expected,priority,negative,PIC\n" +
+		"Auth,Login,,,,,, Ana@Example.com \nAuth,Logout,,,,,\n"))
+	if err != nil || len(errs) != 0 || len(rows) != 2 || rows[0].PIC != "Ana@Example.com" || rows[1].PIC != "" {
+		t.Fatalf("with pic = %+v %v %v", rows, errs, err)
+	}
+	// An eighth column under another name is not a PIC.
+	rows, _, _ = parseQACaseCSV(strings.NewReader("section,title,precondition,steps,expected,priority,negative,owner\nAuth,Login,,,,,,ana@example.com\n"))
+	if len(rows) != 1 || rows[0].PIC != "" {
+		t.Fatalf("other column = %+v", rows)
+	}
+}
+
 func TestWriteQACaseCSV_RoundTrips(t *testing.T) {
 	high := "high"
 	cases := []qaCSVRow{

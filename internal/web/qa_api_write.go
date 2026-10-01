@@ -35,6 +35,7 @@ type apiCaseIn struct {
 	Priority     *string      `json:"priority"`
 	Negative     bool         `json:"negative"`
 	Notes        string       `json:"notes"`
+	PIC          string       `json:"pic"` // email; empty: the section's PIC applies
 }
 
 type qaCreateCasesArgs struct {
@@ -100,14 +101,22 @@ func qaOpCreateCases(c *fiber.Ctx, call qaCall, a qaCreateCasesArgs) (any, error
 		if msg := checkAPICase(i+1, &a.Cases[i]); msg != "" {
 			rowErrs = append(rowErrs, msg)
 		}
-		check[i] = qaCSVRow{Line: i + 1, SectionPath: a.Cases[i].SectionPath}
+		check[i] = qaCSVRow{Line: i + 1, SectionPath: a.Cases[i].SectionPath, PIC: a.Cases[i].PIC}
 	}
+	var pics []*uuid.UUID
 	if len(rowErrs) == 0 {
 		sections, err := repo.ListQASections(c.Context(), call.s, call.project.ID)
 		if err != nil {
 			return nil, err
 		}
+		people, err := qaPeople(c, call.d, call.s, call.project)
+		if err != nil {
+			return nil, err
+		}
+		var picErrs []string
 		_, rowErrs = qaImportCheck(check, sections)
+		pics, picErrs = qaCheckPICs(people, check)
+		rowErrs = append(rowErrs, picErrs...)
 	}
 	if len(rowErrs) > 0 {
 		return nil, &apiRowErrors{rows: rowErrs}
@@ -116,6 +125,7 @@ func qaOpCreateCases(c *fiber.Ctx, call qaCall, a qaCreateCasesArgs) (any, error
 	for i, in := range a.Cases {
 		rows[i] = repo.QACaseImport{SectionPath: in.SectionPath, Case: repo.QACaseInput{
 			Title: in.Title, Precondition: in.Precondition, Steps: in.Steps, Priority: in.Priority, Negative: in.Negative, Notes: in.Notes,
+			PicID: pics[i],
 		}}
 	}
 	keys, sections, err := repo.ImportQACasesKeys(c.Context(), call.s, call.project.ID, rows, qaActorOf(call.p))

@@ -20,6 +20,7 @@ import (
 type qaPerson struct {
 	ID    uuid.UUID
 	Label string
+	Email string
 	Guest bool
 }
 
@@ -44,9 +45,9 @@ func qaPeople(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project) ([]qa
 		}
 		switch {
 		case m.RoleKey == "guest" && listed[m.UserID]:
-			out = append(out, qaPerson{ID: m.UserID, Label: label, Guest: true})
+			out = append(out, qaPerson{ID: m.UserID, Label: label, Email: m.Email, Guest: true})
 		case m.RoleKey == "owner" || m.RoleKey == "admin" || m.RoleKey == "member":
-			out = append(out, qaPerson{ID: m.UserID, Label: label})
+			out = append(out, qaPerson{ID: m.UserID, Label: label, Email: m.Email})
 		}
 	}
 	return out, nil

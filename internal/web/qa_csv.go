@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -14,11 +15,13 @@ import (
 
 // The case CSV is one case per row:
 //
-//	section, title, precondition, steps, expected, priority, negative
+//	section, title, precondition, steps, expected, priority, negative[, pic]
 //
 // section is a path ("Auth / Login"); steps and expected hold one step per
 // line and are paired by line; priority is high, medium, low or empty;
-// negative is yes, no or empty. Export writes the same columns, so an
+// negative is yes, no or empty; pic is the email of the case's own PIC, or
+// empty. pic is optional, so files written before it existed still import.
+// Export writes every column, so an
 // exported file imports back unchanged — except that a newline inside a
 // single step becomes a space, because lines are what separate steps.
 //
@@ -27,6 +30,9 @@ import (
 // importer takes that apostrophe off again.
 
 var qaCSVHeader = []string{"section", "title", "precondition", "steps", "expected", "priority", "negative"}
+
+// qaCSVPICColumn follows qaCSVHeader when a file has it.
+const qaCSVPICColumn = "pic"
 
 // qaCSVMaxRows bounds one import: one request, one transaction.
 const qaCSVMaxRows = 5000
@@ -39,6 +45,7 @@ type qaCSVRow struct {
 	Steps        repo.QASteps
 	Priority     *string
 	Negative     bool
+	PIC          string // an email, checked against the project's people by the caller
 }
 
 func qaCSVUnguard(cell string) string {
@@ -94,6 +101,8 @@ func parseQACaseCSV(r io.Reader) (rows []qaCSVRow, rowErrs []string, err error) 
 			return nil, nil, headerErr
 		}
 	}
+	hasPIC := len(records[0]) > len(qaCSVHeader) &&
+		strings.ToLower(strings.TrimSpace(records[0][len(qaCSVHeader)])) == qaCSVPICColumn
 	if len(records)-1 > qaCSVMaxRows {
 		return nil, nil, fmt.Errorf("The file has more than %d rows. Split it and import each part.", qaCSVMaxRows)
 	}
@@ -109,6 +118,9 @@ func parseQACaseCSV(r io.Reader) (rows []qaCSVRow, rowErrs []string, err error) 
 			continue
 		}
 		row := qaCSVRow{Line: line, Title: cell(1), Precondition: cell(2)}
+		if hasPIC {
+			row.PIC = cell(len(qaCSVHeader))
+		}
 		for _, part := range strings.Split(cell(0), "/") {
 			if part = strings.TrimSpace(part); part != "" {
 				row.SectionPath = append(row.SectionPath, part)
@@ -181,7 +193,7 @@ func parseQACaseCSV(r io.Reader) (rows []qaCSVRow, rowErrs []string, err error) 
 // writeQACaseCSV writes rows in the import format.
 func writeQACaseCSV(w io.Writer, rows []qaCSVRow) error {
 	cw := csv.NewWriter(w)
-	if err := cw.Write(qaCSVHeader); err != nil {
+	if err := cw.Write(append(slices.Clone(qaCSVHeader), qaCSVPICColumn)); err != nil {
 		return err
 	}
 	oneLine := func(s string) string {
@@ -203,7 +215,7 @@ func writeQACaseCSV(w io.Writer, rows []qaCSVRow) error {
 		}
 		if err := cw.Write([]string{
 			qaCSVGuard(strings.Join(r.SectionPath, " / ")), qaCSVGuard(r.Title), qaCSVGuard(r.Precondition),
-			strings.Join(actions, "\n"), strings.Join(expected, "\n"), priority, negative,
+			strings.Join(actions, "\n"), strings.Join(expected, "\n"), priority, negative, qaCSVGuard(r.PIC),
 		}); err != nil {
 			return err
 		}
