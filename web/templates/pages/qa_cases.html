@@ -5,7 +5,7 @@
 <header class="lotus-qa-header">
   <div style="min-width:0">
     <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Project.Name}}</h1>
-    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{if $d.SectionPath}}{{$d.SectionPath}}{{else}}All cases{{end}} · {{$d.Total}} case{{if ne $d.Total 1}}s{{end}}</p>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{if $d.SectionPath}}{{$d.SectionPath}}{{else}}All cases{{end}} · {{$d.Total}} case{{if ne $d.Total 1}}s{{end}}{{with $d.SectionPIC}} · PIC {{.Label}}{{with .From}} (from section {{.}}){{end}}{{end}}</p>
   </div>
   <div class="lotus-qa-header-nav">{{template "qa_subnav" (dict "Base" $d.Base "Active" "cases")}}</div>
   <div class="lotus-qa-header-actions">
@@ -19,7 +19,7 @@
       <span>All cases</span><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{$d.AllCount}}</span>
     </a>
     {{range $d.Tree}}
-    <a href="{{.Href}}" class="lotus-nav-item{{if .Active}} is-active{{end}}" data-section="{{.ID}}"
+    <a href="{{.Href}}" class="lotus-nav-item{{if .Active}} is-active{{end}}" data-section="{{.ID}}"{{with .PIC}} title="PIC: {{.}}"{{end}}
        style="justify-content:space-between;padding-left:{{.Indent}}px{{if .Archived}};opacity:.6{{end}}">
       <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
       <span style="font:500 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF" data-section-count="{{.ID}}">{{.Count}}</span>
@@ -33,6 +33,7 @@
       {{if $d.SectionID}}<input type="hidden" name="section" value="{{$d.SectionID}}">{{end}}
       {{if $d.Archived}}<input type="hidden" name="archived" value="1">{{end}}
       <input type="search" name="q" value="{{$d.Query}}" placeholder="Search titles" aria-label="Search titles" class="lotus-input" style="flex:1">
+      <div style="width:150px">{{template "lotus_select" (dict "Name" "pic" "ID" "cases-pic" "Value" $d.PIC "Label" "PIC" "Size" "sm" "AutoSubmit" true "Options" (selectOptions $d.PICOptions))}}</div>
       <a href="{{$d.Base}}/cases/export{{if $d.SectionID}}?section={{$d.SectionID}}{{end}}" style="font-size:11.5px;color:#6B7280;white-space:nowrap">Export CSV</a>
       <a href="{{$d.ArchiveHref}}" style="font-size:11.5px;color:#6B7280;white-space:nowrap">{{if $d.Archived}}Hide archived{{else}}Show archived{{end}}</a>
     </form>
@@ -49,17 +50,18 @@
 {{if not .Rows}}
 <p style="margin:0;padding:28px 14px;text-align:center;font-size:12.5px;color:#6B7280">{{if .Query}}No cases match "{{.Query}}".{{else}}No cases here yet.{{end}}</p>
 {{else}}
-<div class="lotus-table-head" style="grid-template-columns:70px minmax(0,1fr) 80px 60px 100px;gap:10px">
-  <div>KEY</div><div>TITLE</div><div>PRIORITY</div><div style="text-align:right">STEPS</div><div>UPDATED</div>
+<div class="lotus-table-head" style="grid-template-columns:70px minmax(0,1fr) 130px 80px 60px 100px;gap:10px">
+  <div>KEY</div><div>TITLE</div><div>PIC</div><div>PRIORITY</div><div style="text-align:right">STEPS</div><div>UPDATED</div>
 </div>
 {{$canWrite := .CanWrite}}
 {{range .Rows}}
-<div data-case-row class="lotus-repo-row lotus-repo-row-selectable" style="display:grid;grid-template-columns:70px minmax(0,1fr) 80px 60px 100px;gap:10px;align-items:center;padding:0 14px{{if .ArchivedAt}};opacity:.6{{end}}">
+<div data-case-row class="lotus-repo-row lotus-repo-row-selectable" style="display:grid;grid-template-columns:70px minmax(0,1fr) 130px 80px 60px 100px;gap:10px;align-items:center;padding:0 14px{{if .ArchivedAt}};opacity:.6{{end}}">
   <span style="display:flex;align-items:center;gap:8px">
     {{if $canWrite}}<span class="lotus-row-select"><input type="checkbox" name="case_id" value="{{.ID}}" form="qa-move-cases" aria-label="Select TC-{{.Key}}"></span>{{end}}
     <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">TC-{{.Key}}</span>
   </span>
   <a href="{{.Href}}" class="lotus-row-link" style="font-size:12.5px;color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Title}}{{if .Negative}} <span class="lotus-badge lotus-badge-none">negative</span>{{end}}</a>
+  {{with .PIC}}<span style="font-size:11.5px;color:{{if .From}}#9CA3AF{{else}}#374151{{end}};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"{{with .From}} title="From section {{.}}"{{end}}>{{.Label}}</span>{{else}}<span style="font-size:11.5px;color:#9CA3AF">—</span>{{end}}
   <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280">{{if .Priority}}{{.Priority}}{{else}}—{{end}}</span>
   <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280;text-align:right">{{len .Steps}}</span>
   <span style="font:400 11px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.UpdatedAt.Format "02 Jan 2006"}}</span>
@@ -98,6 +100,10 @@
           <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">INSIDE</span>
           {{template "lotus_select" (dict "Placeholder" "Top level" "Name" "parent_id" "ID" "new-section-parent" "Value" .SectionID "Label" "Inside" "Options" (selectOptions .SectionOptions))}}
         </label>
+        <label style="display:flex;flex-direction:column;gap:6px">
+          <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">PIC</span>
+          {{template "lotus_select" (dict "Name" "pic_id" "ID" "new-section-pic" "Value" "" "Label" "PIC" "Options" (selectOptions .NewPICOptions))}}
+        </label>
       </div>
       <div class="lotus-modal-foot">
         <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
@@ -122,9 +128,13 @@
       <form method="post" action="{{$.Base}}/sections/{{.ID}}/rename" hx-post="{{$.Base}}/sections/{{.ID}}/rename"
             hx-target="#edit-section-error" hx-swap="innerHTML" style="display:flex;flex-direction:column;gap:6px">
         <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
-        <div style="display:flex;gap:8px">
-          <input type="text" name="name" required maxlength="200" value="{{.Name}}" class="lotus-input" style="flex:1" aria-label="Section name">
-          <button type="submit" class="btn-lotus btn-lotus-secondary">Rename</button>
+        <input type="text" name="name" required maxlength="200" value="{{.Name}}" class="lotus-input" aria-label="Section name">
+        <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label);margin-top:6px">PIC</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="flex:1;min-width:0">
+            {{template "lotus_select" (dict "Name" "pic_id" "ID" "edit-section-pic" "Value" $.ActivePIC "Label" "PIC" "Options" (selectOptions $.ActivePICOpts))}}
+          </div>
+          <button type="submit" class="btn-lotus btn-lotus-secondary">Save</button>
         </div>
       </form>
       <form method="post" action="{{$.Base}}/sections/{{.ID}}/move" hx-post="{{$.Base}}/sections/{{.ID}}/move"
