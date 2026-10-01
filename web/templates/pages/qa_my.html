@@ -7,7 +7,7 @@
     <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">My work</h1>
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Total}} untested item{{if ne $d.Total 1}}s{{end}} assigned to you in open runs</p>
   </div>
-  <div class="lotus-qa-header-nav">{{template "qa_home_nav" "my"}}</div>
+  <div class="lotus-qa-header-nav">{{template "qa_home_nav" (dict "On" "my" "Workload" $d.CanWorkload)}}</div>
   <div class="lotus-qa-header-actions"></div>
 </header>
 

@@ -1,9 +1,11 @@
 {{/* qa_home_nav is the segmented control on the QA overview: every
-     project, or the viewer's own untested items. Takes "." = "projects" |
-     "my". */}}
+     project, the viewer's own untested items, and — for owners and admins
+     (qa.workload.read) — the organization's monthly QC workload. Takes
+     (dict "On" "projects" | "my" | "workload"  "Workload" bool). */}}
 {{define "qa_home_nav"}}
 <nav aria-label="QA Tools" style="display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:var(--radius-group);padding:3px;box-shadow:var(--shadow-segment-track)">
-  {{template "qa_subnav_link" (dict "Href" "/qa" "Label" "Projects" "On" (eq . "projects"))}}
-  {{template "qa_subnav_link" (dict "Href" "/qa/my" "Label" "My work" "On" (eq . "my"))}}
+  {{template "qa_subnav_link" (dict "Href" "/qa" "Label" "Projects" "On" (eq .On "projects"))}}
+  {{template "qa_subnav_link" (dict "Href" "/qa/my" "Label" "My work" "On" (eq .On "my"))}}
+  {{if .Workload}}{{template "qa_subnav_link" (dict "Href" "/qa/workload" "Label" "QC workload" "On" (eq .On "workload"))}}{{end}}
 </nav>
 {{end}}

@@ -49,6 +49,7 @@ var permissionMatrix = map[string][]string{
 	"qa.signoff":              {"owner", "admin", "guest"},
 	"qa.share":                {"owner", "admin", "member"},
 	"project_member.manage":   {"owner", "admin"},
+	"qa.workload.read":        {"owner", "admin"},
 }
 
 var allRoles = []string{"owner", "admin", "member", "viewer", "guest"}
