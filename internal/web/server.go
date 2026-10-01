@@ -69,7 +69,8 @@ func New(d Deps) *fiber.App {
 		// comment beside the file. The body is read whole before any
 		// middleware runs, so in production nginx keeps every other route
 		// at 4m (deploy/nginx-lotuscheck.conf).
-		BodyLimit: 25 << 20,
+		BodyLimit:    25 << 20,
+		ErrorHandler: errorHandler(d),
 	})
 	app.Use(recover.New())
 	app.Use(requestLogger(nil))
@@ -77,6 +78,7 @@ func New(d Deps) *fiber.App {
 	// resolver — task 1.5's "no route before resolver + auth middleware"
 	// invariant holds structurally, by nothing being registered above it.
 	app.Use(d.Resolver.Middleware())
+	app.Use(errorPages(d))
 
 	// In dev the assets are read from disk on every request, but the
 	// browser still caches them — so an edited stylesheet keeps rendering
