@@ -22,8 +22,9 @@ func qaProjectScope(c *fiber.Ctx, s tenant.Scope) ([]uuid.UUID, error) {
 }
 
 type qaHomeData struct {
-	Rows  []repo.QAProjectSummary
-	Cases int
+	Rows        []repo.QAProjectSummary
+	Cases       int
+	CanWorkload bool // qa.workload.read: the header links to /qa/workload
 }
 
 // qaHome is GET /qa: every project the principal can reach, with its QA
@@ -50,7 +51,7 @@ func qaHome(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		data := qaHomeData{Rows: rows}
+		data := qaHomeData{Rows: rows, CanWorkload: mustPrincipal(c).Can("qa.workload.read")}
 		for _, r := range rows {
 			data.Cases += r.Cases
 		}
@@ -68,6 +69,8 @@ func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fibe
 		authz.Require("qa.read"), qaHome(d))
 	app.Get("/qa/my", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("qa.read"), qaMyPage(d))
+	app.Get("/qa/workload", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("qa.workload.read"), qaWorkloadPage(d))
 	app.Get("/projects/:id/qa", qaRoute(requireSession, loadPrincipal, "qa.read", qaProjectPage(d))...)
 	app.Get("/projects/:id/qa/cases", qaRoute(requireSession, loadPrincipal, "qa.read", qaCasesPage(d))...)
 	app.Post("/projects/:id/qa/cases/move", qaRoute(requireSession, loadPrincipal, "qa.case.write", moveQACasesUI(d))...)

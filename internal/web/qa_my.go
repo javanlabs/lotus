@@ -58,8 +58,9 @@ type qaMyProject struct {
 }
 
 type qaMyData struct {
-	Projects []qaMyProject
-	Total    int
+	Projects    []qaMyProject
+	Total       int
+	CanWorkload bool // qa.workload.read: the header links to /qa/workload
 }
 
 // qaMyPage is GET /qa/my: the untested items assigned to the viewer in open
@@ -78,7 +79,7 @@ func qaMyPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		data := qaMyData{Total: len(items)}
+		data := qaMyData{Total: len(items), CanWorkload: mustPrincipal(c).Can("qa.workload.read")}
 		var lastProject, lastPlan, lastRun uuid.UUID
 		for _, it := range items {
 			base := "/projects/" + it.ProjectID.String() + "/qa"
