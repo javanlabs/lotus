@@ -180,7 +180,8 @@ var mcpTools = []mcpTool{
 	},
 	{
 		Name: "get_run", Perm: "qa.read",
-		Description: "Get a run's progress and a page of its items (one per case: steps, status, assignee; " +
+		Description: "Get a run's progress, its assignee_id (the lead tester) and a page of its items (one per case: " +
+			"steps, status, assignee, and last_comment: the latest result's comment with who and when, null when there is none; " +
 			"100 by default, at most 500; total says how many match), optionally only items in one status.",
 		Schema: mcpObject([]string{"project_id", "run_id"}, map[string]any{
 			"project_id": mcpProject, "run_id": mcpString,
@@ -192,7 +193,8 @@ var mcpTools = []mcpTool{
 	},
 	{
 		Name: "record_result", Perm: "qa.execute",
-		Description: "Record the result of one run item: passed, failed, blocked or skipped, with an optional comment.",
+		Description: "Record the result of one run item: passed, failed, blocked or skipped, with an optional comment " +
+			"(at most 2500 characters). Returns the item with its new status and last_comment.",
 		Schema: mcpObject([]string{"project_id", "item_id", "status"}, map[string]any{
 			"project_id": mcpProject, "item_id": mcpString, "comment": mcpString,
 			"status": map[string]any{"type": "string", "enum": []string{"passed", "failed", "blocked", "skipped"}},

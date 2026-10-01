@@ -148,12 +148,15 @@ func qaOpRecordResult(c *fiber.Ctx, call qaCall, a qaRecordResultArgs) (any, err
 	if !qaResultChoices[status] {
 		return nil, apiErr(fiber.StatusBadRequest, "status must be passed, failed, blocked or skipped")
 	}
-	if _, err := repo.RecordQAResult(c.Context(), call.s, repo.QAResultInput{
+	res, err := repo.RecordQAResult(c.Context(), call.s, repo.QAResultInput{
 		ItemID: itemID, Status: status, Comment: a.Comment, CreatedBy: qaActorOf(call.p),
-	}); err != nil {
-		if errors.Is(err, repo.ErrQAClosed) {
-			return nil, apiErr(fiber.StatusConflict, "this run is closed")
-		}
+	})
+	switch {
+	case errors.Is(err, repo.ErrQAClosed):
+		return nil, apiErr(fiber.StatusConflict, "this run is closed")
+	case errors.Is(err, repo.ErrQACommentTooLong):
+		return nil, apiErr(fiber.StatusUnprocessableEntity, "comment can be at most %d characters", repo.MaxQACommentLength)
+	case err != nil:
 		return nil, err
 	}
 	it, err := repo.GetQARunItem(c.Context(), call.s, itemID)
@@ -161,7 +164,8 @@ func qaOpRecordResult(c *fiber.Ctx, call qaCall, a qaRecordResultArgs) (any, err
 		return nil, err
 	}
 	return fiber.Map{"item": apiRunItem{ID: it.ID, CaseID: it.CaseID, Group: it.GroupName, Title: it.Title,
-		Precondition: it.Precondition, Steps: it.Steps, Status: it.Status, AssigneeID: it.AssigneeID}}, nil
+		Precondition: it.Precondition, Steps: it.Steps, Status: it.Status, AssigneeID: it.AssigneeID,
+		LastComment: apiLastComment(*res)}}, nil
 }
 
 type qaCreateIssueArgs struct {

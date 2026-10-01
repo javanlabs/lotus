@@ -262,6 +262,7 @@ type apiRun struct {
 	Name     string      `json:"name"`
 	Cycle    int         `json:"cycle"`
 	RetestOf *uuid.UUID  `json:"retest_of"`
+	Assignee *uuid.UUID  `json:"assignee_id"` // the run's lead tester
 	Closed   bool        `json:"closed"`
 	Progress apiProgress `json:"progress"`
 }
@@ -276,6 +277,22 @@ type apiRunItem struct {
 	Steps        repo.QASteps `json:"steps"`
 	Status       string       `json:"status"`
 	AssigneeID   *uuid.UUID   `json:"assignee_id"`
+	LastComment  *apiComment  `json:"last_comment"` // the latest result's; null when none or blank
+}
+
+// apiComment is a result's comment, who recorded it and when.
+type apiComment struct {
+	Text string     `json:"text"`
+	By   *uuid.UUID `json:"by"`
+	At   time.Time  `json:"at"`
+}
+
+// apiLastComment is r's comment, or nil when it has none.
+func apiLastComment(r repo.QAResult) *apiComment {
+	if r.Comment == "" {
+		return nil
+	}
+	return &apiComment{Text: r.Comment, By: r.CreatedBy, At: r.CreatedAt}
 }
 
 func apiDate(t *time.Time) *string {
@@ -449,7 +466,7 @@ func qaOpListRuns(c *fiber.Ctx, call qaCall, rawPlan string) (any, error) {
 	out := []apiRun{}
 	for _, r := range runs {
 		out = append(out, apiRun{ID: r.ID, PlanID: r.PlanID, Name: r.Name, Cycle: r.Cycle, RetestOf: r.RetestOf,
-			Closed: r.ClosedAt != nil, Progress: toAPIProgress(progress[r.ID])})
+			Assignee: r.AssigneeID, Closed: r.ClosedAt != nil, Progress: toAPIProgress(progress[r.ID])})
 	}
 	return fiber.Map{"runs": out}, nil
 }
@@ -501,21 +518,27 @@ func qaOpGetRun(c *fiber.Ctx, call qaCall, a qaRunArgs) (any, error) {
 	}
 	page := matching[min(a.Offset, len(matching)):min(a.Offset+a.Limit, len(matching))]
 	caseIDs := make([]uuid.UUID, len(page))
+	itemIDs := make([]uuid.UUID, len(page))
 	for i, it := range page {
-		caseIDs[i] = it.CaseID
+		caseIDs[i], itemIDs[i] = it.CaseID, it.ID
 	}
 	keys, err := repo.QACaseKeys(c.Context(), call.s, caseIDs)
+	if err != nil {
+		return nil, err
+	}
+	latest, err := repo.LatestQAResults(c.Context(), call.s, itemIDs)
 	if err != nil {
 		return nil, err
 	}
 	items := []apiRunItem{}
 	for _, it := range page {
 		items = append(items, apiRunItem{ID: it.ID, CaseID: it.CaseID, CaseRef: fmt.Sprintf("TC-%d", keys[it.CaseID]), Group: it.GroupName,
-			Title: it.Title, Precondition: it.Precondition, Steps: it.Steps, Status: it.Status, AssigneeID: it.AssigneeID})
+			Title: it.Title, Precondition: it.Precondition, Steps: it.Steps, Status: it.Status, AssigneeID: it.AssigneeID,
+			LastComment: apiLastComment(latest[it.ID])})
 	}
 	return fiber.Map{
 		"id": run.ID, "plan_id": run.PlanID, "name": run.Name, "cycle": run.Cycle, "retest_of": run.RetestOf,
-		"closed": run.ClosedAt != nil, "progress": toAPIProgress(progress),
+		"assignee_id": run.AssigneeID, "closed": run.ClosedAt != nil, "progress": toAPIProgress(progress),
 		"total": len(matching), "limit": a.Limit, "offset": a.Offset, "items": items,
 	}, nil
 }
