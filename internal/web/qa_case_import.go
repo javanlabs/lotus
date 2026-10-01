@@ -187,15 +187,18 @@ func confirmQAImportUI(d Deps) fiber.Handler {
 	}
 }
 
-// exportQACasesUI is GET /projects/:id/qa/cases/export[?section=]: the live
-// cases of the section's subtree (or the whole project) in the import format.
+// exportQACasesUI is GET /projects/:id/qa/cases/export[?section=][&archived=only]:
+// the live cases of the section's subtree (or the whole project) in the
+// import format — or, with archived=only, the archived ones instead (QA
+// Tools' archive export), so an archive can be imported back elsewhere.
 func exportQACasesUI() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		s, project, err := loadQAProject(c)
 		if err != nil {
 			return err
 		}
-		filter := repo.QACaseFilter{IncludeSubsections: true}
+		archived := c.Query("archived") == "only"
+		filter := repo.QACaseFilter{IncludeSubsections: true, IncludeArchived: archived}
 		if raw := c.Query("section"); raw != "" {
 			id, err := qaOwned(c, s, project, repo.QAKindSection, raw)
 			if err != nil {
@@ -215,19 +218,26 @@ func exportQACasesUI() fiber.Handler {
 		for _, r := range qaSectionTree(sections, nil, true, nil) {
 			paths[r.ID] = strings.Split(r.Path, " / ")
 		}
-		rows := make([]qaCSVRow, len(cases))
-		for i, qc := range cases {
-			rows[i] = qaCSVRow{
+		rows := make([]qaCSVRow, 0, len(cases))
+		for _, qc := range cases {
+			if archived && qc.ArchivedAt == nil {
+				continue
+			}
+			rows = append(rows, qaCSVRow{
 				SectionPath: paths[qc.SectionID], Title: qc.Title, Precondition: qc.Precondition,
 				Steps: qc.Steps, Priority: qc.Priority, Negative: qc.Negative,
-			}
+			})
 		}
 		var buf bytes.Buffer
 		if err := writeQACaseCSV(&buf, rows); err != nil {
 			return err
 		}
 		c.Set(fiber.HeaderContentType, "text/csv; charset=utf-8")
-		c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s-cases.csv"`, project.Slug))
+		name := project.Slug + "-cases"
+		if archived {
+			name += "-archived"
+		}
+		c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s.csv"`, name))
 		return c.Send(buf.Bytes())
 	}
 }

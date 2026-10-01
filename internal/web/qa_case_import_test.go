@@ -182,3 +182,43 @@ func TestQACaseImport_FiveThousandRowsInOneRequest(t *testing.T) {
 		t.Fatalf("imported %d; want %d", n, qaCSVMaxRows)
 	}
 }
+
+// TestQACaseExport_ArchivedOnly is QA Tools' "export the test case archive":
+// ?archived=only exports the archived cases and nothing else, in the
+// import format, so an archive can be restored into another project.
+func TestQACaseExport_ArchivedOnly(t *testing.T) {
+	e := newQAEnv(t, "acme-qaexport-arch")
+	ctx := context.Background()
+	p := e.project(t, "Portal")
+	sec, _ := repo.CreateQASection(ctx, e.s, p, "Auth", nil)
+	live, _ := repo.CreateQACase(ctx, e.s, p, repo.QACaseInput{SectionID: sec.ID, Title: "Live login"}, nil)
+	gone, _ := repo.CreateQACase(ctx, e.s, p, repo.QACaseInput{SectionID: sec.ID, Title: "Old login"}, nil)
+	if err := repo.ArchiveQACase(ctx, e.s, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	_ = live
+
+	get := func(query string) (string, string) {
+		resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, "/projects/"+p.String()+"/qa/cases/export"+query, e.owner))
+		if err != nil || resp.StatusCode != http.StatusOK {
+			t.Fatalf("export%s = %v %v", query, resp, err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		return string(b), resp.Header.Get("Content-Disposition")
+	}
+	csv, _ := get("")
+	if !strings.Contains(csv, "Live login") || strings.Contains(csv, "Old login") {
+		t.Fatalf("default export:\n%s", csv)
+	}
+	csv, disp := get("?archived=only")
+	if strings.Contains(csv, "Live login") || !strings.Contains(csv, "Old login") {
+		t.Fatalf("archived export:\n%s", csv)
+	}
+	if !strings.Contains(disp, "archived") {
+		t.Fatalf("archived export file name = %q", disp)
+	}
+	_, body := e.get(t, e.owner, "/projects/"+p.String()+"/qa/cases?archived=1")
+	if !strings.Contains(body, "/cases/export?archived=only") {
+		t.Fatal("archived view has no archive export link")
+	}
+}

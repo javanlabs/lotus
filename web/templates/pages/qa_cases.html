@@ -34,6 +34,7 @@
       {{if $d.Archived}}<input type="hidden" name="archived" value="1">{{end}}
       <input type="search" name="q" value="{{$d.Query}}" placeholder="Search titles" aria-label="Search titles" class="lotus-input" style="flex:1">
       <a href="{{$d.Base}}/cases/export{{if $d.SectionID}}?section={{$d.SectionID}}{{end}}" style="font-size:11.5px;color:#6B7280;white-space:nowrap">Export CSV</a>
+      {{if $d.Archived}}<a href="{{$d.Base}}/cases/export?archived=only{{if $d.SectionID}}&amp;section={{$d.SectionID}}{{end}}" style="font-size:11.5px;color:#6B7280;white-space:nowrap">Export archived</a>{{end}}
       <a href="{{$d.ArchiveHref}}" style="font-size:11.5px;color:#6B7280;white-space:nowrap">{{if $d.Archived}}Hide archived{{else}}Show archived{{end}}</a>
     </form>
     {{template "qa_case_table" $d}}
