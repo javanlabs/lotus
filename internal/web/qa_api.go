@@ -11,10 +11,12 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 
 	"github.com/uyab/lotus/internal/authn"
 	"github.com/uyab/lotus/internal/authz"
 	"github.com/uyab/lotus/internal/repo"
+	"github.com/uyab/lotus/internal/repo/global"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -95,7 +97,24 @@ func requireBearer(c *fiber.Ctx) error {
 // qaAPIChain is what every /api/qa route runs before its handler.
 func qaAPIChain(authDeps authn.Deps, perm string) []fiber.Handler {
 	return []fiber.Handler{apiJSONErrors, tenant.RequireTenant(), requireBearer,
-		authn.RequireTokenOrSession(authDeps), authz.Require(perm)}
+		authn.RequireTokenOrSession(authDeps), authz.Require(perm), qaAPIWithDB(authDeps.DB)}
+}
+
+// qaAPIDBKey holds the control-plane connection for the operations that
+// name people (a case's PIC and author): users and memberships live
+// outside the tenant scope.
+const qaAPIDBKey = "qa.api.db"
+
+// qaAPIDB wraps the connection kept in Locals. Never the *sqlx.DB itself:
+// fasthttp closes every io.Closer among a request's user values when the
+// request ends, which would close the application's pool.
+type qaAPIDB struct{ db *sqlx.DB }
+
+func qaAPIWithDB(db *sqlx.DB) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		c.Locals(qaAPIDBKey, qaAPIDB{db})
+		return c.Next()
+	}
 }
 
 // qaCall is who is asking, in which organization, about which project
@@ -104,6 +123,7 @@ type qaCall struct {
 	s       tenant.Scope
 	p       authz.Principal
 	project *repo.Project
+	d       Deps // only DB is set (qaAPIWithDB)
 }
 
 // newQACall resolves the caller and, when raw is not empty, the project it
@@ -117,7 +137,8 @@ func newQACall(c *fiber.Ctx, raw string, needProject bool) (qaCall, error) {
 	if !ok {
 		return qaCall{}, apiErr(fiber.StatusUnauthorized, "no principal")
 	}
-	call := qaCall{s: s, p: p}
+	db, _ := c.Locals(qaAPIDBKey).(qaAPIDB)
+	call := qaCall{s: s, p: p, d: Deps{DB: db.db}}
 	if !needProject {
 		return call, nil
 	}
@@ -199,12 +220,20 @@ type apiProject struct {
 	Name string    `json:"name"`
 }
 
+// apiUser is a person a row points at: a PIC or an author.
+type apiUser struct {
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Email string    `json:"email"`
+}
+
 type apiSection struct {
 	ID       uuid.UUID  `json:"id"`
 	ParentID *uuid.UUID `json:"parent_id"`
 	Name     string     `json:"name"`
 	Path     []string   `json:"path"`
 	Archived bool       `json:"archived"`
+	PIC      *apiUser   `json:"pic"`
 }
 
 type apiCase struct {
@@ -221,6 +250,9 @@ type apiCase struct {
 	Notes        string       `json:"notes"`
 	Version      int          `json:"version"`
 	Archived     bool         `json:"archived"`
+	PIC          *apiUser     `json:"pic"`           // the case's own
+	EffectivePIC *apiUser     `json:"effective_pic"` // its own, else its nearest section's
+	CreatedBy    *apiUser     `json:"created_by"`
 }
 
 type apiProgress struct {
@@ -276,6 +308,27 @@ type apiRunItem struct {
 	Steps        repo.QASteps `json:"steps"`
 	Status       string       `json:"status"`
 	AssigneeID   *uuid.UUID   `json:"assignee_id"`
+}
+
+// qaAPIUsers looks up every user in ids; apiUserOf then turns an id into
+// the API's shape (nil for none, or a user since deleted).
+func qaAPIUsers(c *fiber.Ctx, call qaCall, ids []uuid.UUID) (map[uuid.UUID]global.User, error) {
+	return global.UsersByIDs(c.Context(), call.d.DB, ids)
+}
+
+func apiUserOf(users map[uuid.UUID]global.User, id *uuid.UUID) *apiUser {
+	if id == nil {
+		return nil
+	}
+	u, ok := users[*id]
+	if !ok {
+		return nil
+	}
+	out := &apiUser{ID: u.ID, Name: u.Name}
+	if u.Email != nil {
+		out.Email = *u.Email
+	}
+	return out
 }
 
 func apiDate(t *time.Time) *string {
@@ -342,9 +395,18 @@ func qaOpListSections(c *fiber.Ctx, call qaCall) (any, error) {
 		return nil, err
 	}
 	paths := qaSectionPaths(sections)
+	users, err := qaAPIUsers(c, call, qaPICIDs(sections))
+	if err != nil {
+		return nil, err
+	}
+	picOf := map[uuid.UUID]*uuid.UUID{}
+	for _, sec := range sections {
+		picOf[sec.ID] = sec.PicID
+	}
 	out := []apiSection{}
 	for _, r := range qaSectionTree(sections, nil, true, nil) {
-		out = append(out, apiSection{ID: r.ID, ParentID: r.ParentID, Name: r.Name, Path: paths[r.ID], Archived: r.Archived})
+		out = append(out, apiSection{ID: r.ID, ParentID: r.ParentID, Name: r.Name, Path: paths[r.ID], Archived: r.Archived,
+			PIC: apiUserOf(users, picOf[r.ID])})
 	}
 	return fiber.Map{"sections": out}, nil
 }
@@ -387,11 +449,21 @@ func qaOpListCases(c *fiber.Ctx, call qaCall, a qaCasesArgs) (any, error) {
 		return nil, err
 	}
 	paths := qaSectionPaths(sections)
+	var people []*uuid.UUID
+	for _, k := range cases {
+		people = append(people, k.PicID, k.CreatedBy)
+	}
+	users, err := qaAPIUsers(c, call, qaPICIDs(sections, people...))
+	if err != nil {
+		return nil, err
+	}
 	out := make([]apiCase, len(cases))
 	for i, k := range cases {
+		effective, _ := repo.QAEffectivePIC(sections, k.SectionID, k.PicID)
 		out[i] = apiCase{ID: k.ID, Key: k.Key, Ref: fmt.Sprintf("TC-%d", k.Key), Title: k.Title, SectionID: k.SectionID,
 			SectionPath: paths[k.SectionID], Precondition: k.Precondition, Steps: k.Steps, Priority: k.Priority,
-			Negative: k.Negative, Notes: k.Notes, Version: k.Version, Archived: k.ArchivedAt != nil}
+			Negative: k.Negative, Notes: k.Notes, Version: k.Version, Archived: k.ArchivedAt != nil,
+			PIC: apiUserOf(users, k.PicID), EffectivePIC: apiUserOf(users, effective), CreatedBy: apiUserOf(users, k.CreatedBy)}
 	}
 	return fiber.Map{"total": total, "limit": a.Limit, "offset": a.Offset, "cases": out}, nil
 }

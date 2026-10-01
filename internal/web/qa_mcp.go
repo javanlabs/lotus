@@ -128,7 +128,7 @@ var mcpTools = []mcpTool{
 	},
 	{
 		Name: "list_sections", Perm: "qa.read",
-		Description: "List a project's case sections (a tree: each has its parent_id and full path).",
+		Description: "List a project's case sections (a tree: each has its parent_id, full path and pic, the person in charge of its cases).",
 		Schema:      mcpObject([]string{"project_id"}, map[string]any{"project_id": mcpProject}),
 		Run: mcpProjectTool(func(c *fiber.Ctx, call qaCall, _ mcpNoArgs) (any, error) {
 			return qaOpListSections(c, call)
@@ -137,7 +137,8 @@ var mcpTools = []mcpTool{
 	{
 		Name: "list_cases", Perm: "qa.read",
 		Description: "List a project's test cases, newest last, paged (default 100, at most 500). " +
-			"Optionally only a section and its subsections, or titles containing query.",
+			"Optionally only a section and its subsections, or titles containing query. Each case names its pic " +
+			"(person in charge, its own), effective_pic (its own, else its nearest section's) and created_by.",
 		Schema: mcpObject([]string{"project_id"}, map[string]any{
 			"project_id": mcpProject, "section_id": mcpString, "query": mcpString,
 			"include_archived": map[string]any{"type": "boolean"},
@@ -149,7 +150,8 @@ var mcpTools = []mcpTool{
 	{
 		Name: "create_cases", Perm: "qa.case.write",
 		Description: "Create up to 500 test cases in one project, all or none. Each case names its section by path " +
-			"(outermost first); missing sections are created. Returns the new refs (TC-n) in order.",
+			"(outermost first); missing sections are created. pic, optional, is the email of the case's person in " +
+			"charge (a project member who can run tests); without it the section's PIC applies. Returns the new refs (TC-n) in order.",
 		Schema: mcpObject([]string{"project_id", "cases"}, map[string]any{
 			"project_id": mcpProject,
 			"cases": map[string]any{"type": "array", "minItems": 1, "maxItems": qaAPIMaxLimit, "items": mcpObject(
@@ -157,7 +159,7 @@ var mcpTools = []mcpTool{
 					"section_path": map[string]any{"type": "array", "items": mcpString, "minItems": 1},
 					"title":        mcpString, "precondition": mcpString, "steps": mcpSteps,
 					"priority": map[string]any{"type": "string", "enum": []string{"high", "medium", "low"}},
-					"negative": map[string]any{"type": "boolean"}, "notes": mcpString,
+					"negative": map[string]any{"type": "boolean"}, "notes": mcpString, "pic": mcpString,
 				})},
 		}),
 		Run: mcpProjectTool(qaOpCreateCases),

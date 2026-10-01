@@ -65,21 +65,40 @@ func qaImportCheck(rows []qaCSVRow, sections []repo.QASection) (newPaths, rowErr
 	return newPaths, rowErrs
 }
 
+// qaCheckPICs resolves each row's pic email to someone who can be PIC
+// here; pics is in row order (nil where a row names nobody).
+func qaCheckPICs(people []qaPerson, rows []qaCSVRow) (pics []*uuid.UUID, rowErrs []string) {
+	pics = make([]*uuid.UUID, len(rows))
+	for i, row := range rows {
+		id, err := qaPICByEmail(people, row.PIC)
+		if err != nil {
+			rowErrs = append(rowErrs, fmt.Sprintf("Row %d: pic '%s' is not someone who can be PIC here.", row.Line, row.PIC))
+		}
+		pics[i] = id
+	}
+	return pics, rowErrs
+}
+
 // previewQAImport parses csv and fills the preview. ok is false when the
-// file or any row is rejected.
-func previewQAImport(c *fiber.Ctx, s tenant.Scope, project *repo.Project, csv string) (qaImportData, []qaCSVRow, bool, error) {
+// file or any row is rejected. pics is each row's PIC (see qaCheckPICs).
+func previewQAImport(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, csv string) (qaImportData, []qaCSVRow, []*uuid.UUID, bool, error) {
 	data := qaImportData{Project: *project, Base: qaBase(project), Previewed: true}
 	rows, rowErrs, err := parseQACaseCSV(strings.NewReader(csv))
 	if err != nil {
 		data.FileError = err.Error()
-		return data, nil, false, nil
+		return data, nil, nil, false, nil
 	}
 	sections, err := repo.ListQASections(c.Context(), s, project.ID)
 	if err != nil {
-		return data, nil, false, err
+		return data, nil, nil, false, err
+	}
+	people, err := qaPeople(c, d, s, project)
+	if err != nil {
+		return data, nil, nil, false, err
 	}
 	newPaths, archivedErrs := qaImportCheck(rows, sections)
-	data.RowErrors = append(rowErrs, archivedErrs...)
+	pics, picErrs := qaCheckPICs(people, rows)
+	data.RowErrors = append(append(rowErrs, archivedErrs...), picErrs...)
 	data.Cases = len(rows)
 	if len(newPaths) > qaImportListedSections {
 		data.MoreNew = len(newPaths) - qaImportListedSections
@@ -93,7 +112,7 @@ func previewQAImport(c *fiber.Ctx, s tenant.Scope, project *repo.Project, csv st
 	if ok {
 		data.CSV = csv
 	}
-	return data, rows, ok, nil
+	return data, rows, pics, ok, nil
 }
 
 func renderQAImport(c *fiber.Ctx, d Deps, s tenant.Scope, data qaImportData, status int) error {
@@ -142,7 +161,7 @@ func previewQAImportUI(d Deps) fiber.Handler {
 		if _, err := io.Copy(&buf, f); err != nil {
 			return err
 		}
-		data, _, ok, err := previewQAImport(c, s, project, buf.String())
+		data, _, _, ok, err := previewQAImport(c, d, s, project, buf.String())
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
@@ -160,7 +179,7 @@ func confirmQAImportUI(d Deps) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		data, rows, ok, err := previewQAImport(c, s, project, c.FormValue("csv"))
+		data, rows, pics, ok, err := previewQAImport(c, d, s, project, c.FormValue("csv"))
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
@@ -171,6 +190,7 @@ func confirmQAImportUI(d Deps) fiber.Handler {
 		for i, r := range rows {
 			in[i] = repo.QACaseImport{SectionPath: r.SectionPath, Case: repo.QACaseInput{
 				Title: r.Title, Precondition: r.Precondition, Steps: r.Steps, Priority: r.Priority, Negative: r.Negative,
+				PicID: pics[i],
 			}}
 		}
 		n, _, err := repo.ImportQACases(c.Context(), s, project.ID, in, qaActor(c))
@@ -189,7 +209,7 @@ func confirmQAImportUI(d Deps) fiber.Handler {
 
 // exportQACasesUI is GET /projects/:id/qa/cases/export[?section=]: the live
 // cases of the section's subtree (or the whole project) in the import format.
-func exportQACasesUI() fiber.Handler {
+func exportQACasesUI(d Deps) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		s, project, err := loadQAProject(c)
 		if err != nil {
@@ -215,11 +235,15 @@ func exportQACasesUI() fiber.Handler {
 		for _, r := range qaSectionTree(sections, nil, true, nil) {
 			paths[r.ID] = strings.Split(r.Path, " / ")
 		}
+		pics, err := qaPICEmails(c, d, cases)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
 		rows := make([]qaCSVRow, len(cases))
 		for i, qc := range cases {
 			rows[i] = qaCSVRow{
 				SectionPath: paths[qc.SectionID], Title: qc.Title, Precondition: qc.Precondition,
-				Steps: qc.Steps, Priority: qc.Priority, Negative: qc.Negative,
+				Steps: qc.Steps, Priority: qc.Priority, Negative: qc.Negative, PIC: pics[qc.ID],
 			}
 		}
 		var buf bytes.Buffer

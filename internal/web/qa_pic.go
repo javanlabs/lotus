@@ -136,3 +136,26 @@ func qaEffectivePICView(sections []repo.QASection, sectionID uuid.UUID, own *uui
 	}
 	return v
 }
+
+// qaPICEmails is the email of each case's own PIC, for the CSV export
+// (cases without one, or whose PIC has no email, are absent).
+func qaPICEmails(c *fiber.Ctx, d Deps, cases []repo.QACase) (map[uuid.UUID]string, error) {
+	var ids []*uuid.UUID
+	for _, qc := range cases {
+		ids = append(ids, qc.PicID)
+	}
+	users, err := global.UsersByIDs(c.Context(), d.DB, qaPICIDs(nil, ids...))
+	if err != nil {
+		return nil, err
+	}
+	out := map[uuid.UUID]string{}
+	for _, qc := range cases {
+		if qc.PicID == nil {
+			continue
+		}
+		if u, ok := users[*qc.PicID]; ok && u.Email != nil {
+			out[qc.ID] = *u.Email
+		}
+	}
+	return out, nil
+}

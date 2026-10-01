@@ -74,7 +74,7 @@ func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fibe
 	app.Get("/projects/:id/qa/cases/import", qaRoute(requireSession, loadPrincipal, "qa.case.write", qaImportPage(d))...)
 	app.Post("/projects/:id/qa/cases/import", qaRoute(requireSession, loadPrincipal, "qa.case.write", previewQAImportUI(d))...)
 	app.Post("/projects/:id/qa/cases/import/confirm", qaRoute(requireSession, loadPrincipal, "qa.case.write", confirmQAImportUI(d))...)
-	app.Get("/projects/:id/qa/cases/export", qaRoute(requireSession, loadPrincipal, "qa.read", exportQACasesUI())...)
+	app.Get("/projects/:id/qa/cases/export", qaRoute(requireSession, loadPrincipal, "qa.read", exportQACasesUI(d))...)
 	app.Get("/projects/:id/qa/cases/new", qaRoute(requireSession, loadPrincipal, "qa.case.write", newQACasePage(d))...)
 	app.Post("/projects/:id/qa/cases/new", qaRoute(requireSession, loadPrincipal, "qa.case.write", createQACaseUI(d))...)
 	app.Get("/projects/:id/qa/cases/:key", qaRoute(requireSession, loadPrincipal, "qa.read", qaCasePage(d))...)
