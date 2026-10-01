@@ -61,6 +61,9 @@ type qaRunNewData struct {
 	Scenarios    []qaPlanScenarioOption
 	People       []qaPlanPersonOption
 	Distribution string
+	Assignee     string               // the run's assignee, "" for nobody
+	Assignees    []httpx.SelectOption // who it can be: nobody, or anyone in People
+	NotesMax     int
 	Error        string
 }
 
@@ -69,8 +72,9 @@ type qaPlanPersonOption struct {
 	Checked bool
 }
 
-// readQARunForm reads the new-run form. Scenarios must be the plan's and
-// testers must be people who can execute here; anything else is 404.
+// readQARunForm reads the new-run form. Scenarios must be the plan's, and
+// testers and the run's assignee must be people who can execute here;
+// anything else is 404.
 func readQARunForm(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, plan *repo.QAPlan) (repo.QARunInput, []qaPerson, error) {
 	in := repo.QARunInput{Name: c.FormValue("name"), Notes: c.FormValue("notes"), Distribution: c.FormValue("distribution")}
 	planScenarios, err := repo.ListQAPlanScenarioIDs(c.Context(), s, plan.ID)
@@ -103,12 +107,17 @@ func readQARunForm(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, 
 		id, _ := uuid.Parse(string(raw))
 		in.Testers = append(in.Testers, id)
 	}
+	if in.Assignee, err = qaRunAssignee(c, d, s, project); err != nil {
+		return in, nil, err
+	}
 	return in, people, nil
 }
 
 // qaRunErrMessage is the sentence for a refused run.
 func qaRunErrMessage(err error, in repo.QARunInput) (int, string, bool) {
 	switch {
+	case errors.Is(err, repo.ErrQANotesTooLong):
+		return fiber.StatusUnprocessableEntity, fmt.Sprintf("Notes can be at most %d characters.", repo.MaxQARunNotesLength), true
 	case errors.Is(err, repo.ErrQAClosed):
 		return fiber.StatusConflict, "This plan is closed.", true
 	case errors.Is(err, repo.ErrQAEmptyRun):
@@ -146,9 +155,12 @@ func renderQARunNew(c *fiber.Ctx, d Deps, s tenant.Scope, data qaRunNewData, cho
 	if err != nil {
 		return writeRepoErr(c, err)
 	}
+	data.Assignees = []httpx.SelectOption{{Value: "", Label: "Nobody"}}
 	for _, p := range people {
 		data.People = append(data.People, qaPlanPersonOption{qaPerson: p, Checked: testers[p.ID]})
+		data.Assignees = append(data.Assignees, httpx.SelectOption{Value: p.ID.String(), Label: p.Label})
 	}
+	data.NotesMax = repo.MaxQARunNotesLength
 	org, user, err := shellChrome(c, d.DB)
 	if err != nil {
 		return err
@@ -209,7 +221,7 @@ func createQARunUI(d Deps) fiber.Handler {
 				return writeRepoErr(c, err)
 			}
 			data := qaRunNewData{Project: *project, Base: qaBase(project), Plan: *plan, Name: in.Name, Notes: in.Notes,
-				Distribution: in.Distribution, Error: msg}
+				Distribution: in.Distribution, Assignee: c.FormValue("assignee_id"), Error: msg}
 			chosen, testers := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
 			for _, id := range in.ScenarioIDs {
 				chosen[id] = true
@@ -219,6 +231,7 @@ func createQARunUI(d Deps) fiber.Handler {
 			}
 			return renderQARunNew(c, d, s, data, chosen, testers, status)
 		}
+		notifyQARunAssignee(c, d, s, project, plan, run)
 		setFlash(c, "qa.run.created", run.Name)
 		return c.Redirect(qaBase(project)+"/runs/"+run.ID.String(), fiber.StatusFound)
 	}
