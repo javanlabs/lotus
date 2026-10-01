@@ -85,7 +85,7 @@ var rolePermissions = map[string]map[string]bool{
 		"token.manage.own", "token.manage.org", "audit.read",
 		"qa.read", "qa.case.write", "qa.plan.write", "qa.execute",
 		"qa.issue.write", "qa.issue.report", "qa.signoff", "qa.share",
-		"project_member.manage",
+		"project_member.manage", "qa.workload.read",
 	),
 	"admin": setOf(
 		"dashboard.read", "project.create", "project.update", "project.delete",
@@ -99,7 +99,7 @@ var rolePermissions = map[string]map[string]bool{
 		"token.manage.own", "token.manage.org", "audit.read",
 		"qa.read", "qa.case.write", "qa.plan.write", "qa.execute",
 		"qa.issue.write", "qa.issue.report", "qa.signoff", "qa.share",
-		"project_member.manage",
+		"project_member.manage", "qa.workload.read",
 	),
 	"member": setOf(
 		"dashboard.read", "project.create", "project.update",
