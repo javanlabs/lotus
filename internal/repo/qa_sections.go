@@ -20,9 +20,12 @@ type QASection struct {
 	SortOrder  int        `db:"sort_order"`
 	ArchivedAt *time.Time `db:"archived_at"`
 	CreatedAt  time.Time  `db:"created_at"`
+	// PicID is the person in charge of the section's cases, unless a case
+	// (or a nearer section) names its own; see QAEffectivePIC.
+	PicID *uuid.UUID `db:"pic_id"`
 }
 
-const qaSectionCols = `id, org_id, project_id, parent_id, name, sort_order, archived_at, created_at`
+const qaSectionCols = `id, org_id, project_id, parent_id, name, sort_order, archived_at, created_at, pic_id`
 
 // lockQASections serialises tree changes within one project, so two moves
 // cannot together form a cycle.
@@ -116,6 +119,47 @@ func RenameQASection(ctx context.Context, s tenant.Scope, id uuid.UUID, name str
 		return checkRowsAffected(res)
 	})
 	return qaWriteErr(err)
+}
+
+// SetQASectionPIC sets (or clears, with nil) the section's PIC. Who may be
+// PIC is the caller's check: the database only knows the user exists.
+func SetQASectionPIC(ctx context.Context, s tenant.Scope, id uuid.UUID, pic *uuid.UUID) error {
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE qa_sections SET pic_id = $2 WHERE id = $1`, id, pic)
+		if err != nil {
+			return err
+		}
+		return checkRowsAffected(res)
+	})
+	return qaWriteErr(err)
+}
+
+// QAEffectivePIC is who is in charge of a case filed in sectionID: its own
+// PIC when it has one, else the nearest section up the tree that names one.
+// from is that section (nil when the PIC is the case's own, or nobody's).
+// The case list's PIC filter applies the same rule in SQL (qaCaseWhere).
+func QAEffectivePIC(sections []QASection, sectionID uuid.UUID, own *uuid.UUID) (pic *uuid.UUID, from *QASection) {
+	if own != nil {
+		return own, nil
+	}
+	byID := make(map[uuid.UUID]int, len(sections))
+	for i, sec := range sections {
+		byID[sec.ID] = i
+	}
+	id := &sectionID
+	for range MaxQASectionDepth + 1 {
+		i, ok := byID[*id]
+		if !ok {
+			return nil, nil
+		}
+		if sections[i].PicID != nil {
+			return sections[i].PicID, &sections[i]
+		}
+		if id = sections[i].ParentID; id == nil {
+			return nil, nil
+		}
+	}
+	return nil, nil
 }
 
 func MoveQASection(ctx context.Context, s tenant.Scope, id uuid.UUID, parentID *uuid.UUID) error {

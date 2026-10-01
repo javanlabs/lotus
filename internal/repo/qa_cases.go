@@ -30,10 +30,11 @@ type QACase struct {
 	CreatedBy    *uuid.UUID `db:"created_by"`
 	CreatedAt    time.Time  `db:"created_at"`
 	UpdatedAt    time.Time  `db:"updated_at"`
+	PicID        *uuid.UUID `db:"pic_id"` // the case's own PIC; see QAEffectivePIC
 }
 
 const qaCaseCols = `id, org_id, project_id, section_id, key, title, precondition, notes, steps,
-	priority, negative, version, archived_at, created_by, created_at, updated_at`
+	priority, negative, version, archived_at, created_by, created_at, updated_at, pic_id`
 
 type QACaseInput struct {
 	SectionID    uuid.UUID
@@ -43,6 +44,7 @@ type QACaseInput struct {
 	Steps        QASteps
 	Priority     *string
 	Negative     bool
+	PicID        *uuid.UUID // nil: in the charge of its section's PIC
 }
 
 func (in QACaseInput) normalized() (QACaseInput, error) {
@@ -74,10 +76,10 @@ func CreateQACase(ctx context.Context, s tenant.Scope, projectID uuid.UUID, in Q
 			return err
 		}
 		return tx.GetContext(ctx, &out, `
-			INSERT INTO qa_cases (org_id, project_id, section_id, key, title, precondition, notes, steps, priority, negative, created_by)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			INSERT INTO qa_cases (org_id, project_id, section_id, key, title, precondition, notes, steps, priority, negative, created_by, pic_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			RETURNING `+qaCaseCols,
-			s.OrgID(), projectID, in.SectionID, key, in.Title, in.Precondition, in.Notes, in.Steps, in.Priority, in.Negative, createdBy)
+			s.OrgID(), projectID, in.SectionID, key, in.Title, in.Precondition, in.Notes, in.Steps, in.Priority, in.Negative, createdBy, in.PicID)
 	})
 	if err != nil {
 		return nil, qaWriteErr(err)
@@ -117,16 +119,27 @@ type QACaseFilter struct {
 	// NotInScenario leaves out the cases that scenario already holds (the
 	// Add cases picker), before Limit applies.
 	NotInScenario *uuid.UUID
+	// PICID keeps the cases in that person's charge, PICNone those in
+	// nobody's — by effective PIC: the case's own, else its nearest
+	// section's (QAEffectivePIC).
+	PICID         *uuid.UUID
+	PICNone       bool
 	Limit, Offset int // Limit 0 = every row
 }
 
 // qaCaseWhere is the filter both ListQACases and CountQACases apply. The
-// recursive CTE is empty when no section is chosen.
+// recursive CTE scope is empty when no section is chosen; pics walks the
+// project's tree from the top, handing each section its effective PIC, and
+// is only read when a PIC filter is set.
 const qaCaseWhere = `
 	WITH RECURSIVE scope AS (
 		SELECT id FROM qa_sections WHERE id = $2
 		UNION ALL
 		SELECT sec.id FROM qa_sections sec JOIN scope ON sec.parent_id = scope.id WHERE $5
+	), pics AS (
+		SELECT id, pic_id FROM qa_sections WHERE project_id = $1 AND parent_id IS NULL AND ($7::uuid IS NOT NULL OR $8)
+		UNION ALL
+		SELECT sec.id, COALESCE(sec.pic_id, pics.pic_id) FROM qa_sections sec JOIN pics ON sec.parent_id = pics.id
 	)
 	SELECT %s FROM qa_cases
 	WHERE project_id = $1
@@ -134,10 +147,13 @@ const qaCaseWhere = `
 	  AND ($3 OR archived_at IS NULL)
 	  AND ($4 = '' OR title ILIKE '%%' || $4 || '%%' ESCAPE '\')
 	  AND ($6::uuid IS NULL OR NOT EXISTS (
-		SELECT 1 FROM qa_scenario_items si WHERE si.scenario_id = $6 AND si.case_id = qa_cases.id))`
+		SELECT 1 FROM qa_scenario_items si WHERE si.scenario_id = $6 AND si.case_id = qa_cases.id))
+	  AND ($7::uuid IS NULL OR $7 = COALESCE(pic_id, (SELECT pics.pic_id FROM pics WHERE pics.id = section_id)))
+	  AND (NOT $8 OR COALESCE(pic_id, (SELECT pics.pic_id FROM pics WHERE pics.id = section_id)) IS NULL)`
 
 func (f QACaseFilter) args(projectID uuid.UUID) []any {
-	return []any{projectID, f.SectionID, f.IncludeArchived, likeEscape(strings.TrimSpace(f.Query)), f.IncludeSubsections, f.NotInScenario}
+	return []any{projectID, f.SectionID, f.IncludeArchived, likeEscape(strings.TrimSpace(f.Query)), f.IncludeSubsections, f.NotInScenario,
+		f.PICID, f.PICNone}
 }
 
 // likeEscape makes % and _ in a search box match themselves.
@@ -148,7 +164,7 @@ func likeEscape(q string) string {
 func ListQACases(ctx context.Context, s tenant.Scope, projectID uuid.UUID, f QACaseFilter) ([]QACase, error) {
 	var out []QACase
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		q := fmt.Sprintf(qaCaseWhere, qaCaseCols) + ` ORDER BY key LIMIT NULLIF($7, 0) OFFSET $8`
+		q := fmt.Sprintf(qaCaseWhere, qaCaseCols) + ` ORDER BY key LIMIT NULLIF($9, 0) OFFSET $10`
 		return tx.SelectContext(ctx, &out, q, append(f.args(projectID), f.Limit, f.Offset)...)
 	})
 	return out, err
@@ -207,9 +223,9 @@ func UpdateQACase(ctx context.Context, s tenant.Scope, id uuid.UUID, in QACaseIn
 		}
 		return tx.GetContext(ctx, &out, `
 			UPDATE qa_cases SET section_id = $2, title = $3, precondition = $4, notes = $5, steps = $6,
-				priority = $7, negative = $8, version = $9, updated_at = now()
+				priority = $7, negative = $8, version = $9, pic_id = $10, updated_at = now()
 			WHERE id = $1 RETURNING `+qaCaseCols,
-			id, in.SectionID, in.Title, in.Precondition, in.Notes, in.Steps, in.Priority, in.Negative, version)
+			id, in.SectionID, in.Title, in.Precondition, in.Notes, in.Steps, in.Priority, in.Negative, version, in.PicID)
 	})
 	if err != nil {
 		return nil, qaWriteErr(err)
