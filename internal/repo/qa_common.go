@@ -22,6 +22,12 @@ const (
 	MaxQANameLength   = 200
 	MaxQATitleLength  = 500
 	MaxQASectionDepth = 8
+	// MaxQACommentLength bounds a result's comment, in characters, however
+	// it is recorded (page, API or MCP).
+	MaxQACommentLength = 2500
+	// MaxQARunNotesLength bounds a run's notes as written in Lotus. The
+	// importer is not held to it: legacy descriptions may run longer.
+	MaxQARunNotesLength = 2000
 )
 
 // QAPhases is the fixed list of testing phases a scenario or plan belongs to.
@@ -36,6 +42,10 @@ var (
 	ErrQASectionArchived = errors.New("that section is archived")
 	ErrQAClosed          = errors.New("closed")
 	ErrQAEmptyRun        = errors.New("the run would have no cases")
+	// ErrQACommentTooLong and ErrQANotesTooLong are ErrInvalidInput, named
+	// so a caller can say which limit was passed.
+	ErrQACommentTooLong = fmt.Errorf("%w: comment too long", ErrInvalidInput)
+	ErrQANotesTooLong   = fmt.Errorf("%w: notes too long", ErrInvalidInput)
 )
 
 // QAStep is one step of a test case.

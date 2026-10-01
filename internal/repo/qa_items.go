@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -104,6 +105,10 @@ func RecordQAResult(ctx context.Context, s tenant.Scope, in QAResultInput) (*QAR
 	if !slices.Contains(qaResultStatuses, in.Status) {
 		return nil, ErrInvalidInput
 	}
+	comment := strings.TrimSpace(in.Comment)
+	if utf8.RuneCountInString(comment) > MaxQACommentLength {
+		return nil, ErrQACommentTooLong
+	}
 	var out QAResult
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		var closed bool
@@ -119,7 +124,7 @@ func RecordQAResult(ctx context.Context, s tenant.Scope, in QAResultInput) (*QAR
 			INSERT INTO qa_results (org_id, item_id, status, comment, created_by, created_at)
 			VALUES ($1, $2, $3, $4, $5, clock_timestamp())
 			RETURNING id, org_id, item_id, status, comment, created_by, created_at`,
-			s.OrgID(), in.ItemID, in.Status, strings.TrimSpace(in.Comment), in.CreatedBy); err != nil {
+			s.OrgID(), in.ItemID, in.Status, comment, in.CreatedBy); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `
@@ -140,6 +145,25 @@ func ListQAResults(ctx context.Context, s tenant.Scope, itemID uuid.UUID) ([]QAR
 			SELECT id, org_id, item_id, status, comment, created_by, created_at
 			FROM qa_results WHERE item_id = $1 ORDER BY created_at DESC, id DESC`, itemID)
 	})
+	return out, err
+}
+
+// LatestQAResults is each item's most recent result, for the items of
+// itemIDs that have one, in one query.
+func LatestQAResults(ctx context.Context, s tenant.Scope, itemIDs []uuid.UUID) (map[uuid.UUID]QAResult, error) {
+	out := make(map[uuid.UUID]QAResult, len(itemIDs))
+	if len(itemIDs) == 0 {
+		return out, nil
+	}
+	var rows []QAResult
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &rows, `
+			SELECT DISTINCT ON (item_id) id, org_id, item_id, status, comment, created_by, created_at
+			FROM qa_results WHERE item_id = ANY($1) ORDER BY item_id, created_at DESC, id DESC`, itemIDs)
+	})
+	for _, r := range rows {
+		out[r.ItemID] = r
+	}
 	return out, err
 }
 
