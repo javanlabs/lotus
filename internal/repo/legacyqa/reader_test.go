@@ -30,6 +30,11 @@ func TestReader_AppliesTheInclusionRules(t *testing.T) {
 	if len(cases) != 4 {
 		t.Fatalf("cases = %d; want 4 (c35 deleted and unreferenced)", len(cases))
 	}
+	// The fixture predates pic_id (2026-09-04): read as no PIC, not an error.
+	modules, err := r.Modules(ctx, p)
+	if err != nil || len(modules) == 0 || modules[0].PicID != nil || cases[0].PicID != nil {
+		t.Fatalf("modules = %+v, %v; cases[0].PicID = %v; want no PIC", modules, err, cases[0].PicID)
+	}
 	steps, _ := r.Steps(ctx, p)
 	if s := steps[id("31")]; len(s) != 2 || s[0].Action != "Open https://portal" {
 		t.Fatalf("steps of c31 = %+v; want ordered by position", s)

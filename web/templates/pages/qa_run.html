@@ -6,6 +6,7 @@
   <div style="flex:1;min-width:220px">
     <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{$d.Run.Name}}</h1>
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Plan.Name}} · {{$d.PhaseLabel}} · cycle {{$d.Run.Cycle}}{{if $d.Plan.Environment}} · {{$d.Plan.Environment}}{{end}}{{if $d.Run.ClosedAt}} · closed {{$d.Run.ClosedAt.Format "02 Jan 2006"}}{{end}}</p>
+    {{if $d.Assignee}}<p style="margin:4px 0 0;font-size:12px;color:#6B7280">assigned to <span style="color:#111827;font-weight:600">{{$d.Assignee}}</span></p>{{end}}
     {{if $d.RetestOf}}<p style="margin:4px 0 0;font-size:12px;color:#6B7280">retest of <a href="{{$d.RetestHref}}" style="color:#43284E">{{$d.RetestOf}}</a></p>{{end}}
     {{if $d.Run.Notes}}<p style="margin:6px 0 0;font-size:12px;color:#374151;white-space:pre-wrap">{{$d.Run.Notes}}</p>{{end}}
   </div>
@@ -43,12 +44,72 @@
   </div>
   {{end}}
   {{if and $d.CanManage (not $d.Run.ClosedAt)}}
+  <div x-data="lotusModal('edit-run')" style="display:contents">
+    <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Edit run…</button>
+    <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="edit-run-title">
+      <div class="lotus-modal-head">
+        <div class="lotus-modal-title" id="edit-run-title">Edit run</div>
+        <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+        </button>
+      </div>
+      <div class="lotus-modal-form">
+        <form method="post" action="{{$d.URL}}" hx-post="{{$d.URL}}" hx-target="#edit-run-error" hx-swap="innerHTML">
+          <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
+            <div id="edit-run-error"></div>
+            <label style="display:flex;flex-direction:column;gap:6px">
+              <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NAME</span>
+              <input type="text" name="name" required maxlength="200" value="{{$d.Run.Name}}" class="lotus-input">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:6px">
+              <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">NOTES</span>
+              <textarea name="notes" rows="3" maxlength="{{$d.NotesMax}}" class="lotus-textarea">{{$d.Run.Notes}}</textarea>
+            </label>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">ASSIGNEE</span>
+              {{template "lotus_select" (dict "Name" "assignee_id" "ID" "edit-run-assignee" "Value" $d.AssigneeID "Label" "Assignee" "Options" (selectOptions $d.People))}}
+              <span style="font-size:11.5px;color:#6B7280">A new assignee takes over the items the current one holds; items given to someone else stay theirs.</span>
+            </div>
+          </div>
+          <div class="lotus-modal-foot">
+            <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn-lotus btn-lotus-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+  </div>
   <form method="post" action="{{$d.URL}}/retest" hx-post="{{$d.URL}}/retest" hx-target="#run-error" hx-swap="innerHTML">
     <button type="submit" class="btn-lotus btn-lotus-secondary">Retest failed &amp; blocked</button>
   </form>
   <form method="post" action="{{$d.URL}}/close">
     <button type="submit" class="btn-lotus btn-lotus-secondary">Close run</button>
   </form>
+  {{end}}
+  {{if $d.CanManage}}
+  <div x-data="lotusModal('delete-run')" style="display:contents">
+    <button type="button" class="btn-lotus btn-lotus-secondary" @click="open()">Delete run…</button>
+    <dialog class="lotus-modal lotus-shape" x-ref="dialog" aria-labelledby="delete-run-title">
+      <div class="lotus-modal-head">
+        <div class="lotus-modal-title" id="delete-run-title">Delete run</div>
+        <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+        </button>
+      </div>
+      <div class="lotus-modal-form">
+        <form method="post" action="{{$d.URL}}/delete">
+          <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:10px">
+            <p style="margin:0;font-size:12.5px;color:#111827">Delete <strong>{{$d.Run.Name}}</strong> and its {{$d.Items}} items, with every result and file recorded on them? This cannot be undone.</p>
+            <p style="margin:0;font-size:12px;color:#6B7280">Issues reported from the run stay, without the link to it. Retests of it stay too.</p>
+          </div>
+          <div class="lotus-modal-foot">
+            <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn-lotus" style="background:var(--surface-danger-soft);color:var(--text-danger)">Delete run</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+  </div>
   {{end}}
 </header>
 <div id="run-error" style="margin-bottom:10px;max-width:760px"></div>
@@ -69,6 +130,11 @@
     <span style="font-size:12px;color:#6B7280">Give the ticked items to</span>
     <div style="width:220px">{{template "lotus_select" (dict "Name" "assignee_id" "ID" "assign-who" "Value" "" "Label" "Assignee" "Size" "sm" "Options" (selectOptions $d.People))}}</div>
     <button type="submit" class="btn-lotus btn-lotus-secondary">Assign</button>
+    {{if not $d.Run.ClosedAt}}
+    <button type="submit" formaction="{{$d.URL}}/items/remove" hx-post="{{$d.URL}}/items/remove"
+            hx-confirm="Remove the ticked items from this run, with their results and files? Issues reported from them stay."
+            class="btn-lotus btn-lotus-secondary" style="margin-left:auto">Remove from run</button>
+    {{end}}
   </form>
   {{end}}
   {{range $gi, $g := $d.Groups}}

@@ -799,3 +799,74 @@ function qaResultKeys(e) {
     }
   });
 })();
+
+// qaWorkload drives one panel of the QC workload page (pages/
+// qa_workload.html): its rows arrive as JSON in a <script
+// type="application/json"> island, and searching, sorting and paging all
+// happen here — a month's people or projects are tens of rows. Any change
+// to the search or the sort goes back to the first page. Clicking a name
+// opens the row's detail in the panel's <dialog>.
+function qaWorkload(sourceId) {
+  const per = 10;
+  return {
+    rows: [],
+    q: "",
+    key: "name",
+    dir: 1,
+    page: 1,
+    detail: null,
+
+    init() {
+      const el = document.getElementById(sourceId);
+      this.rows = (el && JSON.parse(el.textContent || "[]")) || [];
+      this.$watch("q", () => { this.page = 1; });
+      const dlg = this.$refs.dialog;
+      if (dlg) {
+        dlg.addEventListener("close", () => { document.body.style.overflow = ""; });
+        dlg.addEventListener("click", (e) => { if (e.target === dlg) this.close(); });
+      }
+    },
+
+    get filtered() {
+      const q = this.q.trim().toLowerCase();
+      return q ? this.rows.filter((r) => r.name.toLowerCase().includes(q)) : this.rows;
+    },
+    get sorted() {
+      const k = this.key, d = this.dir;
+      const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      return [...this.filtered].sort((a, b) =>
+        k === "name" ? byName(a, b) * d : ((a[k] || 0) - (b[k] || 0)) * d || byName(a, b));
+    },
+    get pages() { return Math.max(1, Math.ceil(this.filtered.length / per)); },
+    get visible() {
+      const start = (this.page - 1) * per;
+      return this.sorted.slice(start, start + per);
+    },
+    get from() { return this.filtered.length ? (this.page - 1) * per + 1 : 0; },
+    get to() { return Math.min(this.page * per, this.filtered.length); },
+
+    // Names open A–Z; a count opens most first — who did the most, or
+    // which project is busiest, is what a recap is read for.
+    sortBy(k) {
+      if (this.key === k) this.dir = -this.dir;
+      else { this.key = k; this.dir = k === "name" ? 1 : -1; }
+      this.page = 1;
+    },
+    arrow(k) { return this.key !== k ? "" : this.dir > 0 ? " ↑" : " ↓"; },
+    ariaSort(k) { return this.key !== k ? "none" : this.dir > 0 ? "ascending" : "descending"; },
+
+    open(row) {
+      this.detail = row;
+      const dlg = this.$refs.dialog;
+      if (dlg && !dlg.open) {
+        dlg.showModal();
+        document.body.style.overflow = "hidden";
+      }
+    },
+    close() {
+      const dlg = this.$refs.dialog;
+      if (dlg && dlg.open) dlg.close();
+      document.body.style.overflow = "";
+    },
+  };
+}

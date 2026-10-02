@@ -1,0 +1,14 @@
+{{define "content"}}
+<main class="mx-auto flex min-h-screen max-w-md flex-col items-start justify-center gap-4 px-6 py-16">
+  {{template "lotus_logo" (dict "ID" "err" "Width" 48 "Height" 31)}}
+  <p class="text-sm font-medium tabular-nums text-slate-500">Error {{.Data.Status}}</p>
+  <h1 class="text-xl font-semibold text-slate-900">{{.Data.Heading}}</h1>
+  <p class="text-slate-600">{{.Data.Body}}</p>
+  <div class="mt-2 flex gap-2">
+    {{if .Data.LoginHref}}
+    <a href="{{.Data.LoginHref}}" class="btn-lotus btn-lotus-primary">Sign in</a>
+    {{end}}
+    <a href="/" class="btn-lotus btn-lotus-secondary">Go to home</a>
+  </div>
+</main>
+{{end}}

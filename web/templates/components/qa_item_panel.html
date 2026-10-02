@@ -32,7 +32,7 @@
         </label>
         {{end}}
       </div>
-      <textarea name="comment" rows="2" class="lotus-textarea" placeholder="What happened, if not a plain pass" aria-label="Comment"></textarea>
+      <textarea name="comment" rows="2" maxlength="{{.MaxCommentLength}}" class="lotus-textarea" placeholder="What happened, if not a plain pass" aria-label="Comment"></textarea>
       <input type="file" name="file" multiple class="lotus-input" aria-label="Attach files">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">p · f · b · s picks a result · up to 20 MB per file</span>

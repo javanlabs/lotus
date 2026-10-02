@@ -1,0 +1,220 @@
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+
+<header class="lotus-qa-header">
+  <div style="min-width:0">
+    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">QC workload</h1>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.MonthLabel}} · {{len $d.People}} {{if eq (len $d.People) 1}}person{{else}}people{{end}} · {{len $d.Projects}} active project{{if ne (len $d.Projects) 1}}s{{end}}</p>
+  </div>
+  <div class="lotus-qa-header-nav">{{template "qa_home_nav" (dict "On" "workload" "Workload" true)}}</div>
+  <div class="lotus-qa-header-actions">
+    <nav aria-label="Month" class="lotus-wl-month">
+      <a href="{{$d.PrevHref}}" rel="prev" class="btn-lotus btn-lotus-secondary" aria-label="Previous month">←</a>
+      <form method="get" action="/qa/workload">
+        <input type="month" name="month" value="{{$d.Month}}" aria-label="Month" class="lotus-input lotus-input-mono" style="width:150px" onchange="this.form.requestSubmit()">
+      </form>
+      {{if $d.NextHref}}<a href="{{$d.NextHref}}" rel="next" class="btn-lotus btn-lotus-secondary" aria-label="Next month">→</a>{{else}}<span class="btn-lotus btn-lotus-secondary" aria-disabled="true" style="opacity:.45;pointer-events:none">→</span>{{end}}
+    </nav>
+  </div>
+</header>
+
+{{if $d.Unknown}}
+<p data-unknown-month style="margin:0 0 14px;font-size:12px;color:var(--status-warn-text)">Unknown month “{{$d.Unknown}}” · showing {{$d.MonthLabel}}</p>
+{{end}}
+
+<script type="application/json" id="qa-wl-people">{{$d.People}}</script>
+<script type="application/json" id="qa-wl-projects">{{$d.Projects}}</script>
+
+<div style="display:flex;flex-direction:column;gap:14px">
+
+{{/* Panel 1: one row per owner, admin and member. */}}
+<div x-data="qaWorkload('qa-wl-people')" data-wl-panel="people">
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
+  <div class="lotus-wl-bar">
+    <div>
+      <h2 class="lotus-wl-title">QC recap</h2>
+      <p class="lotus-wl-sub">Run items in runs created this month · cases and issues created this month</p>
+    </div>
+    <input type="search" x-model="q" placeholder="Search names" aria-label="Search names" class="lotus-input" style="width:220px">
+  </div>
+  <div style="overflow-x:auto">
+    <div class="lotus-table-head lotus-wl-grid lotus-wl-people" role="row">
+      {{template "qa_wl_th" (dict "Key" "name" "Label" "Name" "Left" true)}}
+      {{template "qa_wl_th" (dict "Key" "projects" "Label" "Projects")}}
+      {{template "qa_wl_th" (dict "Key" "cases" "Label" "Test cases")}}
+      {{template "qa_wl_status_ths"}}
+      {{template "qa_wl_th" (dict "Key" "issues" "Label" "Issues" "Tone" "issues")}}
+    </div>
+    <template x-for="r in visible" :key="r.name + r.role">
+      <div class="lotus-repo-row lotus-wl-grid lotus-wl-people" data-wl-person>
+        <span class="lotus-wl-name"><button type="button" class="lotus-wl-link" @click="open(r)" x-text="r.name"></button><span class="lotus-wl-role" x-text="r.role"></span></span>
+        <span class="lotus-wl-num" x-text="r.projects || '—'"></span>
+        <span class="lotus-wl-num" x-text="r.cases || '—'"></span>
+        {{template "qa_wl_status_tds"}}
+        <span class="lotus-wl-num" :class="r.issues && 'lotus-wl-num-issues'" x-text="r.issues || '—'"></span>
+      </div>
+    </template>
+  </div>
+  {{template "qa_wl_empty_and_pager" "people"}}
+{{template "lotus_card_section_close" .}}
+
+  <dialog class="lotus-modal lotus-shape lotus-wl-modal" x-ref="dialog" aria-labelledby="qa-wl-person-title">
+    <div class="lotus-modal-head">
+      <div class="lotus-modal-title" id="qa-wl-person-title" x-text="detail ? detail.name + ' · {{$d.MonthLabel}}' : ''"></div>
+      <button type="button" class="lotus-modal-close" @click="close()" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+      </button>
+    </div>
+    <div class="lotus-modal-body">
+      <template x-if="detail">
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <section>
+            <h3 class="lotus-wl-eyebrow">Runs by project</h3>
+            <p x-show="!detail.detail.length" class="lotus-wl-none">No run items assigned in runs created this month.</p>
+            <template x-for="g in detail.detail" :key="g.href">
+              <div style="margin-top:8px">
+                <a :href="g.href" class="lotus-wl-group" x-text="g.project"></a>
+                {{template "qa_wl_run_table" "g.runs"}}
+              </div>
+            </template>
+          </section>
+          <section>
+            <h3 class="lotus-wl-eyebrow">Issues reported</h3>
+            {{template "qa_wl_issue_list" false}}
+          </section>
+        </div>
+      </template>
+    </div>
+  </dialog>
+</div>
+
+{{/* Panel 2: one row per project with QA activity this month. */}}
+<div x-data="qaWorkload('qa-wl-projects')" data-wl-panel="projects">
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
+  <div class="lotus-wl-bar">
+    <div>
+      <h2 class="lotus-wl-title">Project recap</h2>
+      <p class="lotus-wl-sub">Projects with cases, runs or issues created this month</p>
+    </div>
+    <input type="search" x-model="q" placeholder="Search projects" aria-label="Search projects" class="lotus-input" style="width:220px">
+  </div>
+  <div style="overflow-x:auto">
+    <div class="lotus-table-head lotus-wl-grid lotus-wl-projects" role="row">
+      {{template "qa_wl_th" (dict "Key" "name" "Label" "Project" "Left" true)}}
+      {{template "qa_wl_th" (dict "Key" "cases" "Label" "Test cases")}}
+      {{template "qa_wl_th" (dict "Key" "runs" "Label" "Runs")}}
+      {{template "qa_wl_status_ths"}}
+      {{template "qa_wl_th" (dict "Key" "issues" "Label" "Issues" "Tone" "issues")}}
+    </div>
+    <template x-for="r in visible" :key="r.href">
+      <div class="lotus-repo-row lotus-wl-grid lotus-wl-projects" data-wl-project>
+        <span class="lotus-wl-name"><button type="button" class="lotus-wl-link" @click="open(r)" x-text="r.name"></button></span>
+        <span class="lotus-wl-num" x-text="r.cases || '—'"></span>
+        <span class="lotus-wl-num" x-text="r.runs || '—'"></span>
+        {{template "qa_wl_status_tds"}}
+        <span class="lotus-wl-num" :class="r.issues && 'lotus-wl-num-issues'" x-text="r.issues || '—'"></span>
+      </div>
+    </template>
+  </div>
+  {{template "qa_wl_empty_and_pager" "projects"}}
+{{template "lotus_card_section_close" .}}
+
+  <dialog class="lotus-modal lotus-shape lotus-wl-modal" x-ref="dialog" aria-labelledby="qa-wl-project-title">
+    <div class="lotus-modal-head">
+      <div class="lotus-modal-title" id="qa-wl-project-title" x-text="detail ? detail.name + ' · {{$d.MonthLabel}}' : ''"></div>
+      <a x-show="detail" :href="detail && detail.href" style="margin-left:auto;font-size:11.5px;color:var(--link)">Open project QA</a>
+      <button type="button" class="lotus-modal-close" style="margin-left:0" @click="close()" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+      </button>
+    </div>
+    <div class="lotus-modal-body">
+      <template x-if="detail">
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <section>
+            <h3 class="lotus-wl-eyebrow">Runs created</h3>
+            <p x-show="!detail.runList.length" class="lotus-wl-none">No runs created this month.</p>
+            <div x-show="detail.runList.length">{{template "qa_wl_run_table" "detail.runList"}}</div>
+          </section>
+          <section>
+            <h3 class="lotus-wl-eyebrow">Issues reported</h3>
+            {{template "qa_wl_issue_list" true}}
+          </section>
+        </div>
+      </template>
+    </div>
+  </dialog>
+</div>
+
+</div>
+
+{{template "shell_close" .}}
+{{end}}
+
+{{/* qa_wl_th is a sortable header cell. Takes (dict "Key" row field
+     "Label" text "Left" bool "Tone" status tint). */}}
+{{define "qa_wl_th"}}
+<button type="button" class="lotus-wl-th{{if .Left}} lotus-wl-th-left{{end}}{{with .Tone}} lotus-wl-th-{{.}}{{end}}" @click="sortBy('{{.Key}}')" :aria-sort="ariaSort('{{.Key}}')">{{.Label}}<span x-text="arrow('{{.Key}}')"></span></button>
+{{end}}
+
+{{define "qa_wl_status_ths"}}
+{{template "qa_wl_th" (dict "Key" "untested" "Label" "Untested" "Tone" "untested")}}
+{{template "qa_wl_th" (dict "Key" "passed" "Label" "Passed" "Tone" "passed")}}
+{{template "qa_wl_th" (dict "Key" "failed" "Label" "Failed" "Tone" "failed")}}
+{{template "qa_wl_th" (dict "Key" "blocked" "Label" "Blocked" "Tone" "blocked")}}
+{{template "qa_wl_th" (dict "Key" "skipped" "Label" "Skipped" "Tone" "skipped")}}
+{{template "qa_wl_th" (dict "Key" "total" "Label" "Total TC")}}
+{{end}}
+
+{{define "qa_wl_status_tds"}}
+<span class="lotus-wl-num" x-text="r.untested || '—'"></span>
+<span class="lotus-wl-num" x-text="r.passed || '—'"></span>
+<span class="lotus-wl-num" x-text="r.failed || '—'"></span>
+<span class="lotus-wl-num" x-text="r.blocked || '—'"></span>
+<span class="lotus-wl-num" x-text="r.skipped || '—'"></span>
+<span class="lotus-wl-num lotus-wl-num-total" x-text="r.total || '—'"></span>
+{{end}}
+
+{{/* qa_wl_empty_and_pager closes a panel: the empty line, or "Showing
+     x–y of z" with previous/next when there is more than one page. */}}
+{{define "qa_wl_empty_and_pager"}}
+<p x-show="!filtered.length" style="margin:0;padding:24px 14px;text-align:center;font-size:12.5px;color:#6B7280"
+   x-text="q.trim() ? 'No {{.}} match.' : 'No {{.}} this month.'"></p>
+<div class="lotus-pager" x-show="filtered.length">
+  <span x-text="'Showing ' + from + '–' + to + ' of ' + filtered.length"></span>
+  <span class="lotus-pager-spacer" x-show="pages > 1">
+    <button type="button" class="lotus-wl-page" @click="page--" :disabled="page <= 1">← Previous</button>
+    <span style="align-self:center;font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF" x-text="page + ' / ' + pages"></span>
+    <button type="button" class="lotus-wl-page" @click="page++" :disabled="page >= pages">Next →</button>
+  </span>
+</div>
+{{end}}
+
+{{/* qa_wl_run_table lists runs with their item counts. Takes the Alpine
+     expression for the run list. */}}
+{{define "qa_wl_run_table"}}
+<div class="lotus-wl-mini lotus-wl-mini-head">
+  <span>Run</span><span>Untested</span><span>Passed</span><span>Failed</span><span>Blocked</span><span>Skipped</span><span>Total</span>
+</div>
+<template x-for="run in {{.}}" :key="run.href">
+  <div class="lotus-wl-mini">
+    <a :href="run.href" x-text="run.name" style="color:var(--text-brand);text-decoration:none;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></a>
+    <span x-text="run.untested || '—'"></span><span x-text="run.passed || '—'"></span><span x-text="run.failed || '—'"></span>
+    <span x-text="run.blocked || '—'"></span><span x-text="run.skipped || '—'"></span><span style="font-weight:600" x-text="run.total || '—'"></span>
+  </div>
+</template>
+{{end}}
+
+{{/* qa_wl_issue_list lists detail.reported. Takes whether to show the
+     reporter (the project modal) instead of the project (the person's). */}}
+{{define "qa_wl_issue_list"}}
+<p x-show="!detail.reported.length" class="lotus-wl-none">No issues reported this month.</p>
+<template x-for="is in detail.reported" :key="is.href">
+  <a :href="is.href" class="lotus-wl-issue">
+    <span style="font:500 11px 'IBM Plex Mono',monospace;color:#6B7280" x-text="is.key"></span>
+    <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#111827" x-text="is.title"></span>
+    <span style="font-size:11.5px;color:#6B7280;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="{{if .}}is.reporter || '—'{{else}}is.project{{end}}"></span>
+    <span style="font:500 11px 'IBM Plex Mono',monospace;color:#374151" x-text="is.status"></span>
+  </a>
+</template>
+{{end}}

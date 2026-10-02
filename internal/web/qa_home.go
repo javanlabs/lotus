@@ -22,8 +22,9 @@ func qaProjectScope(c *fiber.Ctx, s tenant.Scope) ([]uuid.UUID, error) {
 }
 
 type qaHomeData struct {
-	Rows  []repo.QAProjectSummary
-	Cases int
+	Rows        []repo.QAProjectSummary
+	Cases       int
+	CanWorkload bool // qa.workload.read: the header links to /qa/workload
 }
 
 // qaHome is GET /qa: every project the principal can reach, with its QA
@@ -50,7 +51,7 @@ func qaHome(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		data := qaHomeData{Rows: rows}
+		data := qaHomeData{Rows: rows, CanWorkload: mustPrincipal(c).Can("qa.workload.read")}
 		for _, r := range rows {
 			data.Cases += r.Cases
 		}
@@ -68,13 +69,15 @@ func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fibe
 		authz.Require("qa.read"), qaHome(d))
 	app.Get("/qa/my", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("qa.read"), qaMyPage(d))
+	app.Get("/qa/workload", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("qa.workload.read"), qaWorkloadPage(d))
 	app.Get("/projects/:id/qa", qaRoute(requireSession, loadPrincipal, "qa.read", qaProjectPage(d))...)
 	app.Get("/projects/:id/qa/cases", qaRoute(requireSession, loadPrincipal, "qa.read", qaCasesPage(d))...)
 	app.Post("/projects/:id/qa/cases/move", qaRoute(requireSession, loadPrincipal, "qa.case.write", moveQACasesUI(d))...)
 	app.Get("/projects/:id/qa/cases/import", qaRoute(requireSession, loadPrincipal, "qa.case.write", qaImportPage(d))...)
 	app.Post("/projects/:id/qa/cases/import", qaRoute(requireSession, loadPrincipal, "qa.case.write", previewQAImportUI(d))...)
 	app.Post("/projects/:id/qa/cases/import/confirm", qaRoute(requireSession, loadPrincipal, "qa.case.write", confirmQAImportUI(d))...)
-	app.Get("/projects/:id/qa/cases/export", qaRoute(requireSession, loadPrincipal, "qa.read", exportQACasesUI())...)
+	app.Get("/projects/:id/qa/cases/export", qaRoute(requireSession, loadPrincipal, "qa.read", exportQACasesUI(d))...)
 	app.Get("/projects/:id/qa/cases/new", qaRoute(requireSession, loadPrincipal, "qa.case.write", newQACasePage(d))...)
 	app.Post("/projects/:id/qa/cases/new", qaRoute(requireSession, loadPrincipal, "qa.case.write", createQACaseUI(d))...)
 	app.Get("/projects/:id/qa/cases/:key", qaRoute(requireSession, loadPrincipal, "qa.read", qaCasePage(d))...)
@@ -105,6 +108,9 @@ func registerQARoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fibe
 	app.Post("/projects/:id/qa/plans/:pid/runs", qaRoute(requireSession, loadPrincipal, "qa.plan.write", createQARunUI(d))...)
 	app.Post("/projects/:id/qa/plans/:pid/runs/preview", qaRoute(requireSession, loadPrincipal, "qa.plan.write", previewQARunUI(d))...)
 	app.Get("/projects/:id/qa/runs/:rid", qaRoute(requireSession, loadPrincipal, "qa.read", qaRunPage(d))...)
+	app.Post("/projects/:id/qa/runs/:rid", qaRoute(requireSession, loadPrincipal, "qa.plan.write", updateQARunUI(d))...)
+	app.Post("/projects/:id/qa/runs/:rid/delete", qaRoute(requireSession, loadPrincipal, "qa.plan.write", deleteQARunUI(d))...)
+	app.Post("/projects/:id/qa/runs/:rid/items/remove", qaRoute(requireSession, loadPrincipal, "qa.plan.write", removeQARunItemsUI(d))...)
 	app.Get("/projects/:id/qa/runs/:rid/items/:iid", qaRoute(requireSession, loadPrincipal, "qa.read", qaItemPanelUI(d))...)
 	app.Post("/projects/:id/qa/runs/:rid/items/:iid/result", qaRoute(requireSession, loadPrincipal, "qa.execute", recordQAResultUI(d))...)
 	app.Post("/projects/:id/qa/runs/:rid/assign", qaRoute(requireSession, loadPrincipal, "qa.plan.write", assignQAItemsUI(d))...)

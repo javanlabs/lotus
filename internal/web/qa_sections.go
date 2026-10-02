@@ -70,6 +70,20 @@ func qaSection(c *fiber.Ctx, s tenant.Scope, project *repo.Project) (repo.QASect
 	return repo.QASection{}, fiber.ErrNotFound
 }
 
+// qaSectionPICFromForm reads a section dialog's PIC picker (errQAPIC for
+// someone who cannot be PIC; keep is the section's current PIC).
+func qaSectionPICFromForm(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Project, keep *uuid.UUID) (*uuid.UUID, error) {
+	raw := c.FormValue("pic_id")
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	people, err := qaPeople(c, d, s, project)
+	if err != nil {
+		return nil, err
+	}
+	return qaPICFrom(people, raw, keep)
+}
+
 func createQASectionUI(d Deps) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		s, project, err := loadQAProject(c)
@@ -80,6 +94,13 @@ func createQASectionUI(d Deps) fiber.Handler {
 		if err != nil {
 			return err
 		}
+		pic, err := qaSectionPICFromForm(c, d, s, project, nil)
+		if errors.Is(err, errQAPIC) {
+			return qaFormError(c, d, fiber.StatusUnprocessableEntity, qaPICErrMessage)
+		}
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
 		name := c.FormValue("name")
 		sec, err := repo.CreateQASection(c.Context(), s, project.ID, name, parentID)
 		if err != nil {
@@ -88,11 +109,18 @@ func createQASectionUI(d Deps) fiber.Handler {
 			}
 			return err
 		}
+		if pic != nil {
+			if err := repo.SetQASectionPIC(c.Context(), s, sec.ID, pic); err != nil {
+				return writeRepoErr(c, err)
+			}
+		}
 		setFlash(c, "qa.section.created", sec.Name)
 		return redirectAfterCreate(c, casesURL(qaBase(project), sec.ID.String(), "", false, 1))
 	}
 }
 
+// renameQASectionUI saves the edit dialog's name and, when the form sends
+// pic_id at all, the section's PIC.
 func renameQASectionUI(d Deps) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		s, project, err := loadQAProject(c)
@@ -103,12 +131,28 @@ func renameQASectionUI(d Deps) fiber.Handler {
 		if err != nil {
 			return err
 		}
+		setPIC := c.Request().PostArgs().Has("pic_id")
+		var pic *uuid.UUID
+		if setPIC {
+			pic, err = qaSectionPICFromForm(c, d, s, project, sec.PicID)
+			if errors.Is(err, errQAPIC) {
+				return qaFormError(c, d, fiber.StatusUnprocessableEntity, qaPICErrMessage)
+			}
+			if err != nil {
+				return writeRepoErr(c, err)
+			}
+		}
 		name := strings.TrimSpace(c.FormValue("name"))
 		if err := repo.RenameQASection(c.Context(), s, sec.ID, name); err != nil {
 			if status, msg, ok := qaSectionErr(err, name); ok {
 				return qaFormError(c, d, status, msg)
 			}
 			return err
+		}
+		if setPIC {
+			if err := repo.SetQASectionPIC(c.Context(), s, sec.ID, pic); err != nil {
+				return writeRepoErr(c, err)
+			}
 		}
 		setFlash(c, "qa.section.renamed", name)
 		return redirectAfterMutation(c, casesURL(qaBase(project), sec.ID.String(), "", false, 1))

@@ -97,6 +97,15 @@
       {{else}}<span aria-current="page" style="color:#43284E;font-weight:600">{{.Label}}</span>{{end}}
       {{end}}
     </nav>
+    {{if .Nav.Guest}}
+    {{/* The server already limits a guest to its listed projects and to
+         executing, reporting and signing off; this says so up front, so a
+         client doesn't hunt for an edit button that was never there. */}}
+    <div role="note" data-testid="guest-notice" style="margin-bottom:14px;max-width:760px;padding:9px 11px;border-radius:var(--radius-petal-sm);background:var(--plum-a06);color:var(--plum-700);font-size:12.5px;line-height:1.5">
+      <strong style="font-weight:600">Guest access{{if .Org}} to {{.Org.Name}}{{end}}.</strong>
+      You see only the projects you were invited to. You can record test results, report and comment on issues, and sign off plans; test cases, plans and runs are managed by the team.
+    </div>
+    {{end}}
 {{end}}
 
 {{define "shell_close"}}

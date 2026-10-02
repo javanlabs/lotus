@@ -167,3 +167,22 @@ func UserByEmail(ctx context.Context, db *sqlx.DB, email string) (*User, error) 
 	}
 	return &out, nil
 }
+
+// UsersByIDs returns the users among ids, keyed by id; ids with no user are
+// absent. For naming people a tenant row points at (a QA case's PIC or
+// author) whether or not they are still members of the organization.
+func UsersByIDs(ctx context.Context, db *sqlx.DB, ids []uuid.UUID) (map[uuid.UUID]User, error) {
+	out := make(map[uuid.UUID]User, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []User
+	if err := sqlx.SelectContext(ctx, db, &rows, `
+		SELECT id, email, name, avatar_url, email_verified_at, status FROM users WHERE id = ANY($1)`, ids); err != nil {
+		return nil, err
+	}
+	for _, u := range rows {
+		out[u.ID] = u
+	}
+	return out, nil
+}

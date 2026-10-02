@@ -54,7 +54,7 @@ Two further findings shape the permission model:
 | Plan | Required parent of every run. Has phase, environment, build, date window, and the scenarios it covers. | Optional plan (legacy: 95% of runs skipped it, which is why it carried no information). |
 | Run | One execution cycle of a plan. `cycle` number and `retest_of` link retests to their origin. | Run per tester (legacy workaround, 48 same-day groups / 195 runs). |
 | Run content | `qa_run_items` snapshot the case (title, precondition, steps, version) when the run is created. | Live reference only (legacy: results point at case text that was edited afterwards). |
-| Assignment | Per item, with bulk assign and distribution on run creation (none / round-robin / by group). | Run-level assignee (legacy default that 81% of runs never changed). |
+| Assignment | Per item, with bulk assign and distribution on run creation (none / round-robin / by group). **Revised 2026-10-02:** a run also has an optional assignee, its lead tester and the default for its items: at creation it gets every item distribution left unassigned, and changing it moves only the items still held by the previous one (per-item assignments stay); the new assignee is emailed. | Run-level assignee as the only assignment (legacy default that 81% of runs never changed). It was dropped at first; the team asked for it back as the run's lead (qatools #143076). |
 | Executor vs assignee | Both kept: `assignee_id` (who should) and `executed_by` (who recorded the latest result). | Assignee only (legacy: 14.4% of results were recorded by someone else, so the assignee was not the truth). |
 | Issue fields | `severity` only (blocker … trivial), plus status, environment, found-in plan. | Priority + severity + type + category (defaults never changed; §6). |
 | Issue history | One timeline, `qa_issue_events`: comments and status changes. | Separate comments and status logs (legacy stored the issue status on every comment as well). |
@@ -87,22 +87,27 @@ All tables: `org_id uuid NOT NULL REFERENCES organizations ON DELETE
 CASCADE`, `UNIQUE (id, org_id)`, composite foreign keys `(x_id, org_id)`
 to every tenant parent, RLS forced with the `NULLIF(current_setting(
 'app.org_id', true), '')::uuid` policy used since migration 00026. User
-references (`*_by`, `assignee_id`) are plain `REFERENCES users(id) ON
+references (`*_by`, `assignee_id`, `pic_id`) are plain `REFERENCES users(id) ON
 DELETE SET NULL` (control plane, no org).
 
 | Table | Columns (besides id, org_id) | Notes |
 |---|---|---|
 | `project_members` | project_id, user_id, created_at | Only consulted for role `guest`. `UNIQUE (project_id, user_id)`. |
-| `qa_sections` | project_id, parent_id NULL, name (1–200), sort_order, archived_at, created_at | Sibling names unique ignoring case (`NULLS NOT DISTINCT`). Depth ≤ 8. |
-| `qa_cases` | project_id, section_id, key int, title (1–500), precondition text, notes text, steps jsonb (array), priority text NULL (`high/medium/low`), negative bool, version int, archived_at, created_by, created_at, updated_at | `UNIQUE (project_id, key)`. `version` +1 whenever title, precondition or steps change. |
+| `qa_sections` | project_id, parent_id NULL, name (1–200), sort_order, archived_at, created_at, pic_id NULL | Sibling names unique ignoring case (`NULLS NOT DISTINCT`). Depth ≤ 8. |
+| `qa_cases` | project_id, section_id, key int, title (1–500), precondition text, notes text, steps jsonb (array), priority text NULL (`high/medium/low`), negative bool, version int, archived_at, created_by, created_at, updated_at, pic_id NULL | `UNIQUE (project_id, key)`. `version` +1 whenever title, precondition or steps change. Effective PIC = the case's `pic_id`, else the nearest ancestor section's. |
+
+`pic_id` (person in charge) was added back on 2026-10-02 (migration
+00032): QA Tools started filling it on 2026-09-04, after the dump §6
+measured. Both are optional; a PIC is anyone who can be given run items
+(owner, admin, member, or a guest listed on the project).
 | `qa_scenarios` | project_id, name (1–200), phase, description, archived_at, created_by, created_at, updated_at | phase ∈ `smoke, sit, uat, regression, other`. |
 | `qa_scenario_groups` | scenario_id, name (1–200), position | Optional; items without a group sit in an unnamed first group. |
 | `qa_scenario_items` | scenario_id, group_id NULL, case_id, position | `UNIQUE (scenario_id, case_id)`. |
 | `qa_plans` | project_id, name (1–200), phase, environment text, build text, starts_on date NULL, ends_on date NULL, closed_at, created_by, created_at | `CHECK (ends_on >= starts_on)` when both set. |
 | `qa_plan_scenarios` | plan_id, scenario_id | Composite PK. |
-| `qa_runs` | plan_id, name (1–200), cycle int ≥ 1, retest_of NULL, notes text, closed_at, created_by, created_at | `retest_of` references `qa_runs (id, org_id)` in the same plan (checked in repo). |
+| `qa_runs` | plan_id, name (1–200), cycle int ≥ 1, retest_of NULL, notes text, assignee_id NULL, closed_at, created_by, created_at | `retest_of` references `qa_runs (id, org_id)` in the same plan (checked in repo). `assignee_id` (added 2026-10-02, migration 00031): the run's lead and its items' default, `ON DELETE SET NULL`. Notes written in Lotus are at most 2,000 characters (checked in repo; imported notes may be longer). |
 | `qa_run_items` | run_id, case_id, group_name text, position, title, precondition, steps jsonb, case_version, assignee_id NULL, status, status_at NULL, executed_by NULL | status ∈ `untested, passed, failed, blocked, skipped`. `UNIQUE (run_id, case_id)`. |
-| `qa_results` | item_id, status, comment text, created_by NULL, created_at | Append-only. Writing one updates the item's status/status_at/executed_by in the same transaction. |
+| `qa_results` | item_id, status, comment text, created_by NULL, created_at | Append-only. Writing one updates the item's status/status_at/executed_by in the same transaction. A comment is at most 2,500 characters (checked in repo, 2026-10-02). Rows go only with their item: removing items from an open run, or deleting a run (open or closed), cascades to items, results, their files and issue links; issues stay. |
 | `qa_issues` | project_id, key int, title (1–500), description, steps_to_reproduce, severity, status, environment text, plan_id NULL, section_id NULL, assignee_id NULL, reported_by NULL, source, created_at, updated_at | severity ∈ `blocker, critical, major, minor, trivial`; status ∈ `new, open, fixed, closed, invalid, duplicate, reopened`; source ∈ `internal, client`. `UNIQUE (project_id, key)`. |
 | `qa_issue_links` | item_id, issue_id, created_at | Composite PK. |
 | `qa_issue_events` | issue_id, kind, body, status_from NULL, status_to NULL, actor_id NULL, created_at | kind ∈ `comment, status`. |
@@ -151,14 +156,16 @@ Measured on the 2026-09-26 production dump. "Fill" = non-null share.
 | `test_cases.description` | 41% `-`, most of the rest Taiga links | Becomes `notes`; `-` imported as empty. |
 | `test_cases.case_code` | Strings `TC0001`, 8 live duplicates | Integer `key`; duplicates renumbered. |
 | `test_cases.order_id` | 12 distinct values | Drop; order by key within section. |
-| `test_cases.pic_id`, `id_task_taiga`, `id_assigned_to_taiga`, `assigned_to_taiga` | 0.0% fill | Drop. |
+| `test_cases.pic_id` | 0.0% fill in the 2026-09-26 dump, but QA Tools has filled it since 2026-09-04 | **Kept** (added back 2026-10-02): optional `qa_cases.pic_id`, imported when the dump has the column. |
+| `test_cases.id_task_taiga`, `id_assigned_to_taiga`, `assigned_to_taiga` | 0.0% fill | Drop. |
 | `steps.created_by/updated_by/created_at/updated_at` | Steps belong to the case | Drop; steps move into `qa_cases.steps`. |
-| `modules.id_epicorus_taiga`, `deleted_at_taiga_sync`, `pic_id` | 1.2%, 0%, 0% | Drop (Taiga is decommissioned). |
+| `modules.id_epicorus_taiga`, `deleted_at_taiga_sync` | 1.2%, 0% | Drop (Taiga is decommissioned). |
+| `modules.pic_id` | 0% in the 2026-09-26 dump; used by QA Tools since 2026-09-04 | **Kept** (added back 2026-10-02): optional `qa_sections.pic_id`, imported when the dump has the column. |
 | `projects.id_taiga` | 9.3%, Taiga gone | Drop. |
 | `releases.*` | Used as sprint/phase buckets | Entity dropped; each becomes a plan (name, dates). |
 | `test_plans.code`, `assignment_time`/`expiration_time` naming | 4 distinct codes | Drop code; dates become `starts_on/ends_on`. |
 | `test_runs.result_id` | 0% | Drop. |
-| `test_runs.assignee_id` | Default copied to every detail | Drop (assignment is per item). |
+| `test_runs.assignee_id` | Default copied to every detail | Imported as `qa_runs.assignee_id` through the users map (since 2026-10-02; it was dropped before the run assignee came back). Items keep their own assignee. |
 | `test_runs.version`, `browser` | 15%, 17%; free text | Appended to run `notes` on import ("Build: …", "Browser: …"); the plan's `build` is the field going forward. |
 | `test_runs.is_archive` | 23 rows | Drop; `closed_at` replaces it. |
 | `test_run_details.code` | 0% | Drop. |

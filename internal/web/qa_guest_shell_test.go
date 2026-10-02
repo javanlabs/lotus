@@ -91,6 +91,12 @@ func TestGuestShell_HomeIsMyWork(t *testing.T) {
 	if !strings.Contains(body, `href="/projects/`+listed.String()+`/qa"`) {
 		t.Errorf("guest sidebar has no link to its project's QA")
 	}
+	if !strings.Contains(body, `data-testid="guest-notice"`) {
+		t.Errorf("guest page has no access notice")
+	}
+	if _, body := e.get(t, e.owner, "/qa/my"); strings.Contains(body, `data-testid="guest-notice"`) {
+		t.Errorf("owner page shows the guest access notice")
+	}
 	if status, _ := e.get(t, guest, "/projects/"+listed.String()+"/qa/cases/new"); status != http.StatusForbidden {
 		t.Errorf("guest new case page = %d, want 403", status)
 	}

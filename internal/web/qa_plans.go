@@ -246,6 +246,7 @@ type qaPlanRunRow struct {
 	Href       string
 	RetestOf   string // the name of the run this retests, "" otherwise
 	RetestHref string
+	Assignee   string // the run's assignee, "" for nobody
 	Progress   repo.QAProgress
 }
 
@@ -314,8 +315,13 @@ func qaPlanPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
+		labels, err := qaPeopleLabels(c, d, s)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
 		for _, r := range runs {
-			row := qaPlanRunRow{QARun: r, Href: data.Base + "/runs/" + r.ID.String(), Progress: progress[r.ID]}
+			row := qaPlanRunRow{QARun: r, Href: data.Base + "/runs/" + r.ID.String(), Assignee: personLabel(labels, r.AssigneeID),
+				Progress: progress[r.ID]}
 			if r.RetestOf != nil {
 				row.RetestOf, row.RetestHref = names[*r.RetestOf], data.Base+"/runs/"+r.RetestOf.String()
 			}

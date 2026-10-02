@@ -24,12 +24,13 @@ import (
 func lid(n string) uuid.UUID { return uuid.MustParse("00000000-0000-0000-0000-0000000000" + n) }
 
 type env struct {
-	db     *sqlx.DB
-	s      tenant.Scope
-	orgID  uuid.UUID
-	legacy *legacyqa.Reader
-	store  blob.Store
-	opt    qaimport.Options
+	db        *sqlx.DB
+	s         tenant.Scope
+	orgID     uuid.UUID
+	legacy    *legacyqa.Reader
+	legacyDSN string // writable, for tests that reshape the legacy schema
+	store     blob.Store
+	opt       qaimport.Options
 }
 
 func newEnv(t *testing.T) env {
@@ -56,7 +57,7 @@ func newEnv(t *testing.T) env {
 	os.WriteFile(filepath.Join(files, "public", "2026-09-01", "shot.png"), []byte("\x89PNG\r\n\x1a\n"), 0o644)
 	os.WriteFile(filepath.Join(files, "public", "2026-09-01", "log.txt"), []byte("trace"), 0o644)
 	return env{
-		db: app, s: tenant.FromRun(app, orgID), orgID: orgID, legacy: r, store: store,
+		db: app, s: tenant.FromRun(app, orgID), orgID: orgID, legacy: r, legacyDSN: legacyDSN, store: store,
 		opt: qaimport.Options{
 			OrgID:         orgID,
 			UsersMap:      map[string]string{"ishaq@gmail.com": "admin@javan.co.id"},
@@ -171,6 +172,58 @@ func TestImport_UsersProjectsLibrary(t *testing.T) {
 	}
 }
 
+// A dump from 2026-09-04 on has modules.pic_id and test_cases.pic_id; the
+// PICs come through the same user mapping as authors (aliases merged,
+// dormant users kept for attribution). The fixture's older schema has no
+// such column, which TestImport_UsersProjectsLibrary covers.
+func TestImport_PICs(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	legacy, err := db.Open(e.legacyDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer legacy.Close()
+	for _, q := range []string{
+		`ALTER TABLE modules ADD COLUMN pic_id uuid`,
+		`ALTER TABLE test_cases ADD COLUMN pic_id uuid`,
+		`UPDATE modules SET pic_id = '00000000-0000-0000-0000-000000000005' WHERE id = '00000000-0000-0000-0000-000000000021'`,
+		`UPDATE test_cases SET pic_id = '00000000-0000-0000-0000-000000000002' WHERE id = '00000000-0000-0000-0000-000000000031'`,
+		`UPDATE test_cases SET pic_id = '00000000-0000-0000-0000-000000000003' WHERE id = '00000000-0000-0000-0000-000000000033'`,
+	} {
+		if _, err := legacy.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	e.run(t)
+	p := e.portal(t)
+	admin, _ := global.UserByEmail(ctx, e.db, "admin@javan.co.id")
+	tester, _ := global.UserByEmail(ctx, e.db, "tester@javan.co.id")
+	old, _ := global.UserByEmail(ctx, e.db, "old@javan.co.id")
+
+	secs, _ := repo.ListQASections(ctx, e.s, p.ID)
+	for _, sec := range secs {
+		switch {
+		case sec.Name == "Auth" && (sec.PicID == nil || *sec.PicID != tester.ID):
+			t.Fatalf("Auth PIC = %v; want the tester", sec.PicID)
+		case sec.Name != "Auth" && sec.PicID != nil:
+			t.Fatalf("%s PIC = %v; want none", sec.Name, sec.PicID)
+		}
+	}
+	c1, _ := repo.GetQACaseByKey(ctx, e.s, p.ID, 1)
+	if c1.PicID == nil || *c1.PicID != admin.ID {
+		t.Fatalf("case 1 PIC = %v; want the alias-merged admin", c1.PicID)
+	}
+	c3, _ := repo.GetQACaseByKey(ctx, e.s, p.ID, 3)
+	if c3.PicID == nil || *c3.PicID != old.ID {
+		t.Fatalf("case 3 PIC = %v; want the dormant user", c3.PicID)
+	}
+	c5, _ := repo.GetQACaseByKey(ctx, e.s, p.ID, 5)
+	if c5.PicID != nil {
+		t.Fatalf("case 5 PIC = %v; want none", c5.PicID)
+	}
+}
+
 func TestImport_Execution(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
@@ -207,6 +260,11 @@ func TestImport_Execution(t *testing.T) {
 		t.Fatalf("group name = %q; want the section path", items[0].GroupName)
 	}
 	admin, _ := global.UserByEmail(ctx, e.db, "admin@javan.co.id")
+	// The run's assignee goes through the same users map as the items':
+	// u02 is merged into the admin.
+	if runs[0].AssigneeID == nil || *runs[0].AssigneeID != admin.ID {
+		t.Fatalf("run assignee = %v; want the alias-merged admin", runs[0].AssigneeID)
+	}
 	for _, it := range items {
 		if it.Title == "Deleted but referenced" {
 			if it.ExecutedBy == nil || *it.ExecutedBy != admin.ID || it.StatusAt == nil {

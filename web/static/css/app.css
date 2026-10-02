@@ -457,6 +457,116 @@ body {
   .lotus-qa-header-nav { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
 }
 
+/* QC workload (pages/qa_workload.html). The header and the rows of a panel
+   share one grid class, so their columns cannot disagree. Status headers
+   carry soft tints, one per status, so a column is found by colour as well
+   as by name; Total TC stays neutral and Issues takes a soft red. */
+.lotus-wl-month { display: flex; align-items: center; gap: 6px; }
+.lotus-wl-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px 10px;
+}
+.lotus-wl-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-brand); }
+.lotus-wl-sub { margin: 2px 0 0; font-size: 11.5px; color: var(--text-muted); }
+.lotus-wl-grid { display: grid; gap: 6px; }
+.lotus-wl-people { grid-template-columns: minmax(180px, 1.6fr) 72px 80px repeat(5, 78px) 78px 72px; min-width: 900px; }
+.lotus-wl-projects { grid-template-columns: minmax(180px, 1.6fr) 80px 64px repeat(5, 78px) 78px 72px; min-width: 900px; }
+.lotus-table-head.lotus-wl-grid { align-items: stretch; }
+.lotus-wl-th {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.lotus-wl-th-left { justify-content: flex-start; padding-left: 0; }
+.lotus-wl-th:focus-visible { outline: none; box-shadow: var(--shadow-focus-ring); }
+.lotus-wl-th-untested { background: var(--ink-100); color: var(--ink-500); }
+.lotus-wl-th-passed { background: var(--teal-50); color: var(--teal-600); }
+.lotus-wl-th-failed { background: var(--blush-300); color: var(--rose-700); }
+.lotus-wl-th-blocked { background: var(--cream-100); color: #8A5A2B; }
+.lotus-wl-th-skipped { background: var(--lilac-200); color: var(--plum-700); }
+.lotus-wl-th-issues { background: var(--blush-100); color: var(--rose-700); }
+.lotus-wl-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.lotus-wl-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: 600 12.5px var(--font-sans);
+  color: var(--text-brand);
+  cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.lotus-wl-link:hover { text-decoration: underline; }
+.lotus-wl-link:focus-visible { outline: none; border-radius: 3px; box-shadow: var(--shadow-focus-ring); }
+.lotus-wl-role { font: 400 10.5px var(--font-mono); color: var(--text-faint); }
+.lotus-wl-num { padding-right: 8px; text-align: right; font: 500 11.5px var(--font-mono); color: var(--ink-700); }
+.lotus-wl-num-total { font-weight: 600; color: var(--text-primary); }
+.lotus-wl-num-issues { color: var(--rose-700); }
+.lotus-wl-page {
+  height: 26px;
+  padding: 0 var(--space-9);
+  border: 0;
+  background: none;
+  border-radius: var(--radius-control-sm);
+  font-size: var(--text-ui-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-brand);
+  cursor: pointer;
+  transition: var(--transition-surface);
+}
+.lotus-wl-page:hover:not(:disabled) { background: var(--surface-nav-hover); }
+.lotus-wl-page:disabled { color: var(--plum-200); cursor: default; }
+.lotus-modal.lotus-wl-modal { width: min(760px, calc(100vw - 32px)); }
+.lotus-wl-eyebrow {
+  margin: 0 0 6px;
+  font: 600 9.5px var(--font-mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+.lotus-wl-none { margin: 6px 0 0; font-size: 12px; color: var(--text-muted); }
+.lotus-wl-group { display: inline-block; margin-bottom: 4px; font-size: 12.5px; font-weight: 600; color: var(--text-brand); text-decoration: none; }
+.lotus-wl-mini {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(6, 58px);
+  gap: 6px;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border-hairline);
+  font-size: 12px;
+}
+.lotus-wl-mini > span { text-align: right; font: 500 11px var(--font-mono); color: var(--ink-700); }
+.lotus-wl-mini-head > span { font: 600 9.5px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-label); }
+.lotus-wl-mini-head > span:first-child { text-align: left; }
+.lotus-wl-issue {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) minmax(0, 140px) 70px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-hairline);
+  font-size: 12px;
+  text-decoration: none;
+}
+.lotus-wl-issue:hover { background: var(--surface-row-hover); }
+
 .lotus-row-link { color: inherit; text-decoration: none; }
 .lotus-row-link::after { content: ""; position: absolute; inset: 0; }
 .lotus-row-link:focus-visible { outline: none; }
