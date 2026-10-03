@@ -39,3 +39,18 @@ puzzling visual bug rather than an error: the sidebar user menu lost its
 Rule: anything with static styles in `style` and conditional styles in
 `:style` uses the object form. If a string is genuinely easier to read,
 move the static declarations into a CSS class instead.
+
+## Commit straight to main, atomic and conventional
+
+Work lands on `main` directly. Do not create a feature branch unless one
+is asked for.
+
+Each commit is atomic: one logical change, with the tests and docs that
+belong to it, and the tree builds and passes `make lint` and `make test`
+at every commit. Unrelated changes go in separate commits, even when
+they were made together.
+
+Messages follow Conventional Commits: `type(scope): summary`, where type
+is one of `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci` or
+`perf`, and scope is the area touched (`qa`, `projects`, `web`,
+`metrics`, …). The body explains why, not what the diff already shows.
