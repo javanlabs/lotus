@@ -274,3 +274,45 @@ func ListSentryIssuesForSnapshot(ctx context.Context, s tenant.Scope, snapshotID
 	})
 	return out, err
 }
+
+// SentryEnvironmentSummary is one environment of a binding's latest Sentry
+// sync, with its issues counted by substatus and their events summed.
+type SentryEnvironmentSummary struct {
+	SentrySnapshot
+	NewCount        int `db:"new_count"`
+	EscalatingCount int `db:"escalating_count"`
+	RegressedCount  int `db:"regressed_count"`
+	OngoingCount    int `db:"ongoing_count"`
+	Events          int `db:"events_total"`
+}
+
+// ListLatestSentryEnvironmentsForProject is the latest sync of every live
+// Sentry binding in a project — one row per environment that sync
+// reported, as ListSentrySnapshotsForBinding reads it — with each
+// environment's issue counts, in one query.
+func ListLatestSentryEnvironmentsForProject(ctx context.Context, s tenant.Scope, projectID uuid.UUID) ([]SentryEnvironmentSummary, error) {
+	var out []SentryEnvironmentSummary
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &out, `
+			SELECT ss.id, ss.org_id, ss.binding_id, ss.component_id, ss.captured_at, ss.content_hash, ss.collected_at,
+			       ss.environment, ss.service_name, ss.sentry_project_id, ss.project_slug, ss.project_name, ss.platform,
+			       ss.sentry_org, ss.team_id, ss.team_slug, ss.status_filter, ss.generated_at, ss.total_issues,
+			       ss.score, ss.grade, ss.load,
+			       iss.new_count, iss.escalating_count, iss.regressed_count, iss.ongoing_count, iss.events_total`+
+			projectLiveBindingsFrom+`
+			CROSS JOIN LATERAL (
+				SELECT max(collected_at) AS at FROM sentry_snapshots WHERE binding_id = mb.id
+			) latest
+			JOIN sentry_snapshots ss ON ss.binding_id = mb.id AND ss.collected_at = latest.at
+			CROSS JOIN LATERAL (
+				SELECT count(*) FILTER (WHERE substatus = 'new')        AS new_count,
+				       count(*) FILTER (WHERE substatus = 'escalating') AS escalating_count,
+				       count(*) FILTER (WHERE substatus = 'regressed')  AS regressed_count,
+				       count(*) FILTER (WHERE substatus = 'ongoing')    AS ongoing_count,
+				       COALESCE(sum(event_count), 0)                    AS events_total
+				FROM sentry_issues si WHERE si.snapshot_id = ss.id
+			) iss`+projectLiveBindingsWhere+`
+			ORDER BY ss.binding_id, ss.environment, ss.service_name`, projectID, "sentry")
+	})
+	return out, err
+}

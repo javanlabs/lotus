@@ -129,3 +129,23 @@ func ListTrivySnapshotsForComponent(ctx context.Context, s tenant.Scope, compone
 	})
 	return out, err
 }
+
+// ListLatestTrivySnapshotsForProject is the latest Trivy snapshot of every
+// live Trivy binding in a project, in one query. RawJSON is left empty: it
+// carries every CVE of the image, and a project-wide summary reads only
+// the counts.
+func ListLatestTrivySnapshotsForProject(ctx context.Context, s tenant.Scope, projectID uuid.UUID) ([]TrivySnapshot, error) {
+	var out []TrivySnapshot
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &out, `
+			SELECT snap.*`+projectLiveBindingsFrom+`
+			CROSS JOIN LATERAL (
+				SELECT id, org_id, binding_id, component_id, captured_at, content_hash, collected_at, source, digest,
+				       tags, severity, total, fixable, critical, high, medium, low, unknown,
+				       pulls, artifact_count, image_pushed_at, scan_finished_at
+				FROM trivy_snapshots ts WHERE ts.binding_id = mb.id
+				ORDER BY ts.collected_at DESC LIMIT 1
+			) snap`+projectLiveBindingsWhere, projectID, "trivy")
+	})
+	return out, err
+}

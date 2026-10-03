@@ -75,3 +75,27 @@ func DeleteTrivyFindingNote(ctx context.Context, s tenant.Scope, id uuid.UUID) e
 		return err
 	})
 }
+
+// CountFalsePositivesForProject is how many findings are annotated as
+// false positives on each live Trivy binding of a project, keyed by
+// binding id, in one grouped query. A binding with none is absent.
+func CountFalsePositivesForProject(ctx context.Context, s tenant.Scope, projectID uuid.UUID) (map[uuid.UUID]int, error) {
+	var rows []struct {
+		BindingID uuid.UUID `db:"binding_id"`
+		N         int       `db:"n"`
+	}
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &rows, `
+			SELECT mb.id AS binding_id, count(*) AS n`+projectLiveBindingsFrom+`
+			JOIN trivy_finding_notes n ON n.binding_id = mb.id AND n.status = 'false_positive'`+projectLiveBindingsWhere+`
+			GROUP BY mb.id`, projectID, "trivy")
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]int, len(rows))
+	for _, r := range rows {
+		out[r.BindingID] = r.N
+	}
+	return out, nil
+}

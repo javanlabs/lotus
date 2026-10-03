@@ -345,3 +345,35 @@ func bindingWriteErr(err error) error {
 	}
 	return err
 }
+
+// ProjectBinding is one live binding of a kind in a project, with what a
+// project-level integration page needs to link out: the connection's base
+// URL and config (Sentry keeps its organization slug there).
+type ProjectBinding struct {
+	BindingID        uuid.UUID       `db:"binding_id"`
+	ComponentID      uuid.UUID       `db:"component_id"`
+	ExternalKey      string          `db:"external_key"`
+	Enabled          bool            `db:"enabled"`
+	ConnectionName   string          `db:"connection_name"`
+	ConnectionURL    string          `db:"connection_base_url"`
+	ConnectionConfig json.RawMessage `db:"connection_config"`
+}
+
+// ListProjectBindingsByKind is every live binding of kind on the project's
+// unarchived components — at most one per component (migration 00035) —
+// in one query, joined to its connection.
+func ListProjectBindingsByKind(ctx context.Context, s tenant.Scope, projectID uuid.UUID, kind string) ([]ProjectBinding, error) {
+	var out []ProjectBinding
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &out, `
+			SELECT mb.id AS binding_id, mb.component_id, mb.external_key, mb.enabled,
+			       ic.name AS connection_name, ic.base_url AS connection_base_url, ic.config AS connection_config
+			FROM metric_bindings mb
+			JOIN components c ON c.id = mb.component_id
+			JOIN integration_connections ic ON ic.id = mb.connection_id
+			WHERE c.project_id = $1 AND c.archived_at IS NULL
+			  AND mb.kind = $2 AND mb.deleted_at IS NULL
+			ORDER BY c.name`, projectID, kind)
+	})
+	return out, err
+}

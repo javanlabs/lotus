@@ -144,6 +144,22 @@ func LatestGitlabSnapshot(ctx context.Context, s tenant.Scope, bindingID uuid.UU
 	return &out, nil
 }
 
+// ListLatestGitlabSnapshotsForProject is ListLatestSonarSnapshotsForProject
+// for GitLab: the latest snapshot of every live GitLab binding in a
+// project, in one query.
+func ListLatestGitlabSnapshotsForProject(ctx context.Context, s tenant.Scope, projectID uuid.UUID) ([]GitlabSnapshot, error) {
+	var out []GitlabSnapshot
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &out, `
+			SELECT snap.*`+projectLiveBindingsFrom+`
+			CROSS JOIN LATERAL (
+				SELECT * FROM gitlab_snapshots gs WHERE gs.binding_id = mb.id
+				ORDER BY gs.collected_at DESC LIMIT 1
+			) snap`+projectLiveBindingsWhere, projectID, "gitlab")
+	})
+	return out, err
+}
+
 func nullIfEmptyJSONBytes(b json.RawMessage) []byte {
 	if len(b) == 0 {
 		return nil

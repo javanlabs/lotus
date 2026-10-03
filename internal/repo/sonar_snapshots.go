@@ -162,3 +162,34 @@ func EndOfSnapshotDay(ctx context.Context, s tenant.Scope, date string) (time.Ti
 	})
 	return out, err
 }
+
+// projectLiveBindingsFrom and projectLiveBindingsWhere frame every
+// project-level latest-snapshot read: the live bindings of kind ($2) on
+// the project's ($1) unarchived components. Each read joins its snapshot
+// table LATERALly between the two, so the latest row of a binding is one
+// probe of (binding_id, collected_at DESC) rather than a sort over every
+// snapshot the project ever had. A retired binding's history is never
+// read: it is not a live binding.
+const (
+	projectLiveBindingsFrom = `
+	FROM metric_bindings mb
+	JOIN components c ON c.id = mb.component_id AND c.project_id = $1 AND c.archived_at IS NULL`
+	projectLiveBindingsWhere = `
+	WHERE mb.kind = $2 AND mb.deleted_at IS NULL`
+)
+
+// ListLatestSonarSnapshotsForProject is the latest SonarQube snapshot of
+// every live SonarQube binding in a project, one row per binding, in one
+// query. A binding with no snapshot yet has no row.
+func ListLatestSonarSnapshotsForProject(ctx context.Context, s tenant.Scope, projectID uuid.UUID) ([]SonarSnapshot, error) {
+	var out []SonarSnapshot
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.SelectContext(ctx, &out, `
+			SELECT snap.*`+projectLiveBindingsFrom+`
+			CROSS JOIN LATERAL (
+				SELECT * FROM sonar_snapshots ss WHERE ss.binding_id = mb.id
+				ORDER BY ss.collected_at DESC LIMIT 1
+			) snap`+projectLiveBindingsWhere, projectID, "sonarqube")
+	})
+	return out, err
+}
