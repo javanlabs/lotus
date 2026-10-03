@@ -64,6 +64,9 @@ func createProject(c *fiber.Ctx) error {
 	if req.Slug == "" || req.Name == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "slug and name are required")
 	}
+	if msg := slugRefusal(req.Slug, reservedProjectSlugs); msg != "" {
+		return fiber.NewError(fiber.StatusBadRequest, msg)
+	}
 	p, err := repo.CreateProject(c.Context(), s, repo.NewProject{Slug: req.Slug, Name: req.Name, Description: req.Description})
 	if err != nil {
 		return writeRepoErr(c, err)
@@ -122,6 +125,9 @@ func updateProject(c *fiber.Ctx) error {
 	}
 	if req.Slug == "" || req.Name == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "slug and name are required")
+	}
+	if msg := slugRefusal(req.Slug, reservedProjectSlugs); msg != "" {
+		return fiber.NewError(fiber.StatusBadRequest, msg)
 	}
 	p, err := repo.UpdateProject(c.Context(), s, id, repo.ProjectUpdate{
 		Slug: req.Slug, Name: req.Name, Description: req.Description, SortOrder: req.SortOrder,
@@ -229,6 +235,9 @@ func createComponent(c *fiber.Ctx) error {
 	if req.Slug == "" || req.Name == "" || req.Kind == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "slug, name, and kind are required")
 	}
+	if msg := slugRefusal(req.Slug, reservedComponentSlugs); msg != "" {
+		return fiber.NewError(fiber.StatusBadRequest, msg)
+	}
 	comp, err := repo.CreateComponent(c.Context(), s, repo.NewComponent{
 		ProjectID: projectID, Slug: req.Slug, Name: req.Name, Kind: req.Kind, Language: req.Language,
 	})
@@ -293,6 +302,9 @@ func updateComponent(c *fiber.Ctx) error {
 	}
 	if req.Slug == "" || req.Name == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "slug and name are required")
+	}
+	if msg := slugRefusal(req.Slug, reservedComponentSlugs); msg != "" {
+		return fiber.NewError(fiber.StatusBadRequest, msg)
 	}
 	comp, err := repo.UpdateComponent(c.Context(), s, id, repo.ComponentUpdate{
 		Slug: req.Slug, Name: req.Name, Language: req.Language, SortOrder: req.SortOrder,

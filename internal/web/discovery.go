@@ -172,6 +172,12 @@ func (h discoveryHandlers) claim(c *fiber.Ctx) error {
 		if rc.ExistingComponentID == nil && (rc.NewComponentSlug == "" || rc.NewComponentKind == "") {
 			return fiber.NewError(fiber.StatusBadRequest, "claims["+strconv.Itoa(i)+"] must set existing_component_id or new_component_slug+new_component_kind")
 		}
+		if msg := slugRefusal(rc.NewProjectSlug, reservedProjectSlugs); rc.NewProjectSlug != "" && msg != "" {
+			return fiber.NewError(fiber.StatusBadRequest, "claims["+strconv.Itoa(i)+"].new_project_slug: "+msg)
+		}
+		if msg := slugRefusal(rc.NewComponentSlug, reservedComponentSlugs); rc.NewComponentSlug != "" && msg != "" {
+			return fiber.NewError(fiber.StatusBadRequest, "claims["+strconv.Itoa(i)+"].new_component_slug: "+msg)
+		}
 		targets = append(targets, repo.ClaimTarget{
 			DiscoveredResourceID: rc.DiscoveredResourceID,
 			ExistingProjectID:    rc.ExistingProjectID,

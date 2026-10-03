@@ -193,3 +193,23 @@ func TestProjectRef_SlugsAreEscapedAndUnroutableOnesFallBackToTheID(t *testing.T
 		t.Fatalf("hex slug = %d, want 200", status)
 	}
 }
+
+func TestProjectRef_ReservedSlugsAreRefused(t *testing.T) {
+	e := newQAEnv(t, "acme-ref-reserved")
+	for _, slug := range []string{"new", "move", "..", uuid.NewString()} {
+		resp, body := e.post(t, e.owner, "/projects/new", url.Values{"name": {"X"}, "slug": {slug}}, false)
+		if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "slug") {
+			t.Errorf("new project %q = %d; want 422", slug, resp.StatusCode)
+		}
+	}
+	e.project(t, "portal")
+	resp, _ := e.post(t, e.owner, "/projects/portal/components/new", url.Values{"name": {"X"}, "slug": {"new"}, "kind": {"backend"}}, false)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("new component \"new\" = %d; want 422", resp.StatusCode)
+	}
+	// What is not reserved for a component is fine for one.
+	resp, _ = e.post(t, e.owner, "/projects/portal/components/new", url.Values{"name": {"X"}, "slug": {"move"}, "kind": {"backend"}}, false)
+	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects/portal/components/move" {
+		t.Errorf("new component \"move\" = %d → %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+}

@@ -61,6 +61,10 @@ func submitNewProject(d Deps) fiber.Handler {
 			form.Error = "name and slug are required"
 			return renderNewProjectFormWithCount(c, d, s, org, user, form, fiber.StatusUnprocessableEntity)
 		}
+		if msg := slugRefusal(form.Slug, reservedProjectSlugs); msg != "" {
+			form.Error = msg
+			return renderNewProjectFormWithCount(c, d, s, org, user, form, fiber.StatusUnprocessableEntity)
+		}
 
 		p, err := repo.CreateProject(c.Context(), s, repo.NewProject{Slug: form.Slug, Name: form.Name, Description: form.Description, FolderID: folderID})
 		if err != nil {

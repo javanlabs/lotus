@@ -133,6 +133,10 @@ func submitNewComponent(d Deps) fiber.Handler {
 			form.Error = "name, slug, and kind are required"
 			return renderNewComponentForm(c, d, form, fiber.StatusUnprocessableEntity)
 		}
+		if msg := slugRefusal(form.Slug, reservedComponentSlugs); msg != "" {
+			form.Error = msg
+			return renderNewComponentForm(c, d, form, fiber.StatusUnprocessableEntity)
+		}
 
 		comp, err := repo.CreateComponent(c.Context(), s, repo.NewComponent{
 			ProjectID: project.ID, Slug: form.Slug, Name: form.Name, Kind: form.Kind, Language: form.Language,
