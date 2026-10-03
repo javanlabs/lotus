@@ -578,6 +578,16 @@ body {
 .lotus-row-select { position: relative; z-index: 1; display: flex; align-items: center; }
 .lotus-row-select input { margin: 0; cursor: pointer; accent-color: var(--text-brand); }
 .lotus-row-action { position: relative; z-index: 1; }
+/* A KPI card that opens a page. Cards are read, not clicked, everywhere
+   else, so the one that is says so on hover: the glass firms up, its
+   hairline darkens a step and a soft plum shadow lifts it off the page —
+   depth, not movement (nothing in the system translates). */
+.lotus-kpi-link { transition: var(--transition-surface); }
+.lotus-kpi-link:hover {
+  background: rgba(255, 255, 255, .94);
+  border-color: var(--plum-a24);
+  box-shadow: var(--shadow-card), 0 8px 18px -10px rgba(67, 40, 78, .45);
+}
 
 /* A project's page per integration (pages/project_metric.html). The
    summary strip wraps instead of scrolling: the headline takes the whole

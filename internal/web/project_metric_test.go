@@ -94,7 +94,7 @@ func (f kindPageFixture) checkKindPage(t *testing.T, kind string, wants ...strin
 		t.Fatalf("headline = %v, want the KPI card's 50", m)
 	}
 	// The same number the project page's own card shows.
-	if kpi := f.projectKPI(t, kind); kpi.Value != "50" {
+	if kpi := f.projectKPI(t, kind); kpi.Value != "50" || kpi.Href != "/projects/payments/metrics/"+kind {
 		t.Fatalf("project page KPI = %+v", kpi)
 	}
 	project := &repo.Project{ID: f.projectID, Slug: "payments"}
@@ -269,6 +269,32 @@ func TestProjectMetricPage_NothingBound(t *testing.T) {
 	for _, name := range []string{"billing-api", "ledger-api", "docs-site"} {
 		if !strings.Contains(body, name) {
 			t.Errorf("empty state does not list %s to bind from", name)
+		}
+	}
+}
+
+// Each KPI card on a project page opens the project's page for its kind;
+// the organization dashboard's cards (none are drawn there today) link
+// nowhere, since there is no one project to open.
+func TestProjectPage_KPICardsOpenTheKindPages(t *testing.T) {
+	f := seedKindPage(t, "acme-pm-cards", "sonarqube")
+	status, body := f.e.get(t, f.e.owner, "/projects/payments")
+	if status != http.StatusOK {
+		t.Fatalf("status %d", status)
+	}
+	if n := strings.Count(body, "lotus-kpi-link"); n != len(bindableKinds) {
+		t.Errorf("%d clickable KPI cards, want %d", n, len(bindableKinds))
+	}
+	for _, kind := range bindableKinds {
+		if !strings.Contains(body, `href="/projects/payments/metrics/`+kind+`" class="lotus-row-link"`) {
+			t.Errorf("no KPI card opens %s", kind)
+		}
+	}
+
+	vm := buildProjectDashboardViewModel("", []repo.Project{{ID: f.projectID, Slug: "payments"}}, nil, nil, nil, nil)
+	for _, k := range vm.KPIs {
+		if k.Href != "" {
+			t.Errorf("organization KPI %s links to %q", k.Key, k.Href)
 		}
 	}
 }

@@ -35,11 +35,16 @@
         <span style="white-space:nowrap">{{.Score.HealthyN}} healthy</span><span style="white-space:nowrap">{{.Score.FailingN}} failing</span>
       </div>
     {{template "lotus_card_close" .}}
+    {{/* A card with an Href opens that page: its link is stretched over
+         the whole card (lotus-row-link, as on the folder view's rows)
+         rather than wrapping it, since the info button inside cannot
+         legally sit in an <a>; the button is raised above the link. */}}
     {{range .KPIs}}
-    {{template "lotus_card_open" (dict "Style" "display:flex;flex-direction:column")}}
+    {{template "lotus_card_open" (dict "Style" "display:flex;flex-direction:column" "Class" (ternary (ne .Href "") "lotus-kpi-link" ""))}}
+      {{if .Href}}<a href="{{.Href}}" class="lotus-row-link" aria-label="{{.Label}}: every component"></a>{{end}}
       <div style="display:flex;align-items:center;gap:6px">
         <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;white-space:nowrap">{{.Label}}</div>
-        <button type="button" @click.stop="toggle('{{.Key}}', $event)" :aria-expanded="key === '{{.Key}}'" aria-label="How this number is calculated" style="border:none;background:none;padding:0;margin-left:auto;cursor:pointer;color:#9CA3AF;display:flex" :style="key === '{{.Key}}' ? 'opacity:1' : 'opacity:.55'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="flex:none"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8v.01"></path></g></svg></button>
+        <button type="button" class="lotus-row-action" @click.stop="toggle('{{.Key}}', $event)" :aria-expanded="key === '{{.Key}}'" aria-label="How this number is calculated" style="border:none;background:none;padding:0;margin-left:auto;cursor:pointer;color:#9CA3AF;display:flex" :style="key === '{{.Key}}' ? 'opacity:1' : 'opacity:.55'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="flex:none"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8v.01"></path></g></svg></button>
       </div>
       <div style="display:flex;align-items:baseline;gap:6px;margin:9px 0 6px">
         <div class="lotus-text-{{.Tone}}" style="font-size:27px;font-weight:700;letter-spacing:-.02em;line-height:1">{{.Value}}</div>

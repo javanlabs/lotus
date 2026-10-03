@@ -115,6 +115,10 @@ type kpiCard struct {
 	// way to misread the strip. Kept to a sentence or two: a paragraph in
 	// a popover does not get read.
 	Info string
+	// Href opens the project's page for the kind (projectMetricURL); the
+	// whole card is the link. "" draws a card that is not clickable —
+	// set on a project page only, where there is one project to open.
+	Href string
 }
 
 // scoreCard is the large "Lotus Score" tile: the org-wide rollup score and
@@ -415,6 +419,14 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 		rows[i].N = i + 1
 	}
 
+	// Every component here is the one project's: each KPI card opens that
+	// project's page for its kind.
+	kpis := projectKPIs(components, metrics)
+	project := &repo.Project{ID: components[0].ProjectID, Slug: components[0].ProjectSlug}
+	for i := range kpis {
+		kpis[i].Href = projectMetricURL(project, kpis[i].Key)
+	}
+
 	vm := dashboardViewModel{
 		TableTitle:     "Components",
 		RowHeading:     "COMPONENT",
@@ -426,7 +438,7 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 		ShowUpdated:    true,
 		ProjectCount:   projectCount,
 		Score:          buildScoreCard(statuses, repo.RollupProject(projectMetrics).Score),
-		KPIs:           projectKPIs(components, metrics),
+		KPIs:           kpis,
 		Rows:           rows,
 		RowCount:       len(rows),
 		Subtitle:       subtitle,
