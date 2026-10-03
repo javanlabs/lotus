@@ -198,7 +198,7 @@ func renderTrivyDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 			RawDetailMissing bool
 			Flash            string
 			Charts           chartGridData
-		}{Chrome: chrome, Header: header, Rows: rows, RawDetailMissing: rawDetailMissing, Flash: flash, Charts: newChartGridData(cards, "7d", chrome.basePath())},
+		}{Chrome: chrome, Header: header, Rows: rows, RawDetailMissing: rawDetailMissing, Flash: flash, Charts: newChartGridData(cards, "7d", chrome.BasePath())},
 	})
 }
 
@@ -229,7 +229,7 @@ func saveTrivyNote() fiber.Handler {
 		}); err != nil {
 			return writeRepoErr(c, err)
 		}
-		return c.Redirect(chrome.basePath(), fiber.StatusFound)
+		return c.Redirect(chrome.BasePath(), fiber.StatusFound)
 	}
 }
 
@@ -250,7 +250,7 @@ func deleteTrivyNote() fiber.Handler {
 		if err := repo.DeleteTrivyFindingNote(c.Context(), s, id); err != nil {
 			return writeRepoErr(c, err)
 		}
-		return c.Redirect(chrome.basePath(), fiber.StatusFound)
+		return c.Redirect(chrome.BasePath(), fiber.StatusFound)
 	}
 }
 

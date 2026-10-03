@@ -148,7 +148,7 @@ func TestQARun_AttachmentsAreCheckedStoredAndServedSafely(t *testing.T) {
 
 	// Another project's attachment through this project's URL: 404.
 	other := r.project(t, "Billing")
-	if res, _ := r.app.Test(reqWithSession(http.MethodGet, r.host, "/projects/"+other.String()+"/qa/files/"+files[0].ID.String(), r.member)); res.StatusCode != http.StatusNotFound {
+	if res, _ := r.app.Test(reqWithSession(http.MethodGet, r.host, r.projectPath(t, other)+"/qa/files/"+files[0].ID.String(), r.member)); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("attachment via another project = %d; want 404", res.StatusCode)
 	}
 }

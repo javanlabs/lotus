@@ -19,7 +19,7 @@ func TestQAScenarios_ListCreateEditArchive(t *testing.T) {
 	p := e.project(t, "Portal")
 	_, cases := seedQALibrary(t, e, p) // "Regression core" holds both cases
 	repo.ArchiveQACase(ctx, e.s, cases[1].ID)
-	base := "/projects/" + p.String() + "/qa/scenarios"
+	base := e.projectPath(t, p) + "/qa/scenarios"
 
 	status, body := e.get(t, member, base)
 	if status != http.StatusOK || !strings.Contains(body, "Regression core") || !strings.Contains(body, ">Regression<") ||
@@ -72,7 +72,7 @@ func TestQAScenarios_OwnershipAndPermissions(t *testing.T) {
 	p := e.project(t, "Portal")
 	other := e.project(t, "Billing")
 	foreign, _ := repo.CreateQAScenario(ctx, e.s, other, "Billing SIT", "sit", "", nil)
-	base := "/projects/" + p.String() + "/qa/scenarios"
+	base := e.projectPath(t, p) + "/qa/scenarios"
 
 	for _, path := range []string{base + "/" + foreign.ID.String(), base + "/" + uuid.NewString(), base + "/nope"} {
 		if status, _ := e.get(t, e.owner, path); status != http.StatusNotFound {

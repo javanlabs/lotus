@@ -108,12 +108,12 @@ func projectTrail(folders []repo.Folder, project *repo.Project) []httpx.NavCrumb
 // in one place.
 func componentTrail(folders []repo.Folder, project *repo.Project, component *repo.Component, deeper ...httpx.NavCrumb) []httpx.NavCrumb {
 	trail := append(projectFolderPath(folders, project),
-		httpx.NavCrumb{Label: project.Name, Href: "/projects/" + project.ID.String()})
+		httpx.NavCrumb{Label: project.Name, Href: projectURL(project)})
 	if len(deeper) == 0 {
 		trail = append(trail, httpx.NavCrumb{Label: component.Name})
 		return trail
 	}
-	trail = append(trail, httpx.NavCrumb{Label: component.Name, Href: "/components/" + component.ID.String()})
+	trail = append(trail, httpx.NavCrumb{Label: component.Name, Href: componentURL(project, component)})
 	return append(trail, deeper...)
 }
 

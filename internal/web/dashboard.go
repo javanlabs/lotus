@@ -42,7 +42,8 @@ func dashboardPage(d Deps) fiber.Handler {
 				return writeRepoErr(c, err)
 			}
 			for _, comp := range comps {
-				components = append(components, componentInfo{ID: comp.ID, Name: comp.Name, ProjectID: p.ID, ProjectName: p.Name})
+				components = append(components, componentInfo{ID: comp.ID, Name: comp.Name, Slug: comp.Slug,
+					ProjectID: p.ID, ProjectName: p.Name, ProjectSlug: p.Slug})
 			}
 		}
 

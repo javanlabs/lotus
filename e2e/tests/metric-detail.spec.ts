@@ -41,7 +41,7 @@ async function seedComponentWithBinding(
 }
 
 function detailPath(ids: { projectId: string; componentId: string; bindingId: string }): string {
-  return `/p/${ids.projectId}/c/${ids.componentId}/m/${ids.bindingId}`;
+  return `/projects/p/components/c/metrics/${ids.bindingId}`;
 }
 
 test('GitLab detail page renders from the component page link', async ({ page, context }) => {
@@ -57,7 +57,7 @@ test('GitLab detail page renders from the component page link', async ({ page, c
   );
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  await page.goto(`${origin}/components/${ids.componentId}`);
+  await page.goto(`${origin}/projects/p/components/c`);
   await page.getByText('alurkerja/billing-api').click();
 
   await expect(page).toHaveURL(`${origin}${detailPath(ids)}`);

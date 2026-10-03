@@ -129,15 +129,13 @@ func qaWorkloadPage(d Deps) fiber.Handler {
 	}
 }
 
-func qaBaseFor(projectID uuid.UUID) string { return "/projects/" + projectID.String() + "/qa" }
-
 func buildQAWorkloadRows(data *qaWorkloadData, w *repo.QAWorkload) {
 	issue := func(is repo.QAWorkloadIssue) qaWLIssue {
 		return qaWLIssue{Key: "BUG-" + strconv.Itoa(is.Key), Title: is.Title, Project: is.ProjectName,
-			Reporter: is.Reporter, Status: is.Status, Href: qaBaseFor(is.ProjectID) + "/issues/" + strconv.Itoa(is.Key)}
+			Reporter: is.Reporter, Status: is.Status, Href: qaBaseFor(is.ProjectID, is.ProjectSlug) + "/issues/" + strconv.Itoa(is.Key)}
 	}
 	run := func(r repo.QAWorkloadRun) qaWLRun {
-		return qaWLRun{Name: r.Name, Href: qaBaseFor(r.ProjectID) + "/runs/" + r.RunID.String(), qaWLCounts: wlCounts(r.QAWorkloadCounts)}
+		return qaWLRun{Name: r.Name, Href: qaBaseFor(r.ProjectID, r.ProjectSlug) + "/runs/" + r.RunID.String(), qaWLCounts: wlCounts(r.QAWorkloadCounts)}
 	}
 
 	// Per person: their runs grouped by project, in the order the runs
@@ -168,7 +166,7 @@ func buildQAWorkloadRows(data *qaWorkloadData, w *repo.QAWorkload) {
 			if !ok {
 				i = len(row.Detail)
 				group[r.ProjectID] = i
-				row.Detail = append(row.Detail, qaWLRunGroup{Project: r.ProjectName, Href: qaBaseFor(r.ProjectID)})
+				row.Detail = append(row.Detail, qaWLRunGroup{Project: r.ProjectName, Href: qaBaseFor(r.ProjectID, r.ProjectSlug)})
 			}
 			row.Detail[i].Runs = append(row.Detail[i].Runs, run(r))
 		}
@@ -181,7 +179,7 @@ func buildQAWorkloadRows(data *qaWorkloadData, w *repo.QAWorkload) {
 	}
 	data.Projects = make([]qaWLProjectRow, 0, len(w.Projects))
 	for _, p := range w.Projects {
-		row := qaWLProjectRow{Name: p.Name, Href: qaBaseFor(p.ProjectID), Cases: p.CasesCreated, Runs: p.RunsCreated,
+		row := qaWLProjectRow{Name: p.Name, Href: qaBaseFor(p.ProjectID, p.ProjectSlug), Cases: p.CasesCreated, Runs: p.RunsCreated,
 			Issues: p.IssuesCreated, qaWLCounts: wlCounts(p.QAWorkloadCounts),
 			RunList: projectRuns[p.ProjectID], Reported: byProject[p.ProjectID]}
 		if row.RunList == nil {

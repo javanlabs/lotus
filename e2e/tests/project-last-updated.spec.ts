@@ -11,7 +11,7 @@ function tenantOrigin(subdomain: string): string {
 test('a metric that has not synced for a day is drawn dashed, with a note saying why', async ({ page, context }) => {
   const { sessionToken, orgId, subdomain } = await seedOwnerSession('last-updated-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
-  const projectId = await withDB(async (client) => {
+  await withDB(async (client) => {
     const project = await client.query<{ id: string }>(
       `INSERT INTO projects (org_id, slug, name) VALUES ($1, 'p', 'Payments') RETURNING id`,
       [orgId],
@@ -36,7 +36,7 @@ test('a metric that has not synced for a day is drawn dashed, with a note saying
   });
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  await page.goto(`${origin}/projects/${projectId}`);
+  await page.goto(`${origin}/projects/p`);
 
   await expect(page.getByText('LAST UPDATED')).toBeVisible();
   await expect(page.getByText('PERF')).toHaveCount(0);

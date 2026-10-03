@@ -44,8 +44,8 @@ test('folders roll up passing projects and open to show what is inside', async (
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('folders-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  const linknet = await seedProject(orgId, 'Linknet', 'fail', 42);
-  const dignas = await seedProject(orgId, 'Dignas', 'pass', 95);
+  await seedProject(orgId, 'Linknet', 'fail', 42);
+  await seedProject(orgId, 'Dignas', 'pass', 95);
 
   await page.goto(`${origin}/projects`);
 
@@ -63,8 +63,8 @@ test('folders roll up passing projects and open to show what is inside', async (
   await page.getByRole('button', { name: 'Create folder' }).click();
   await expect(folderRow(page, 'Tribe lead A')).toBeVisible();
 
-  for (const id of [linknet, dignas]) {
-    await page.goto(`${origin}/projects/${id}`);
+  for (const slug of ['linknet', 'dignas']) {
+    await page.goto(`${origin}/projects/${slug}`);
     await page.getByRole('button', { name: 'Move to folder' }).click();
     // The picker lists folders as a tree: the option shows the folder's own
     // name, indented under its parent.
@@ -104,7 +104,7 @@ test('several projects move into a folder at once from the tree', async ({ page,
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('folders-bulk-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  const linknet = await seedProject(orgId, 'Linknet', 'fail', 42);
+  await seedProject(orgId, 'Linknet', 'fail', 42);
   await seedProject(orgId, 'Dignas', 'pass', 95);
   await seedProject(orgId, 'ANRI', 'pass', 88);
   await withDB(async (c) => {
@@ -119,7 +119,7 @@ test('several projects move into a folder at once from the tree', async ({ page,
 
   // A row opens its project when clicked anywhere on it.
   await projectRow(page, 'Linknet').click({ position: { x: 400, y: 10 } });
-  await expect(page).toHaveURL(`${origin}/projects/${linknet}`);
+  await expect(page).toHaveURL(`${origin}/projects/linknet`);
   await page.goBack();
 
   // Checkboxes are hidden until "Select" turns selection on.

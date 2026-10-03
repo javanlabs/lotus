@@ -128,7 +128,7 @@ func projectRow(p repo.Project, components int, roll repo.ProjectRollup) dashboa
 	return dashboardRow{
 		Name:       p.Name,
 		Subtext:    fmt.Sprintf("%d component%s", components, plural(components, "", "s")),
-		Href:       "/projects/" + p.ID.String(),
+		Href:       projectURL(&p),
 		Score:      scoreStr,
 		ScoreValue: roll.Score,
 		ScorePct:   scorePct,

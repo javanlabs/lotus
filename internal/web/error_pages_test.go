@@ -44,13 +44,14 @@ func TestErrorPages_BrowserGetsAPagePerStatus(t *testing.T) {
 		// Unmatched route: Fiber's own 404, returned as an error.
 		{"no route", e.owner, "/no-such-page", 404, "Page not found"},
 		// A QA child id that isn't there.
-		{"missing case", e.owner, "/projects/" + pid.String() + "/qa/cases/999", 404, "Page not found"},
+		{"missing case", e.owner, e.projectPath(t, pid) + "/qa/cases/999", 404, "Page not found"},
 		// Missing permission: authz.Require's 403.
-		{"forbidden", viewer, "/projects/" + pid.String() + "/qa/cases/new", 403, "You don&#39;t have access"},
-		{"missing plan", e.owner, "/projects/" + pid.String() + "/qa/plans/" + uuid.NewString(), 404, "Page not found"},
-		{"bad plan id", e.owner, "/projects/" + pid.String() + "/qa/plans/x", 404, "Page not found"},
+		{"forbidden", viewer, e.projectPath(t, pid) + "/qa/cases/new", 403, "You don&#39;t have access"},
+		{"missing plan", e.owner, e.projectPath(t, pid) + "/qa/plans/" + uuid.NewString(), 404, "Page not found"},
+		{"bad plan id", e.owner, e.projectPath(t, pid) + "/qa/plans/x", 404, "Page not found"},
 		// A project the organization doesn't have.
 		{"unknown project", e.owner, "/projects/" + uuid.NewString() + "/qa", 404, "Page not found"},
+		{"unknown project slug", e.owner, "/projects/no-such-project/qa", 404, "Page not found"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -71,7 +72,7 @@ func TestErrorPages_BrowserGetsAPagePerStatus(t *testing.T) {
 func TestErrorPages_OtherClientsKeepTheirResponse(t *testing.T) {
 	e := newQAEnv(t, "errkeep")
 	pid := e.project(t, "Shop")
-	path := "/projects/" + pid.String() + "/qa/cases/999"
+	path := e.projectPath(t, pid) + "/qa/cases/999"
 
 	// htmx: the fragment caller handles the error itself.
 	status, ctype, body := browserGet(t, e, e.owner, path, map[string]string{"HX-Request": "true"})

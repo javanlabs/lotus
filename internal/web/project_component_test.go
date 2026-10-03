@@ -27,7 +27,7 @@ func TestProjectPage_ShowsComponentsViaTheSameDashboardBlock(t *testing.T) {
 		}
 	})
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/"+projectID, raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p", raw))
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestProjectPage_ShowsComponentsViaTheSameDashboardBlock(t *testing.T) {
 		t.Fatalf("status = %d:\n%s", resp.StatusCode, body)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	for _, want := range []string{"Payments", "billing-api", "Add component"} {
+	for _, want := range []string{"Payments", "billing-api", "Add component", `href="/projects/p/components/c"`, `href="/projects/p/components/new"`} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
 		}
@@ -66,6 +66,14 @@ func TestProjectPage_UnknownIDIs404NotAnotherOrgsProject(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404 (RLS must hide another org's project, not show it)", resp.StatusCode)
 	}
+	// Nor by its slug: a slug is unique only within an organization.
+	resp, err = app.Test(reqWithSession(http.MethodGet, host, "/projects/p", raw))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("by slug: status = %d, want 404", resp.StatusCode)
+	}
 }
 
 func TestAddComponent_CreatesAndRedirectsToComponentPage(t *testing.T) {
@@ -74,15 +82,14 @@ func TestAddComponent_CreatesAndRedirectsToComponentPage(t *testing.T) {
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme-addcomp." + dashboardTestDomain
 
-	var projectID string
 	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
-		if err := tx.Get(&projectID, `INSERT INTO projects (org_id, slug, name) VALUES ($1,'p','Payments') RETURNING id`, orgID); err != nil {
+		if _, err := tx.Exec(`INSERT INTO projects (org_id, slug, name) VALUES ($1,'p','Payments')`, orgID); err != nil {
 			t.Fatalf("insert project: %v", err)
 		}
 	})
 
 	form := url.Values{"name": {"Billing API"}, "slug": {"billing-api"}, "kind": {"backend"}, "language": {"Go"}}
-	req := httptest.NewRequest(http.MethodPost, "http://"+host+"/projects/"+projectID+"/components/new", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "http://"+host+"/projects/p/components/new", strings.NewReader(form.Encode()))
 	req.Host = host
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
@@ -97,8 +104,8 @@ func TestAddComponent_CreatesAndRedirectsToComponentPage(t *testing.T) {
 		t.Fatalf("status = %d, want 302:\n%s", resp.StatusCode, body)
 	}
 	loc := resp.Header.Get("Location")
-	if !strings.HasPrefix(loc, "/components/") {
-		t.Fatalf("Location = %q, want /components/<id>", loc)
+	if loc != "/projects/p/components/billing-api" {
+		t.Fatalf("Location = %q, want the component's slug URL", loc)
 	}
 
 	compResp, err := app.Test(reqWithSession(http.MethodGet, host, loc, raw))
@@ -130,13 +137,13 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 
 	// First, the GET form for gitlab renders the right external-key label
 	// and connection-field inputs.
-	getResp, err := app.Test(reqWithSession(http.MethodGet, host, "/components/"+componentID+"/bind?kind=gitlab", raw))
+	getResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p/components/c/bind?kind=gitlab", raw))
 	if err != nil {
 		t.Fatalf("GET bind form: %v", err)
 	}
 	defer getResp.Body.Close()
 	getBody, _ := io.ReadAll(getResp.Body)
-	for _, want := range []string{"GitLab project path", `name="token"`, `name="base_url"`} {
+	for _, want := range []string{"GitLab project path", `name="token"`, `name="base_url"`, `action="/projects/p/components/c/bind"`} {
 		if !strings.Contains(string(getBody), want) {
 			t.Fatalf("bind form missing %q:\n%s", want, getBody)
 		}
@@ -147,7 +154,7 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 		"base_url": {"https://gitlab.com"}, "token": {"glpat-faketoken"},
 		"external_key": {"alurkerja/billing-api"}, "default_branch": {"main"},
 	}
-	req := httptest.NewRequest(http.MethodPost, "http://"+host+"/components/"+componentID+"/bind", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "http://"+host+"/projects/p/components/c/bind", strings.NewReader(form.Encode()))
 	req.Host = host
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
@@ -157,9 +164,9 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 		t.Fatalf("POST bind: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusFound {
+	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects/p/components/c" {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d, want 302:\n%s", resp.StatusCode, body)
+		t.Fatalf("status = %d → %q, want 302 to the component:\n%s", resp.StatusCode, resp.Header.Get("Location"), body)
 	}
 
 	var connCount, bindingCount int
@@ -179,7 +186,7 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 	}
 
 	// The component page now shows the binding, no longer the empty state.
-	compResp, err := app.Test(reqWithSession(http.MethodGet, host, "/components/"+componentID, raw))
+	compResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p/components/c", raw))
 	if err != nil {
 		t.Fatalf("GET component page: %v", err)
 	}
@@ -202,7 +209,7 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 			t.Fatalf("lookup binding: %v", err)
 		}
 	})
-	again, err := app.Test(reqWithSession(http.MethodGet, host, "/components/"+componentID+"/bind?kind=gitlab", raw))
+	again, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p/components/c/bind?kind=gitlab", raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +220,7 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 		}
 	}
 	post := func(f url.Values) *http.Response {
-		req := httptest.NewRequest(http.MethodPost, "http://"+host+"/components/"+componentID+"/bind", strings.NewReader(f.Encode()))
+		req := httptest.NewRequest(http.MethodPost, "http://"+host+"/projects/p/components/c/bind", strings.NewReader(f.Encode()))
 		req.Host = host
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
@@ -263,6 +270,8 @@ func TestBindWizard_MissingExternalKeyReRendersWithError(t *testing.T) {
 		}
 	})
 
+	// Posted to the wizard's old, id-keyed address — a form loaded before
+	// slug URLs is still taken.
 	form := url.Values{"kind": {"gitlab"}, "connection_id": {"new"}, "new_connection_name": {"gitlab.com"}}
 	req := httptest.NewRequest(http.MethodPost, "http://"+host+"/components/"+componentID+"/bind", strings.NewReader(form.Encode()))
 	req.Host = host

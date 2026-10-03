@@ -13,7 +13,8 @@ import (
 	"github.com/uyab/lotus/internal/tenant"
 )
 
-// projectPage is GET /projects/:id — a project's own dashboard, reusing
+// projectPage is GET /projects/:id (a slug, or an id that canonicalURL
+// has already redirected) — a project's own dashboard, reusing
 // the exact same "generalized dashboard" view-model and template block as
 // the org-wide one (task 4.2's own point), scoped to just this project's
 // components via repo.ListComponentMetricsForProject instead of ...ForOrg.
@@ -23,13 +24,9 @@ func projectPage(d Deps) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		id, err := uuid.Parse(c.Params("id"))
+		project, err := resolveProject(c)
 		if err != nil {
-			return fiber.ErrNotFound
-		}
-		project, err := repo.ProjectByID(c.Context(), s, id)
-		if err != nil {
-			return writeRepoErr(c, err)
+			return err
 		}
 		org, user, err := shellChrome(c, d.DB)
 		if err != nil {
@@ -46,7 +43,8 @@ func projectPage(d Deps) fiber.Handler {
 		}
 		components := make([]componentInfo, 0, len(comps))
 		for _, comp := range comps {
-			components = append(components, componentInfo{ID: comp.ID, Name: comp.Name, ProjectName: project.Name})
+			components = append(components, componentInfo{ID: comp.ID, Name: comp.Name, Slug: comp.Slug,
+				ProjectID: project.ID, ProjectName: project.Name, ProjectSlug: project.Slug})
 		}
 		metricRows, err := repo.ListComponentMetricsForProject(c.Context(), s, project.ID)
 		if err != nil {
@@ -74,13 +72,14 @@ func projectPage(d Deps) fiber.Handler {
 			Title: project.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), projectTrail(folders, project)),
 			Data: struct {
 				Project      repo.Project
+				URL          string // the project's own page; its links hang off it
 				Dashboard    dashboardViewModel
 				CanMove      bool
 				CanQA        bool
 				FolderSelect []httpx.SelectOption
 				FolderValue  string
 			}{
-				Project: *project, Dashboard: vm,
+				Project: *project, URL: projectURL(project), Dashboard: vm,
 				CanMove:      mustPrincipal(c).Can("project.update"),
 				CanQA:        mustPrincipal(c).Can("qa.read"),
 				FolderSelect: folderSelect(folderOptionsFor(folders), nil),
@@ -93,7 +92,7 @@ func projectPage(d Deps) fiber.Handler {
 var componentKinds = []string{"backend", "frontend", "mobile", "service", "library"}
 
 type newComponentFormData struct {
-	ProjectID                  uuid.UUID
+	ProjectURL                 string
 	ProjectName                string
 	Slug, Name, Kind, Language string
 	Error                      string
@@ -102,20 +101,12 @@ type newComponentFormData struct {
 
 func newComponentPage(d Deps) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		s, err := mustScope(c)
+		project, err := resolveProject(c)
 		if err != nil {
 			return err
 		}
-		projectID, err := uuid.Parse(c.Params("id"))
-		if err != nil {
-			return fiber.ErrNotFound
-		}
-		project, err := repo.ProjectByID(c.Context(), s, projectID)
-		if err != nil {
-			return writeRepoErr(c, err)
-		}
 		return renderNewComponentForm(c, d, newComponentFormData{
-			ProjectID: project.ID, ProjectName: project.Name, Kinds: componentKinds,
+			ProjectURL: projectURL(project), ProjectName: project.Name, Kinds: componentKinds,
 		}, fiber.StatusOK)
 	}
 }
@@ -126,17 +117,13 @@ func submitNewComponent(d Deps) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		projectID, err := uuid.Parse(c.Params("id"))
+		project, err := resolveProject(c)
 		if err != nil {
-			return fiber.ErrNotFound
-		}
-		project, err := repo.ProjectByID(c.Context(), s, projectID)
-		if err != nil {
-			return writeRepoErr(c, err)
+			return err
 		}
 
 		form := newComponentFormData{
-			ProjectID: project.ID, ProjectName: project.Name, Kinds: componentKinds,
+			ProjectURL: projectURL(project), ProjectName: project.Name, Kinds: componentKinds,
 			Name:     strings.TrimSpace(c.FormValue("name")),
 			Slug:     strings.TrimSpace(c.FormValue("slug")),
 			Kind:     strings.TrimSpace(c.FormValue("kind")),
@@ -154,7 +141,7 @@ func submitNewComponent(d Deps) fiber.Handler {
 			form.Error = componentCreateErrorMessage(err)
 			return renderNewComponentForm(c, d, form, fiber.StatusUnprocessableEntity)
 		}
-		return c.Redirect("/components/"+comp.ID.String(), fiber.StatusFound)
+		return c.Redirect(componentURL(project, comp), fiber.StatusFound)
 	}
 }
 
@@ -187,11 +174,16 @@ func renderNewComponentForm(c *fiber.Ctx, d Deps, form newComponentFormData, sta
 	})
 }
 
+// registerProjectPageDetailRoutes runs after /projects/new is registered
+// (registerProjectPageRoutes), and registers /components/new ahead of the
+// component page (registerComponentPageRoutes): Fiber takes the first
+// match, so the fixed routes win over a slug that spells them — which is
+// why those slugs are refused (reservedProjectSlugs).
 func registerProjectPageDetailRoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
 	app.Get("/projects/:id", tenant.RequireTenant(), requireSession, loadPrincipal,
-		authz.Require("dashboard.read"), projectPage(d))
+		authz.Require("dashboard.read"), canonicalURL(), projectPage(d))
 	app.Get("/projects/:id/components/new", tenant.RequireTenant(), requireSession, loadPrincipal,
-		authz.Require("component.create"), newComponentPage(d))
+		authz.Require("component.create"), canonicalURL(), newComponentPage(d))
 	app.Post("/projects/:id/components/new", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("component.create"), submitNewComponent(d))
 }

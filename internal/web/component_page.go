@@ -27,25 +27,19 @@ type bindingRow struct {
 	ConnectionName string
 	KindLabel      string
 	LastStatus     string
+	URL            string // the binding's metric detail page
 }
 
+// componentPage is GET /projects/:id/components/:cid.
 func componentPage(d Deps) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		s, err := mustScope(c)
 		if err != nil {
 			return err
 		}
-		id, err := uuid.Parse(c.Params("id"))
+		project, comp, err := resolveComponentRoute(c)
 		if err != nil {
-			return fiber.ErrNotFound
-		}
-		comp, err := repo.ComponentByID(c.Context(), s, id)
-		if err != nil {
-			return writeRepoErr(c, err)
-		}
-		project, err := repo.ProjectByID(c.Context(), s, comp.ProjectID)
-		if err != nil {
-			return writeRepoErr(c, err)
+			return err
 		}
 		org, user, err := shellChrome(c, d.DB)
 		if err != nil {
@@ -76,6 +70,7 @@ func componentPage(d Deps) fiber.Handler {
 			}
 			rows = append(rows, bindingRow{
 				Binding: b, ConnectionName: connNames[b.ConnectionID], KindLabel: kindLabels[b.Kind], LastStatus: lastStatus,
+				URL: metricURL(project, comp, b.ID),
 			})
 		}
 
@@ -104,15 +99,17 @@ func componentPage(d Deps) fiber.Handler {
 		return renderPage(c, d, "pages/component.html", httpx.ViewData{
 			Title: comp.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), componentTrail(folders, project, comp)),
 			Data: struct {
-				Component repo.Component
-				Project   repo.Project
-				Bindings  []bindingRow
-				Metric    *repo.ComponentMetric
-				Tone      string
-				ScoreText string
-				Kinds     []string
-				KindLabel map[string]string
-			}{Component: *comp, Project: *project, Bindings: rows, Metric: current, Tone: tone, ScoreText: scoreText, Kinds: bindableKinds, KindLabel: kindLabels},
+				Component  repo.Component
+				Project    repo.Project
+				URL        string // the component's own page; its links hang off it
+				ProjectURL string
+				Bindings   []bindingRow
+				Metric     *repo.ComponentMetric
+				Tone       string
+				ScoreText  string
+				Kinds      []string
+				KindLabel  map[string]string
+			}{Component: *comp, Project: *project, URL: componentURL(project, comp), ProjectURL: projectURL(project), Bindings: rows, Metric: current, Tone: tone, ScoreText: scoreText, Kinds: bindableKinds, KindLabel: kindLabels},
 		})
 	}
 }
@@ -134,7 +131,7 @@ func setBindingEnabledUI(enabled bool) fiber.Handler {
 		if err := repo.SetBindingEnabled(c.Context(), s, id, enabled); err != nil {
 			return writeRepoErr(c, err)
 		}
-		return c.Redirect("/components/"+binding.ComponentID.String(), fiber.StatusFound)
+		return redirectToBindingComponent(c, s, binding)
 	}
 }
 
@@ -155,8 +152,21 @@ func deleteBindingUI() fiber.Handler {
 		if err := repo.SoftDeleteBinding(c.Context(), s, id); err != nil {
 			return writeRepoErr(c, err)
 		}
-		return c.Redirect("/components/"+binding.ComponentID.String(), fiber.StatusFound)
+		return redirectToBindingComponent(c, s, binding)
 	}
+}
+
+// redirectToBindingComponent ends a binding action on its component's page.
+func redirectToBindingComponent(c *fiber.Ctx, s tenant.Scope, binding *repo.Binding) error {
+	comp, err := repo.ComponentByID(c.Context(), s, binding.ComponentID)
+	if err != nil {
+		return writeRepoErr(c, err)
+	}
+	project, err := repo.ProjectByID(c.Context(), s, comp.ProjectID)
+	if err != nil {
+		return writeRepoErr(c, err)
+	}
+	return c.Redirect(componentURL(project, comp), fiber.StatusFound)
 }
 
 // testBindingUI is an htmx endpoint (task 4.3): POST returns a small HTML
@@ -221,9 +231,14 @@ func errString(err error) string {
 	return err.Error()
 }
 
+// registerComponentPageRoutes runs after /projects/:id/components/new is
+// registered, so that fixed route wins over a component slug "new".
 func registerComponentPageRoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
-	app.Get("/components/:id", tenant.RequireTenant(), requireSession, loadPrincipal,
-		authz.Require("dashboard.read"), componentPage(d))
+	app.Get("/projects/:id/components/:cid", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("dashboard.read"), canonicalURL(), componentPage(d))
+	// The component page's old address, still in bookmarks.
+	app.Get("/components/:component_id", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("dashboard.read"), legacyComponentRedirect(""))
 	app.Post("/bindings/:id/enable-ui", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("metric.bind"), setBindingEnabledUI(true))
 	app.Post("/bindings/:id/disable-ui", tenant.RequireTenant(), requireSession, loadPrincipal,

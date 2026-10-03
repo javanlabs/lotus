@@ -31,7 +31,7 @@ func TestProjectPage_MoveToFolderIsOfferedToMembersOnly(t *testing.T) {
 					t.Fatalf("insert project: %v", err)
 				}
 			})
-			resp, err := app.Test(reqWithSession(http.MethodGet, sub+"."+dashboardTestDomain, "/projects/"+projectID.String(), raw))
+			resp, err := app.Test(reqWithSession(http.MethodGet, sub+"."+dashboardTestDomain, projectPathOf(t, db, orgID, projectID), raw))
 			if err != nil || resp.StatusCode != http.StatusOK {
 				t.Fatalf("GET project = %v, %v", resp, err)
 			}
@@ -89,7 +89,7 @@ func TestProjectPage_MoveToFolderIsANormalButton(t *testing.T) {
 	orgID, userID := seedMember(t, db, "acme-pf-btn", "member")
 	raw := seedSession(t, db, orgID, userID)
 	ids := seedProjectsNamed(t, db, orgID, "aos")
-	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-pf-btn."+dashboardTestDomain, "/projects/"+ids[0].String(), raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-pf-btn."+dashboardTestDomain, projectPathOf(t, db, orgID, ids[0]), raw))
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET project = %v, %v", resp, err)
 	}
@@ -116,7 +116,7 @@ func TestProjectPage_BreadcrumbShowsTheFolderPath(t *testing.T) {
 			t.Fatalf("find project: %v", err)
 		}
 	})
-	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-pf-crumb."+dashboardTestDomain, "/projects/"+projectID.String(), raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-pf-crumb."+dashboardTestDomain, projectPathOf(t, db, orgID, projectID), raw))
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET project = %v, %v", resp, err)
 	}

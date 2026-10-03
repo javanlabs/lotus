@@ -21,8 +21,14 @@ func qaProjectScope(c *fiber.Ctx, s tenant.Scope) ([]uuid.UUID, error) {
 	return repo.ListProjectIDsForMember(c.Context(), s, p.UserID)
 }
 
+// qaHomeRow is one project's line on /qa, with the link to its QA area.
+type qaHomeRow struct {
+	repo.QAProjectSummary
+	Href string
+}
+
 type qaHomeData struct {
-	Rows        []repo.QAProjectSummary
+	Rows        []qaHomeRow
 	Cases       int
 	CanWorkload bool // qa.workload.read: the header links to /qa/workload
 }
@@ -51,8 +57,9 @@ func qaHome(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		data := qaHomeData{Rows: rows, CanWorkload: mustPrincipal(c).Can("qa.workload.read")}
+		data := qaHomeData{Rows: make([]qaHomeRow, 0, len(rows)), CanWorkload: mustPrincipal(c).Can("qa.workload.read")}
 		for _, r := range rows {
+			data.Rows = append(data.Rows, qaHomeRow{QAProjectSummary: r, Href: qaBaseFor(r.ProjectID, r.ProjectSlug)})
 			data.Cases += r.Cases
 		}
 		c.Type("html")

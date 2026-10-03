@@ -50,9 +50,9 @@ test('creating a project through the real form lands on the new project\'s own p
   await page.getByLabel('SLUG').fill('e2e-payments');
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // Redirects to the new project's own page (task 4.3), not the org-wide
+  // Redirects to the new project's own page (task 4.3), by its slug, not the org-wide
   // dashboard — there's now somewhere more specific to land.
-  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(`${origin}/projects/e2e-payments`);
   await expect(page.getByRole('heading', { name: 'E2E Payments' })).toBeVisible();
   await expect(page.getByText('No components yet')).toBeVisible();
 

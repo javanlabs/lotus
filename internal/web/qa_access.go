@@ -23,38 +23,40 @@ import (
 // when it does not.
 
 func projectMemberCheck() authz.ProjectMemberCheck {
-	return func(c *fiber.Ctx, projectID, userID uuid.UUID) (bool, error) {
+	return func(c *fiber.Ctx, ref string, userID uuid.UUID) (bool, error) {
 		s, err := mustScope(c)
 		if err != nil {
 			return false, err
 		}
-		return repo.IsProjectMember(c.Context(), s, projectID, userID)
+		project, err := lookupProject(c, ref)
+		if errors.Is(err, fiber.ErrNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return repo.IsProjectMember(c.Context(), s, project.ID, userID)
 	}
 }
 
 // qaRoute returns the middleware chain for a /projects/:id/qa… route
-// followed by the handler.
+// followed by the handler. A page fetched by project id is sent to its
+// slug URL once the guards have passed (canonicalURL).
 func qaRoute(requireSession, loadPrincipal fiber.Handler, perm string, h fiber.Handler) []fiber.Handler {
 	return []fiber.Handler{
 		tenant.RequireTenant(), requireSession, loadPrincipal,
-		authz.RequireProjectAccess(projectMemberCheck(), "id"), authz.Require(perm), h,
+		authz.RequireProjectAccess(projectMemberCheck(), projectParam), authz.Require(perm), canonicalURL(), h,
 	}
 }
 
-// loadQAProject reads :id. An unknown project is 404.
+// loadQAProject reads :id, a project's slug or id. An unknown project is
+// 404.
 func loadQAProject(c *fiber.Ctx) (tenant.Scope, *repo.Project, error) {
 	s, err := mustScope(c)
 	if err != nil {
 		return s, nil, err
 	}
-	id, err := uuid.Parse(c.Params("id"))
-	if err != nil {
-		return s, nil, fiber.ErrNotFound
-	}
-	p, err := repo.ProjectByID(c.Context(), s, id)
-	if errors.Is(err, repo.ErrNotFound) {
-		return s, nil, fiber.ErrNotFound
-	}
+	p, err := resolveProject(c)
 	return s, p, err
 }
 
@@ -72,8 +74,6 @@ func qaOwned(c *fiber.Ctx, s tenant.Scope, project *repo.Project, kind repo.QAKi
 	}
 	return id, err
 }
-
-func qaBase(p *repo.Project) string { return "/projects/" + p.ID.String() + "/qa" }
 
 // qaNav is the sidebar and breadcrumb for a project's QA page. Members
 // follow the project's folder path through the project page; a guest has no
@@ -94,7 +94,7 @@ func qaNav(c *fiber.Ctx, s tenant.Scope, project *repo.Project, deeper ...httpx.
 			return nil, err
 		}
 		trail = append(projectFolderPath(folders, project),
-			httpx.NavCrumb{Label: project.Name, Href: "/projects/" + project.ID.String()},
+			httpx.NavCrumb{Label: project.Name, Href: projectURL(project)},
 			httpx.NavCrumb{Label: "QA", Href: qaBase(project)})
 	}
 	trail = append(trail, deeper...)

@@ -42,7 +42,7 @@
     <div style="font-size:11px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{$row.Description}}</div>
   </div>
   <div x-show="openRow === {{$i}}" x-cloak style="padding:12px 14px 16px 46px;border-bottom:1px solid #F3F4F6;background:rgba(67,40,78,.02)">
-    <form method="post" action="/p/{{$.Data.Chrome.Project.ID}}/c/{{$.Data.Chrome.Component.ID}}/m/{{$.Data.Chrome.Binding.ID}}/trivy-notes" style="display:flex;flex-direction:column;gap:8px;max-width:560px">
+    <form method="post" action="{{$.Data.Chrome.BasePath}}/trivy-notes" style="display:flex;flex-direction:column;gap:8px;max-width:560px">
       <input type="hidden" name="cve_id" value="{{$row.CVE}}">
       <input type="hidden" name="package" value="{{$row.Package}}">
       <span style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#5B4A63">FALSE-POSITIVE NOTE</span>
@@ -51,7 +51,7 @@
       <div style="display:flex;gap:8px">
         <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none;padding:6px 12px;font-size:11px">Save</button>
         {{if $row.HasNote}}
-        <button type="submit" formaction="/p/{{$.Data.Chrome.Project.ID}}/c/{{$.Data.Chrome.Component.ID}}/m/{{$.Data.Chrome.Binding.ID}}/trivy-notes/{{$row.NoteID}}/delete" class="btn-lotus" style="padding:6px 12px;font-size:11px;background:var(--surface-danger-soft);color:var(--text-danger)">Remove</button>
+        <button type="submit" formaction="{{$.Data.Chrome.BasePath}}/trivy-notes/{{$row.NoteID}}/delete" class="btn-lotus" style="padding:6px 12px;font-size:11px;background:var(--surface-danger-soft);color:var(--text-danger)">Remove</button>
         {{end}}
       </div>
     </form>

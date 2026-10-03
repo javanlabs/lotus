@@ -34,7 +34,7 @@ func TestQAScenario_BuildUATWithTwoGroups(t *testing.T) {
 		ids = append(ids, c.ID.String())
 	}
 	sc, _ := repo.CreateQAScenario(ctx, e.s, p, "UAT alur RFS", "uat", "", nil)
-	base := "/projects/" + p.String() + "/qa/scenarios/" + sc.ID.String()
+	base := e.projectPath(t, p) + "/qa/scenarios/" + sc.ID.String()
 
 	for _, name := range []string{"Day 1", "Day 2"} {
 		if resp, _ := e.post(t, member, base+"/groups", url.Values{"name": {name}}, true); resp.StatusCode != http.StatusNoContent {
@@ -89,7 +89,7 @@ func TestQAScenario_RejectsForeignIDsArchivedAndReaders(t *testing.T) {
 	otherScenario, _ := repo.CreateQAScenario(ctx, e.s, other, "Billing SIT", "sit", "", nil)
 	foreignGroup, _ := repo.CreateQAScenarioGroup(ctx, e.s, otherScenario.ID, "Elsewhere")
 	sc, _ := repo.CreateQAScenario(ctx, e.s, p, "UAT", "uat", "", nil)
-	base := "/projects/" + p.String() + "/qa/scenarios/" + sc.ID.String()
+	base := e.projectPath(t, p) + "/qa/scenarios/" + sc.ID.String()
 
 	resp, body := e.post(t, e.owner, base+"/cases", url.Values{"case_id": {foreignCase.ID.String()}}, true)
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "not in this project") {

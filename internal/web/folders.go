@@ -213,10 +213,14 @@ func moveProjectUI(d Deps) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		id, err := uuid.Parse(c.Params("id"))
-		if err != nil {
-			return fiber.ErrNotFound
+		project, err := resolveProject(c)
+		if errors.Is(err, fiber.ErrNotFound) {
+			return folderFormError(c, d, fiber.StatusNotFound, "That project or folder no longer exists.")
 		}
+		if err != nil {
+			return err
+		}
+		id := project.ID
 		folderID, err := optionalUUID(c.FormValue("folder_id"))
 		if err != nil {
 			return folderFormError(c, d, fiber.StatusNotFound, "That folder no longer exists.")
@@ -233,7 +237,7 @@ func moveProjectUI(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		setFlash(c, "project.moved")
-		return redirectAfterMutation(c, "/projects/"+id.String())
+		return redirectAfterMutation(c, projectURL(project))
 	}
 }
 

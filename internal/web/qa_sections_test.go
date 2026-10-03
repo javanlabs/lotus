@@ -28,7 +28,7 @@ func TestQASections_CreateRenameMoveArchive(t *testing.T) {
 	e := newQAEnv(t, "acme-qasec")
 	member, _ := e.session(t, "qa@acme.example", "member")
 	p := e.project(t, "Portal")
-	base := "/projects/" + p.String() + "/qa"
+	base := e.projectPath(t, p) + "/qa"
 
 	resp, _ := e.post(t, member, base+"/sections", url.Values{"name": {"Auth"}}, false)
 	auth := qaSectionNamed(t, e, p, "Auth")
@@ -86,7 +86,7 @@ func TestQASections_PermissionsAndOwnership(t *testing.T) {
 	other := e.project(t, "Billing")
 	repo.AddProjectMember(ctx, e.s, p, guestID)
 	foreign, _ := repo.CreateQASection(ctx, e.s, other, "Invoices", nil)
-	base := "/projects/" + p.String() + "/qa"
+	base := e.projectPath(t, p) + "/qa"
 
 	for _, raw := range []string{viewer, guest} {
 		if resp, _ := e.post(t, raw, base+"/sections", url.Values{"name": {"X"}}, false); resp.StatusCode != http.StatusForbidden {
@@ -115,7 +115,7 @@ func TestQACases_BulkMoveIgnoresOtherProjects(t *testing.T) {
 	a, _ := repo.CreateQACase(ctx, e.s, p, repo.QACaseInput{SectionID: from.ID, Title: "A"}, nil)
 	b, _ := repo.CreateQACase(ctx, e.s, p, repo.QACaseInput{SectionID: from.ID, Title: "B"}, nil)
 	x, _ := repo.CreateQACase(ctx, e.s, other, repo.QACaseInput{SectionID: otherSec.ID, Title: "X"}, nil)
-	base := "/projects/" + p.String() + "/qa"
+	base := e.projectPath(t, p) + "/qa"
 
 	form := url.Values{"case_id": {a.ID.String(), b.ID.String(), x.ID.String()}, "section_id": {to.ID.String()}}
 	resp, _ := e.post(t, e.owner, base+"/cases/move", form, true)
@@ -150,10 +150,10 @@ func TestQACases_WriteControlsOnlyForWriters(t *testing.T) {
 	login, _ := repo.CreateQASection(ctx, e.s, p, "Login", &auth.ID)
 	billing, _ := repo.CreateQASection(ctx, e.s, p, "Billing", nil)
 	repo.CreateQACase(ctx, e.s, p, repo.QACaseInput{SectionID: auth.ID, Title: "Session expires"}, nil)
-	path := "/projects/" + p.String() + "/qa/cases?section=" + auth.ID.String()
+	path := e.projectPath(t, p) + "/qa/cases?section=" + auth.ID.String()
 
 	_, body := e.get(t, e.owner, path)
-	for _, want := range []string{"/qa/cases/new?section=" + auth.ID.String(), "New section", "Edit section…", `name="case_id"`, "Move to section…", `action="/projects/` + p.String() + `/qa/sections/` + auth.ID.String() + `/archive"`} {
+	for _, want := range []string{"/qa/cases/new?section=" + auth.ID.String(), "New section", "Edit section…", `name="case_id"`, "Move to section…", `action="` + e.projectPath(t, p) + `/qa/sections/` + auth.ID.String() + `/archive"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("owner page missing %q", want)
 		}

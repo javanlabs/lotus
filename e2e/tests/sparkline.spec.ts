@@ -29,7 +29,7 @@ test('a dense series draws a sparkline with no console errors', async ({ page, c
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(e.message));
 
-  await page.goto(`${origin}/components/${componentId}`);
+  await page.goto(`${origin}/projects/p/components/c`);
   const bars = page.locator('[data-sparkline="true"] svg rect');
   await expect(bars.first()).toBeVisible({ timeout: 5000 });
 

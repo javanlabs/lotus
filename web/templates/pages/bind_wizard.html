@@ -9,7 +9,7 @@
 <div style="display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:var(--radius-group);padding:3px;margin-bottom:16px;width:fit-content">
   {{$current := .Data.Kind}}
   {{range .Data.Kinds}}
-  <a href="/components/{{$.Data.ComponentID}}/bind?kind={{.}}" style="padding:var(--pad-button-sm);border-radius:var(--radius-segment);white-space:nowrap;font-size:12px;text-decoration:none;{{if eq . $current}}font-weight:600;color:#43284E;background:linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%);box-shadow:var(--shadow-segment-thumb){{else}}font-weight:500;color:#6B7280{{end}}">{{index $.Data.KindLabels .}}</a>
+  <a href="{{$.Data.ComponentURL}}/bind?kind={{.}}" style="padding:var(--pad-button-sm);border-radius:var(--radius-segment);white-space:nowrap;font-size:12px;text-decoration:none;{{if eq . $current}}font-weight:600;color:#43284E;background:linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%);box-shadow:var(--shadow-segment-thumb){{else}}font-weight:500;color:#6B7280{{end}}">{{index $.Data.KindLabels .}}</a>
   {{end}}
 </div>
 
@@ -24,7 +24,7 @@
     This component is already bound to <strong style="font-family:'IBM Plex Mono',monospace;font-weight:600">{{.ExternalKey}}</strong>. A component has one {{index $.Data.KindLabels $.Data.Kind}} binding, so binding another replaces it. The old binding's history stays with it.
   </div>
   {{end}}
-  <form method="post" action="/components/{{.Data.ComponentID}}/bind" style="display:flex;flex-direction:column;gap:16px">
+  <form method="post" action="{{.Data.ComponentURL}}/bind" style="display:flex;flex-direction:column;gap:16px">
     <input type="hidden" name="kind" value="{{.Data.Kind}}">
     {{with .Data.Existing}}<input type="hidden" name="replace" value="{{.ID}}">{{end}}
 
@@ -63,7 +63,7 @@
     </div>
 
     <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:6px">
-      <a href="/components/{{.Data.ComponentID}}" class="btn-lotus btn-lotus-secondary">Cancel</a>
+      <a href="{{.Data.ComponentURL}}" class="btn-lotus btn-lotus-secondary">Cancel</a>
       <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none">{{if .Data.Existing}}Replace binding{{else}}Bind metric{{end}}</button>
     </div>
   </form>

@@ -58,7 +58,7 @@ func addProjectGuestUI(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		setFlash(c, "project.guest.added")
-		return redirectAfterMutation(c, "/projects/"+project.ID.String())
+		return redirectAfterMutation(c, projectURL(project))
 	}
 }
 
@@ -79,7 +79,7 @@ func removeProjectGuestUI(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		setFlash(c, "project.guest.removed")
-		return redirectAfterMutation(c, "/projects/"+project.ID.String())
+		return redirectAfterMutation(c, projectURL(project))
 	}
 }
 

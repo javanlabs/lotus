@@ -34,7 +34,7 @@ func TestQAScenarioPicker_ReachesCasesPastTheOnesHeld(t *testing.T) {
 	sc, _ := repo.CreateQAScenario(ctx, e.s, p, "Regression", "regression", "", nil)
 	repo.AddQAScenarioCases(ctx, e.s, sc.ID, nil, held)
 
-	_, body := e.get(t, e.owner, "/projects/"+p.String()+"/qa/scenarios/"+sc.ID.String()+"/picker")
+	_, body := e.get(t, e.owner, e.projectPath(t, p)+"/qa/scenarios/"+sc.ID.String()+"/picker")
 	if n := strings.Count(body, `name="case_id"`); n != 30 || !strings.Contains(body, "Case 221") {
 		t.Fatalf("picker lists %d cases; want the 30 not yet held", n)
 	}
@@ -51,7 +51,7 @@ func TestQACase_ArchivedSectionRefusesNewRowsAndRestore(t *testing.T) {
 	repo.CreateQACase(ctx, e.s, p, repo.QACaseInput{SectionID: old.ID, Title: "Kept"}, nil)
 	other, _ := repo.CreateQACase(ctx, e.s, p, repo.QACaseInput{SectionID: live.ID, Title: "Other"}, nil)
 	repo.ArchiveQASection(ctx, e.s, old.ID)
-	base := "/projects/" + p.String() + "/qa"
+	base := e.projectPath(t, p) + "/qa"
 
 	_, body := e.get(t, e.owner, base+"/cases/1")
 	if strings.Contains(body, ">Restore<") || !strings.Contains(body, "Its section is archived") {
@@ -83,7 +83,7 @@ func TestQAArchive_IsFinalAndAuditedOnce(t *testing.T) {
 	sec, _ := repo.CreateQASection(ctx, e.s, p, "All", nil)
 	repo.CreateQACase(ctx, e.s, p, repo.QACaseInput{SectionID: sec.ID, Title: "Login"}, nil)
 	sc, _ := repo.CreateQAScenario(ctx, e.s, p, "UAT", "uat", "", nil)
-	base := "/projects/" + p.String() + "/qa"
+	base := e.projectPath(t, p) + "/qa"
 
 	e.post(t, e.owner, base+"/scenarios/"+sc.ID.String()+"/archive", nil, false)
 	e.post(t, e.owner, base+"/scenarios/"+sc.ID.String()+"/archive", nil, false)
@@ -109,7 +109,7 @@ func TestQASections_ArchiveLeavesTheArchivedSection(t *testing.T) {
 	ctx := context.Background()
 	p := e.project(t, "Portal")
 	sec, _ := repo.CreateQASection(ctx, e.s, p, "Old", nil)
-	base := "/projects/" + p.String() + "/qa"
+	base := e.projectPath(t, p) + "/qa"
 
 	resp, _ := e.post(t, e.owner, base+"/sections/"+sec.ID.String()+"/archive", nil, true)
 	if resp.StatusCode != http.StatusNoContent || resp.Header.Get("HX-Redirect") != base+"/cases" {
@@ -126,7 +126,7 @@ func TestQASections_ArchiveLeavesTheArchivedSection(t *testing.T) {
 func TestQACaseImport_ConfirmPostsMultipart(t *testing.T) {
 	e := newQAEnv(t, "acme-rf-multipart")
 	p := e.project(t, "Portal")
-	base := "/projects/" + p.String() + "/qa/cases/import"
+	base := e.projectPath(t, p) + "/qa/cases/import"
 	// About 3.6 MB: under the 4 MB limit as a file, over it url-encoded.
 	var b strings.Builder
 	b.WriteString(qaCSVHead)

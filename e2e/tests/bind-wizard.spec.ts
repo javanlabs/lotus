@@ -35,7 +35,10 @@ test('bind wizard renders a different, descriptor-driven form per kind tab', asy
   // No ?kind, so the wizard opens on the first of bindableKinds — which is
   // SonarQube, not GitLab: the kind order is fixed product-wide (AGENTS.md)
   // and this test follows it rather than pinning a second copy of it.
+  // Opened by the wizard's old, id-keyed address, as a bookmark would: it
+  // moves to the slug URL.
   await page.goto(`${origin}/components/${componentId}/bind`);
+  await expect(page).toHaveURL(`${origin}/projects/p/components/c/bind`);
   await expect(page.getByText('SonarQube project key')).toBeVisible();
 
   await page.getByRole('link', { name: 'GitLab' }).click();
@@ -57,7 +60,7 @@ test('bind wizard creates a connection and a binding together, real browser roun
   const componentId = await seedProjectAndComponent(orgId);
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  await page.goto(`${origin}/components/${componentId}/bind?kind=gitlab`);
+  await page.goto(`${origin}/projects/p/components/c/bind?kind=gitlab`);
 
   await page.locator('input[name="external_key"]').fill('alurkerja/billing-api');
   await page.locator('input[name="new_connection_name"]').fill('gitlab.com');
@@ -65,7 +68,7 @@ test('bind wizard creates a connection and a binding together, real browser roun
   await page.locator('input[name="token"]').fill('glpat-faketoken12345');
   await page.getByRole('button', { name: 'Bind metric' }).click();
 
-  await expect(page).toHaveURL(`${origin}/components/${componentId}`);
+  await expect(page).toHaveURL(`${origin}/projects/p/components/c`);
   await expect(page.getByText('alurkerja/billing-api')).toBeVisible();
   await expect(page.getByText('via gitlab.com')).toBeVisible();
   await expect(page.getByText('No metrics bound yet')).not.toBeVisible();

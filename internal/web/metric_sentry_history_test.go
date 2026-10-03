@@ -42,7 +42,7 @@ func TestSentryDetail_DatePicker(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	page := "/p/" + projectID.String() + "/c/" + componentID.String() + "/m/" + bindingID.String()
+	page := metricPathOf(t, db, orgID, componentID, bindingID)
 	// The picker lists calendar days in the database's timezone.
 	var today string
 	if err := db.Get(&today, `SELECT to_char(now(), 'YYYY-MM-DD')`); err != nil {

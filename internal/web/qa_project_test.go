@@ -53,7 +53,7 @@ func TestQAProject_LandingShowsCountsAndSubnav(t *testing.T) {
 	e := newQAEnv(t, "acme-qaproj")
 	p := e.project(t, "Portal")
 	seedQALibrary(t, e, p)
-	base := "/projects/" + p.String() + "/qa"
+	base := e.projectPath(t, p) + "/qa"
 
 	status, body := e.get(t, e.owner, base)
 	if status != http.StatusOK {
@@ -62,7 +62,7 @@ func TestQAProject_LandingShowsCountsAndSubnav(t *testing.T) {
 	for _, want := range []string{
 		`data-qa-count="cases">2<`, `data-qa-count="scenarios">1<`, `data-qa-count="plans">1<`, `data-qa-count="issues">1<`,
 		`href="` + base + `/cases"`, `href="` + base + `/scenarios"`,
-		`href="/projects/` + p.String() + `"`, // breadcrumb back to the project
+		`href="/projects/Portal"`, // breadcrumb back to the project, by slug
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("landing missing %q:\n%s", want, body)
@@ -79,19 +79,19 @@ func TestQAProject_GuestReachesOnlyItsProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if status, _ := e.get(t, guest, "/projects/"+other.String()+"/qa"); status != http.StatusNotFound {
+	if status, _ := e.get(t, guest, e.projectPath(t, other)+"/qa"); status != http.StatusNotFound {
 		t.Fatalf("guest on another project = %d; want 404", status)
 	}
 	if status, _ := e.get(t, guest, "/projects/"+uuid.NewString()+"/qa"); status != http.StatusNotFound {
 		t.Fatalf("guest on unknown project = %d; want 404", status)
 	}
-	status, body := e.get(t, guest, "/projects/"+mine.String()+"/qa")
+	status, body := e.get(t, guest, e.projectPath(t, mine)+"/qa")
 	if status != http.StatusOK {
 		t.Fatalf("guest on its project = %d", status)
 	}
 	// A guest has no dashboard.read: the breadcrumb leads back to QA Tools,
 	// never to the project's metrics page.
-	if !strings.Contains(body, `href="/qa"`) || strings.Contains(body, `href="/projects/`+mine.String()+`"`) {
+	if !strings.Contains(body, `href="/qa"`) || strings.Contains(body, `href="`+e.projectPath(t, mine)+`"`) {
 		t.Fatalf("guest breadcrumb wrong:\n%s", body)
 	}
 }
@@ -99,8 +99,8 @@ func TestQAProject_GuestReachesOnlyItsProject(t *testing.T) {
 func TestProjectPage_LinksToTestCases(t *testing.T) {
 	e := newQAEnv(t, "acme-qaproj-link")
 	p := e.project(t, "Portal")
-	_, body := e.get(t, e.owner, "/projects/"+p.String())
-	if !strings.Contains(body, `href="/projects/`+p.String()+`/qa"`) || !strings.Contains(body, "Test cases") {
+	_, body := e.get(t, e.owner, e.projectPath(t, p))
+	if !strings.Contains(body, `href="/projects/Portal/qa"`) || !strings.Contains(body, "Test cases") {
 		t.Fatalf("project page has no Test cases link:\n%s", body)
 	}
 }
@@ -109,6 +109,7 @@ func TestProjectDelete_CountsAndConfirmsQARows(t *testing.T) {
 	e := newQAEnv(t, "acme-qaproj-del")
 	p := e.project(t, "Portal")
 	seedQALibrary(t, e, p)
+	// The JSON endpoints keep taking the project's id.
 	path := "/projects/" + p.String()
 
 	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, path+"/delete-impact", e.owner))

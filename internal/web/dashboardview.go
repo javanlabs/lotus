@@ -345,8 +345,15 @@ func pluralize(label string) string {
 type componentInfo struct {
 	ID          uuid.UUID
 	Name        string
+	Slug        string
 	ProjectID   uuid.UUID
 	ProjectName string
+	ProjectSlug string
+}
+
+// url is the component's page.
+func (ci componentInfo) url() string {
+	return componentURL(&repo.Project{ID: ci.ProjectID, Slug: ci.ProjectSlug}, &repo.Component{ID: ci.ID, Slug: ci.Slug})
 }
 
 // buildDashboardViewModel is pure (no I/O) so it's unit-testable without a
@@ -399,11 +406,11 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 			markStale(cells, componentColumns, cm, kindMap)
 		}
 		rows = append(rows, dashboardRow{
-			Name: comp.Name, Href: "/components/" + comp.ID.String(),
+			Name: comp.Name, Href: comp.url(),
 			Score: scoreStr, ScoreValue: scoreValue, ScorePct: scorePct, Tone: toneOf(status),
 			Cells:    cells,
 			Updated:  updatedCellFor(cm, has),
-			TrendURL: trendURLFor(comp.ID),
+			TrendURL: trendURLFor(comp),
 		})
 	}
 
@@ -723,11 +730,11 @@ func gridTemplateFor(cols []dashboardColumn, trend bool) template.CSS {
 	return template.CSS(fmt.Sprintf("%s repeat(%d,minmax(78px,.72fr))", base, len(cols)))
 }
 
-func trendURLFor(componentID uuid.UUID) string {
+func trendURLFor(comp componentInfo) string {
 	if !showTrendColumn {
 		return ""
 	}
-	return "/components/" + componentID.String() + "/sparkline"
+	return comp.url() + "/sparkline"
 }
 
 // firstMetricCol mirrors gridTemplateFor's leading-column count: #, name,

@@ -503,7 +503,7 @@ func TestProjectTrail_IncludesTheFolderPath(t *testing.T) {
 	it := f.folder("IT Services", nil)
 	tribeA := f.folder("Tribe lead A", &it)
 	fid := tribeA.ID
-	filed := &repo.Project{ID: uuid.New(), Name: "Linknet", FolderID: &fid}
+	filed := &repo.Project{ID: uuid.New(), Slug: "linknet", Name: "Linknet", FolderID: &fid}
 	loose := &repo.Project{ID: uuid.New(), Name: "SyarQ"}
 	comp := &repo.Component{ID: uuid.New(), Name: "linknet-api"}
 
@@ -515,7 +515,7 @@ func TestProjectTrail_IncludesTheFolderPath(t *testing.T) {
 	assertTrail(t, "filed project", projectTrail(f.folders, filed), want)
 	assertTrail(t, "top-level project", projectTrail(f.folders, loose), []httpx.NavCrumb{{Label: "SyarQ"}})
 
-	want[2] = httpx.NavCrumb{Label: "Linknet", Href: "/projects/" + filed.ID.String()}
+	want[2] = httpx.NavCrumb{Label: "Linknet", Href: "/projects/linknet"}
 	assertTrail(t, "component", componentTrail(f.folders, filed, comp),
 		append(want, httpx.NavCrumb{Label: "linknet-api"}))
 }

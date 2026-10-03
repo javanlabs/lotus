@@ -16,7 +16,7 @@ func TestQACase_CreateAndEditBumpsVersionOnlyOnContent(t *testing.T) {
 	member, _ := e.session(t, "qa@acme.example", "member")
 	p := e.project(t, "Portal")
 	sec, _ := repo.CreateQASection(ctx, e.s, p, "Auth", nil)
-	base := "/projects/" + p.String() + "/qa/cases"
+	base := e.projectPath(t, p) + "/qa/cases"
 
 	status, body := e.get(t, member, base+"/new?section="+sec.ID.String())
 	if status != http.StatusOK || !strings.Contains(body, `name="title"`) {
@@ -63,7 +63,7 @@ func TestQACase_RejectsBadInputAndEscapes(t *testing.T) {
 	other := e.project(t, "Billing")
 	sec, _ := repo.CreateQASection(ctx, e.s, p, "Auth", nil)
 	foreign, _ := repo.CreateQASection(ctx, e.s, other, "Invoices", nil)
-	base := "/projects/" + p.String() + "/qa/cases"
+	base := e.projectPath(t, p) + "/qa/cases"
 
 	resp, body := e.post(t, e.owner, base+"/new", url.Values{"title": {strings.Repeat("x", 501)}, "section_id": {sec.ID.String()}}, false)
 	if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "Title is required and can be at most 500 characters.") {
@@ -104,7 +104,7 @@ func TestQACase_ViewerReadsGuestReadsArchiveIsAudited(t *testing.T) {
 	p := e.project(t, "Portal")
 	sec, _ := repo.CreateQASection(ctx, e.s, p, "Auth", nil)
 	repo.CreateQACase(ctx, e.s, p, repo.QACaseInput{SectionID: sec.ID, Title: "Login valid"}, nil)
-	base := "/projects/" + p.String() + "/qa/cases"
+	base := e.projectPath(t, p) + "/qa/cases"
 
 	status, body := e.get(t, viewer, base+"/1")
 	if status != http.StatusOK || !strings.Contains(body, "Login valid") || strings.Contains(body, `name="title"`) {

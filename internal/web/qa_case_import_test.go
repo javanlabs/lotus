@@ -59,7 +59,7 @@ func TestQACaseImport_PreviewThenConfirm(t *testing.T) {
 	ctx := context.Background()
 	p := e.project(t, "Portal")
 	repo.CreateQASection(ctx, e.s, p, "Auth", nil)
-	base := "/projects/" + p.String() + "/qa/cases/import"
+	base := e.projectPath(t, p) + "/qa/cases/import"
 
 	if status, body := e.get(t, e.owner, base); status != http.StatusOK || !strings.Contains(body, `type="file"`) {
 		t.Fatalf("upload page = %d", status)
@@ -75,7 +75,7 @@ func TestQACaseImport_PreviewThenConfirm(t *testing.T) {
 	}
 
 	resp, _ = e.post(t, e.owner, base+"/confirm", url.Values{"csv": {confirmField(t, body)}}, false)
-	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects/"+p.String()+"/qa/cases" {
+	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != e.projectPath(t, p)+"/qa/cases" {
 		t.Fatalf("confirm = %d %s", resp.StatusCode, resp.Header.Get("Location"))
 	}
 	c, err := repo.GetQACaseByKey(ctx, e.s, p, 2)
@@ -90,7 +90,7 @@ func TestQACaseImport_RowErrorsBlockTheImport(t *testing.T) {
 	p := e.project(t, "Portal")
 	old, _ := repo.CreateQASection(ctx, e.s, p, "Old", nil)
 	repo.ArchiveQASection(ctx, e.s, old.ID)
-	base := "/projects/" + p.String() + "/qa/cases/import"
+	base := e.projectPath(t, p) + "/qa/cases/import"
 
 	resp, body := e.upload(t, e.owner, base, qaCSVHead+"Auth,,,,,,\nOld / Deep,Legacy,,,,,\nAuth,Fine,,,,,\n")
 	if resp.StatusCode != http.StatusUnprocessableEntity || strings.Contains(body, `name="csv"`) {
@@ -128,7 +128,7 @@ func TestQACaseExport_RoundTripsIntoAnotherProject(t *testing.T) {
 	repo.CreateQACase(ctx, e.s, from, repo.QACaseInput{SectionID: auth.ID, Title: "Session expires", Negative: true}, nil)
 	repo.CreateQACase(ctx, e.s, from, repo.QACaseInput{SectionID: other.ID, Title: "Pay"}, nil)
 
-	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, "/projects/"+from.String()+"/qa/cases/export?section="+auth.ID.String(), viewer))
+	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, e.projectPath(t, from)+"/qa/cases/export?section="+auth.ID.String(), viewer))
 	if err != nil || resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/csv") ||
 		!strings.Contains(resp.Header.Get("Content-Disposition"), "attachment") {
 		t.Fatalf("export = %v %v", resp, err)
@@ -138,8 +138,8 @@ func TestQACaseExport_RoundTripsIntoAnotherProject(t *testing.T) {
 		t.Fatal("export of Auth includes another section's case")
 	}
 
-	_, body := e.upload(t, e.owner, "/projects/"+to.String()+"/qa/cases/import", string(csv))
-	e.post(t, e.owner, "/projects/"+to.String()+"/qa/cases/import/confirm", url.Values{"csv": {confirmField(t, body)}}, false)
+	_, body := e.upload(t, e.owner, e.projectPath(t, to)+"/qa/cases/import", string(csv))
+	e.post(t, e.owner, e.projectPath(t, to)+"/qa/cases/import/confirm", url.Values{"csv": {confirmField(t, body)}}, false)
 	src, _ := repo.ListQACases(ctx, e.s, from, repo.QACaseFilter{SectionID: &auth.ID, IncludeSubsections: true})
 	dst, _ := repo.ListQACases(ctx, e.s, to, repo.QACaseFilter{})
 	if len(dst) != len(src) {
@@ -152,7 +152,7 @@ func TestQACaseExport_RoundTripsIntoAnotherProject(t *testing.T) {
 			t.Fatalf("case %d changed:\n%+v\n%+v", i, a, b)
 		}
 	}
-	if resp, _ := e.upload(t, viewer, "/projects/"+to.String()+"/qa/cases/import", string(csv)); resp.StatusCode != http.StatusForbidden {
+	if resp, _ := e.upload(t, viewer, e.projectPath(t, to)+"/qa/cases/import", string(csv)); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("viewer import = %d; want 403", resp.StatusCode)
 	}
 }
@@ -168,7 +168,7 @@ func TestQACaseImport_FiveThousandRowsInOneRequest(t *testing.T) {
 	for i := 0; i < qaCSVMaxRows; i++ {
 		fmt.Fprintf(&b, "Area %d / Flow %d,Case %d,,\"Open\nSubmit\",\"Page\nDone\",medium,\n", i%20, i%7, i)
 	}
-	base := "/projects/" + p.String() + "/qa/cases/import"
+	base := e.projectPath(t, p) + "/qa/cases/import"
 	start := time.Now()
 	_, body := e.upload(t, e.owner, base, b.String())
 	resp, _ := e.post(t, e.owner, base+"/confirm", url.Values{"csv": {confirmField(t, body)}}, false)
@@ -199,7 +199,7 @@ func TestQACaseExport_ArchivedOnly(t *testing.T) {
 	_ = live
 
 	get := func(query string) (string, string) {
-		resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, "/projects/"+p.String()+"/qa/cases/export"+query, e.owner))
+		resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, e.projectPath(t, p)+"/qa/cases/export"+query, e.owner))
 		if err != nil || resp.StatusCode != http.StatusOK {
 			t.Fatalf("export%s = %v %v", query, resp, err)
 		}
@@ -217,7 +217,7 @@ func TestQACaseExport_ArchivedOnly(t *testing.T) {
 	if !strings.Contains(disp, "archived") {
 		t.Fatalf("archived export file name = %q", disp)
 	}
-	_, body := e.get(t, e.owner, "/projects/"+p.String()+"/qa/cases?archived=1")
+	_, body := e.get(t, e.owner, e.projectPath(t, p)+"/qa/cases?archived=1")
 	if !strings.Contains(body, "/cases/export?archived=only") {
 		t.Fatal("archived view has no archive export link")
 	}

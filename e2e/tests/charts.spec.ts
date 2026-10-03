@@ -48,7 +48,7 @@ test('metric detail page renders a chart and the range selector swaps in place, 
   const ids = await seedGitlabBindingWithHistory(orgId);
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  const detailPath = `/p/${ids.projectId}/c/${ids.componentId}/m/${ids.bindingId}`;
+  const detailPath = `/projects/p/components/c/metrics/${ids.bindingId}`;
   await page.goto(`${origin}${detailPath}`);
 
   await expect(page.getByText('Pipeline success rate')).toBeVisible();
@@ -82,7 +82,7 @@ test('a metric key with no hardcoded template support still appears in the chart
   });
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  await page.goto(`${origin}/p/${ids.projectId}/c/${ids.componentId}/m/${ids.bindingId}`);
+  await page.goto(`${origin}/projects/p/components/c/metrics/${ids.bindingId}`);
   await expect(page.getByText('Totally New Metric')).toBeVisible();
 });
 
@@ -105,7 +105,7 @@ test('inactive metric still renders with a "not collected since" note instead of
   });
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  await page.goto(`${origin}/p/${ids.projectId}/c/${ids.componentId}/m/${ids.bindingId}`);
+  await page.goto(`${origin}/projects/p/components/c/metrics/${ids.bindingId}`);
   await expect(page.getByText('Branches (stale)')).toBeVisible();
   await expect(page.getByText('not collected since', { exact: false })).toBeVisible();
 });
@@ -116,7 +116,7 @@ test('component page shows a lazy-loaded sparkline per binding row', async ({ pa
   const ids = await seedGitlabBindingWithHistory(orgId);
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  await page.goto(`${origin}/components/${ids.componentId}`);
+  await page.goto(`${origin}/projects/p/components/c`);
   // The server sends data attributes; sparklines.js draws the bars in
   // the browser. Asserting on the drawn element therefore also proves the
   // library ran on content htmx swapped in after page load, which its own

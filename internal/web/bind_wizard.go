@@ -23,7 +23,7 @@ import (
 type bindWizardHandlers struct{ d Deps }
 
 type bindWizardData struct {
-	ComponentID   uuid.UUID
+	ComponentURL  string // the component's page; the wizard's own URL hangs off it
 	ComponentName string
 	Kind          string
 	Kinds         []string
@@ -51,13 +51,9 @@ func (h bindWizardHandlers) get(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	componentID, err := uuid.Parse(c.Params("id"))
+	project, comp, err := resolveComponentRoute(c)
 	if err != nil {
-		return fiber.ErrNotFound
-	}
-	comp, err := repo.ComponentByID(c.Context(), s, componentID)
-	if err != nil {
-		return writeRepoErr(c, err)
+		return err
 	}
 
 	kind := c.Query("kind")
@@ -65,7 +61,7 @@ func (h bindWizardHandlers) get(c *fiber.Ctx) error {
 		kind = bindableKinds[0]
 	}
 	data := bindWizardData{
-		ComponentID: comp.ID, ComponentName: comp.Name, Kind: kind, Kinds: bindableKinds, KindLabels: kindLabels,
+		ComponentURL: componentURL(project, comp), ComponentName: comp.Name, Kind: kind, Kinds: bindableKinds, KindLabels: kindLabels,
 		ConnectionID: "new",
 	}
 	if data.Existing, err = existingBinding(c, s, comp.ID, kind); err != nil {
@@ -83,13 +79,9 @@ func (h bindWizardHandlers) post(c *fiber.Ctx) error {
 	if !ok {
 		return fiber.ErrNotFound
 	}
-	componentID, err := uuid.Parse(c.Params("id"))
+	project, comp, err := resolveComponentRoute(c)
 	if err != nil {
-		return fiber.ErrNotFound
-	}
-	comp, err := repo.ComponentByID(c.Context(), s, componentID)
-	if err != nil {
-		return writeRepoErr(c, err)
+		return err
 	}
 
 	formVal := func(key string) string { return c.FormValue(key) }
@@ -102,7 +94,7 @@ func (h bindWizardHandlers) post(c *fiber.Ctx) error {
 	externalKey := strings.TrimSpace(c.FormValue("external_key"))
 
 	data := bindWizardData{
-		ComponentID: comp.ID, ComponentName: comp.Name, Kind: kind, Kinds: bindableKinds, KindLabels: kindLabels,
+		ComponentURL: componentURL(project, comp), ComponentName: comp.Name, Kind: kind, Kinds: bindableKinds, KindLabels: kindLabels,
 		ConnectionID: connectionID, ExternalKey: externalKey,
 		NewConnectionName: strings.TrimSpace(c.FormValue("new_connection_name")),
 	}
@@ -187,7 +179,7 @@ func (h bindWizardHandlers) post(c *fiber.Ctx) error {
 	}
 	_ = scheduler.EnqueueImmediate(c.Context(), h.d.DB, s.OrgID(), binding.ConnectionID, binding.ID, binding.Kind)
 
-	return c.Redirect("/components/"+comp.ID.String(), fiber.StatusFound)
+	return c.Redirect(componentURL(project, comp), fiber.StatusFound)
 }
 
 // existingBinding is componentID's live binding of kind, or nil.
@@ -274,8 +266,14 @@ func (h bindWizardHandlers) render(c *fiber.Ctx, data bindWizardData, status int
 
 func registerBindWizardRoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
 	h := bindWizardHandlers{d: d}
-	app.Get("/components/:id/bind", tenant.RequireTenant(), requireSession, loadPrincipal,
-		authz.Require("metric.bind"), h.get)
-	app.Post("/components/:id/bind", tenant.RequireTenant(), requireSession, loadPrincipal,
+	app.Get("/projects/:id/components/:cid/bind", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("metric.bind"), canonicalURL(), h.get)
+	app.Post("/projects/:id/components/:cid/bind", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("metric.bind"), h.post)
+	// The wizard's old address: a GET moves to the slug URL, a post from a
+	// form loaded before the move is still taken.
+	app.Get("/components/:component_id/bind", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("metric.bind"), legacyComponentRedirect("/bind"))
+	app.Post("/components/:component_id/bind", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("metric.bind"), h.post)
 }

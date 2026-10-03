@@ -33,7 +33,7 @@ func TestQAPlans_CreateListFilterAndPage(t *testing.T) {
 	uat, _ := repo.CreateQAScenario(ctx, e.s, p, "UAT <b>RFS</b>", "uat", "", nil)
 	reg := planNamed(t, e, p, "Regression October")
 	scs, _ := repo.ListQAPlanScenarioIDs(ctx, e.s, reg.ID)
-	base := "/projects/" + p.String() + "/qa/plans"
+	base := e.projectPath(t, p) + "/qa/plans"
 
 	form := url.Values{"name": {"UAT September"}, "phase": {"uat"}, "environment": {"UAT (linknet-uati)"}, "build": {"1.4.2"},
 		"starts_on": {"2026-09-01"}, "ends_on": {"2026-09-14"}, "scenario_id": {uat.ID.String(), scs[0].String()}}
@@ -74,7 +74,7 @@ func TestQAPlans_EditValidatesDatesAndScenarios(t *testing.T) {
 	other := e.project(t, "Billing")
 	foreign, _ := repo.CreateQAScenario(ctx, e.s, other, "Billing SIT", "sit", "", nil)
 	plan, _ := repo.CreateQAPlan(ctx, e.s, p, repo.QAPlanInput{Name: "SIT", Phase: "sit"}, nil)
-	path := "/projects/" + p.String() + "/qa/plans/" + plan.ID.String()
+	path := e.projectPath(t, p) + "/qa/plans/" + plan.ID.String()
 
 	_, body := e.post(t, e.owner, path, url.Values{"name": {"SIT"}, "phase": {"sit"}, "starts_on": {"2026-09-14"}, "ends_on": {"2026-09-01"}}, true)
 	if !strings.Contains(body, "The end date is before the start date.") {
@@ -104,7 +104,7 @@ func TestQAPlans_DuplicateCopiesScopeNotDatesAndCloseIsFinal(t *testing.T) {
 	start := reg.CreatedAt
 	repo.UpdateQAPlan(ctx, e.s, reg.ID, repo.QAPlanInput{Name: reg.Name, Phase: "regression", Environment: "Staging", Build: "1.3",
 		StartsOn: &start, EndsOn: &start, ScenarioIDs: mustPlanScenarios(t, e, reg.ID)})
-	base := "/projects/" + p.String() + "/qa/plans"
+	base := e.projectPath(t, p) + "/qa/plans"
 
 	resp, _ := e.post(t, e.owner, base+"/"+reg.ID.String()+"/duplicate", url.Values{"name": {"Regression November"}}, true)
 	dup := planNamed(t, e, p, "Regression November")

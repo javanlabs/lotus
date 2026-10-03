@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -29,7 +28,7 @@ func TestSonarDetail_PickedDayIsTheListedDay(t *testing.T) {
 	}
 	orgID, userID := seedMember(t, db, "acme-date-cutoff", "owner")
 	raw := seedSession(t, db, orgID, userID)
-	projectID, componentID, _, bindingID := seedMetricChromeFixture(t, db, orgID, "sonarqube", "grp/cutoff")
+	_, componentID, _, bindingID := seedMetricChromeFixture(t, db, orgID, "sonarqube", "grp/cutoff")
 	d := time.Now().UTC().AddDate(0, 0, -10)
 	at := time.Date(d.Year(), d.Month(), d.Day(), 20, 0, 0, 0, time.UTC) // already the next day in WIB
 	day := at.Format("2006-01-02")
@@ -44,7 +43,7 @@ func TestSonarDetail_PickedDayIsTheListedDay(t *testing.T) {
 		}
 	})
 	host := "acme-date-cutoff." + dashboardTestDomain
-	path := fmt.Sprintf("/p/%s/c/%s/m/%s?date=%s", projectID, componentID, bindingID, day)
+	path := metricPathOf(t, db, orgID, componentID, bindingID) + "?date=" + day
 	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw), -1)
 	if err != nil {
 		t.Fatal(err)

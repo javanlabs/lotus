@@ -160,6 +160,6 @@ func renderGitlabDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 			Chrome metricChrome
 			View   gitlabDetailView
 			Charts chartGridData
-		}{Chrome: chrome, View: view, Charts: newChartGridData(cards, "7d", chrome.basePath())},
+		}{Chrome: chrome, View: view, Charts: newChartGridData(cards, "7d", chrome.BasePath())},
 	})
 }

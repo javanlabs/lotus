@@ -20,9 +20,9 @@ test('a guest lands on its own work, sees only its project and signs the plan of
     await expect(sidebar.getByRole('link', { name: 'My work' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: 'Integrations' })).toHaveCount(0);
     await sidebar.getByRole('link', { name: 'Portal' }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/qa$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/portal/qa$`));
 
-    await page.goto(`${origin}/projects/${projectId}/qa/plans/${planId}`);
+    await page.goto(`${origin}/projects/portal/qa/plans/${planId}`);
     await page.getByRole('button', { name: 'Sign off…' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('Rejected').check();
@@ -47,11 +47,11 @@ test('a share link opens the plan report without signing in, until it is revoked
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('qa-share-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  const { projectId, planId } = await seedPlan(orgId);
+  const { planId } = await seedPlan(orgId);
   const anonymous = await browser.newContext();
 
   try {
-    await page.goto(`${origin}/projects/${projectId}/qa/plans/${planId}`);
+    await page.goto(`${origin}/projects/portal/qa/plans/${planId}`);
     await page.getByRole('button', { name: 'Create link…' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create link' }).click();
     const link = await page.getByLabel('Share link').inputValue();

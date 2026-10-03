@@ -43,10 +43,10 @@ test('a UAT scenario is built from the library in two groups', async ({ page, co
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('qa-scenario-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  const projectId = await seedLibrary(orgId, ['Create RFS', 'Approve RFS', 'Reject RFS']);
+  await seedLibrary(orgId, ['Create RFS', 'Approve RFS', 'Reject RFS']);
 
   try {
-    await page.goto(`${origin}/projects/${projectId}/qa`);
+    await page.goto(`${origin}/projects/portal/qa`);
     await page.getByRole('navigation', { name: 'QA' }).getByRole('link', { name: 'Scenarios' }).click();
 
     await page.getByRole('button', { name: 'New scenario' }).click();

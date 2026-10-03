@@ -56,7 +56,7 @@ func guestNav(c *fiber.Ctx, nav *httpx.Nav) {
 			continue
 		}
 		key := "qa_project_" + project.ID.String()
-		href := "/projects/" + project.ID.String() + "/qa"
+		href := qaBase(&project)
 		nav.Items = append(nav.Items, httpx.NavItem{Key: key, Label: project.Name, Href: href, Icon: iconProjects})
 		if c.Path() == href || strings.HasPrefix(c.Path(), href+"/") {
 			nav.Active = key

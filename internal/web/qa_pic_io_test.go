@@ -31,7 +31,7 @@ func TestQAPIC_CSVExportAndImportByEmail(t *testing.T) {
 	}
 
 	to := e.project(t, "Portal copy")
-	imp := "/projects/" + to.String() + "/qa/cases/import"
+	imp := e.projectPath(t, to) + "/qa/cases/import"
 	_, body := e.upload(t, e.ana, imp, csv)
 	e.post(t, e.ana, imp+"/confirm", url.Values{"csv": {confirmField(t, body)}}, false)
 	got, _ := repo.ListQACases(ctx, e.s, to, repo.QACaseFilter{})

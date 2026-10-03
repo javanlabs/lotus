@@ -27,7 +27,7 @@ func newQAPICEnv(t *testing.T, sub string) qaPICEnv {
 	t.Helper()
 	e := qaPICEnv{qaEnv: newQAEnv(t, sub)}
 	e.p = e.project(t, "Portal")
-	e.base = "/projects/" + e.p.String() + "/qa"
+	e.base = e.projectPath(t, e.p) + "/qa"
 	e.ana, e.anaID = e.session(t, "ana@acme.example", "member")
 	e.viewer, e.viewerID = e.session(t, "viewer@acme.example", "viewer")
 	ctx := context.Background()

@@ -11,10 +11,10 @@ test('a failure is reported as an issue from its run item and triaged', async ({
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('qa-issue-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  const { projectId, planId } = await seedPlan(orgId);
+  const { planId } = await seedPlan(orgId);
 
   try {
-    await page.goto(`${origin}/projects/${projectId}/qa/plans/${planId}/runs/new`);
+    await page.goto(`${origin}/projects/portal/qa/plans/${planId}/runs/new`);
     await page.getByRole('button', { name: 'Create run' }).click();
     const row = page.locator('[data-item-row]').first();
     await row.getByRole('button').first().click();
@@ -53,10 +53,10 @@ test('an issue report with files over the limits is stopped in the browser, keep
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('qa-issue-big-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  const { projectId } = await seedPlan(orgId);
+  await seedPlan(orgId);
 
   try {
-    await page.goto(`${origin}/projects/${projectId}/qa/issues/new`);
+    await page.goto(`${origin}/projects/portal/qa/issues/new`);
     await page.locator('input[name="title"]').fill('Upload freezes the page');
     await page.getByLabel('Attach files').setInputFiles(sizedFile('screen.mp4', 26 << 20));
     await page.getByRole('button', { name: 'Report issue' }).click();

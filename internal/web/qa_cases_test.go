@@ -25,7 +25,7 @@ func TestQACases_TreeFilterSearchAndEscaping(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	base := "/projects/" + p.String() + "/qa/cases"
+	base := e.projectPath(t, p) + "/qa/cases"
 
 	status, body := e.get(t, e.owner, base)
 	if status != http.StatusOK {
@@ -63,7 +63,7 @@ func TestQACases_ArchivedToggle(t *testing.T) {
 	sec, _ := repo.CreateQASection(ctx, e.s, p, "Old", nil)
 	c, _ := repo.CreateQACase(ctx, e.s, p, repo.QACaseInput{SectionID: sec.ID, Title: "Legacy flow"}, nil)
 	repo.ArchiveQASection(ctx, e.s, sec.ID)
-	base := "/projects/" + p.String() + "/qa/cases"
+	base := e.projectPath(t, p) + "/qa/cases"
 
 	_, body := e.get(t, e.owner, base)
 	if strings.Contains(body, "Legacy flow") || strings.Contains(body, ">Old<") {
@@ -86,7 +86,7 @@ func TestQACases_Pages(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	base := "/projects/" + p.String() + "/qa/cases"
+	base := e.projectPath(t, p) + "/qa/cases"
 	_, body := e.get(t, e.owner, base+"?page=2")
 	if n := strings.Count(body, `data-case-row`); n != 5 {
 		t.Fatalf("page 2: %d rows; want 5", n)
@@ -108,7 +108,7 @@ func TestQACases_SectionOfAnotherProjectIs404(t *testing.T) {
 	other := e.project(t, "Billing")
 	foreign, _ := repo.CreateQASection(ctx, e.s, other, "Invoices", nil)
 	for _, q := range []string{"?section=" + foreign.ID.String(), "?section=not-a-uuid"} {
-		if status, _ := e.get(t, e.owner, "/projects/"+p.String()+"/qa/cases"+q); status != http.StatusNotFound {
+		if status, _ := e.get(t, e.owner, e.projectPath(t, p)+"/qa/cases"+q); status != http.StatusNotFound {
 			t.Fatalf("%s = %d; want 404", q, status)
 		}
 	}

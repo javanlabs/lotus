@@ -77,7 +77,7 @@ func submitNewProject(d Deps) fiber.Handler {
 			return renderNewProjectFormWithCount(c, d, s, org, user, form, fiber.StatusUnprocessableEntity)
 		}
 
-		return c.Redirect("/projects/"+p.ID.String(), fiber.StatusFound)
+		return c.Redirect(projectURL(p), fiber.StatusFound)
 	}
 }
 

@@ -74,32 +74,32 @@ func TestGuests_ProjectEndpointsAddAndRemove(t *testing.T) {
 
 	// The project page no longer carries a guests panel (removed
 	// 2026-10-04); the endpoints behind it still work.
-	status, body := e.get(t, admin, "/projects/"+b.String())
+	status, body := e.get(t, admin, e.projectPath(t, b))
 	if status != http.StatusOK || strings.Contains(body, "Clients who see this project") || strings.Contains(body, `action="/projects/`+b.String()+`/guests"`) {
 		t.Fatalf("project page for admin = %d, still shows the guests panel", status)
 	}
-	if resp, _ := e.post(t, admin, "/projects/"+b.String()+"/guests", url.Values{"user_id": {guestID.String()}}, false); resp.StatusCode != http.StatusFound {
+	if resp, _ := e.post(t, admin, e.projectPath(t, b)+"/guests", url.Values{"user_id": {guestID.String()}}, false); resp.StatusCode != http.StatusFound {
 		t.Fatalf("add guest = %d", resp.StatusCode)
 	}
 	if _, body = e.get(t, guest, "/qa"); !strings.Contains(body, "Mobile") {
 		t.Fatal("added project not visible to the guest")
 	}
-	if resp, _ := e.post(t, admin, "/projects/"+a.String()+"/guests/"+guestID.String()+"/remove", nil, false); resp.StatusCode != http.StatusFound {
+	if resp, _ := e.post(t, admin, e.projectPath(t, a)+"/guests/"+guestID.String()+"/remove", nil, false); resp.StatusCode != http.StatusFound {
 		t.Fatalf("remove guest = %d", resp.StatusCode)
 	}
-	if status, _ := e.get(t, guest, "/projects/"+a.String()+"/qa"); status != http.StatusNotFound {
+	if status, _ := e.get(t, guest, e.projectPath(t, a)+"/qa"); status != http.StatusNotFound {
 		t.Fatalf("removed project = %d; want 404 at once", status)
 	}
 	if n := auditCount(t, e.db, e.orgID, "project_member.add") + auditCount(t, e.db, e.orgID, "project_member.remove"); n != 2 {
 		t.Fatalf("audit rows = %d; want 2", n)
 	}
 	// A member cannot manage guests; only guests can be listed.
-	if resp, _ := e.post(t, member, "/projects/"+b.String()+"/guests", url.Values{"user_id": {guestID.String()}}, false); resp.StatusCode != http.StatusForbidden {
+	if resp, _ := e.post(t, member, e.projectPath(t, b)+"/guests", url.Values{"user_id": {guestID.String()}}, false); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("member add = %d; want 403", resp.StatusCode)
 	}
 	_, otherID := e.session(t, "other@acme.example", "member")
 	admin = e.relogin(t, adminID)
-	if resp, _ := e.post(t, admin, "/projects/"+b.String()+"/guests", url.Values{"user_id": {otherID.String()}}, false); resp.StatusCode != http.StatusNotFound {
+	if resp, _ := e.post(t, admin, e.projectPath(t, b)+"/guests", url.Values{"user_id": {otherID.String()}}, false); resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("listing a non-guest = %d; want 404", resp.StatusCode)
 	}
 }
@@ -150,7 +150,7 @@ func TestGuests_RemovedFromTheOrganizationLosesItsProjects(t *testing.T) {
 	}
 	guest := seedSession(t, e.db, e.orgID, guestID)
 	for project, want := range map[uuid.UUID]int{a: http.StatusNotFound, b: http.StatusNotFound, c: http.StatusOK} {
-		if status, _ := e.get(t, guest, "/projects/"+project.String()+"/qa"); status != want {
+		if status, _ := e.get(t, guest, e.projectPath(t, project)+"/qa"); status != want {
 			t.Errorf("re-invited guest on %s = %d; want %d", project, status, want)
 		}
 	}

@@ -49,8 +49,18 @@ func TestInvitations_ResendShowsTheNewLink(t *testing.T) {
 	if err := global.AcceptInvitation(context.Background(), e.db, inv.ID, u.ID); err != nil {
 		t.Fatal(err)
 	}
-	if status, _ := e.get(t, seedSession(t, e.db, e.orgID, u.ID), "/projects/"+portal.String()+"/qa"); status != http.StatusOK {
+	guest := seedSession(t, e.db, e.orgID, u.ID)
+	if status, _ := e.get(t, guest, e.projectPath(t, portal)+"/qa"); status != http.StatusOK {
 		t.Errorf("guest from the resent link on its project = %d; want 200", status)
+	}
+	// A link by the project's id, as mail sent before slug URLs carried,
+	// still lands there.
+	resp, err = e.app.Test(reqWithSession(http.MethodGet, e.host, "/projects/"+portal.String()+"/qa", guest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusMovedPermanently || resp.Header.Get("Location") != e.projectPath(t, portal)+"/qa" {
+		t.Errorf("guest by project id = %d → %q; want 301 to the slug URL", resp.StatusCode, resp.Header.Get("Location"))
 	}
 }
 

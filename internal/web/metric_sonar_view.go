@@ -177,6 +177,6 @@ func renderSonarDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 			Dates        []string
 			SelectedDate string
 			Charts       chartGridData
-		}{Chrome: chrome, View: view, Dates: dates, SelectedDate: selectedDate, Charts: newChartGridData(cards, "7d", chrome.basePath())},
+		}{Chrome: chrome, View: view, Dates: dates, SelectedDate: selectedDate, Charts: newChartGridData(cards, "7d", chrome.BasePath())},
 	})
 }

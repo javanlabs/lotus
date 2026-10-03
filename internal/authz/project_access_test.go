@@ -17,7 +17,11 @@ func projectAccessApp(role string, member bool) (*fiber.App, uuid.UUID) {
 		authz.SetPrincipal(c, authz.Principal{Kind: authz.KindSession, UserID: uuid.New(), Role: role})
 		return c.Next()
 	})
-	check := func(c *fiber.Ctx, pid, uid uuid.UUID) (bool, error) { return member && pid == projectID, nil }
+	// The real check resolves an id or a slug; this one knows one project,
+	// by both.
+	check := func(c *fiber.Ctx, ref string, uid uuid.UUID) (bool, error) {
+		return member && (ref == projectID.String() || ref == "web"), nil
+	}
 	app.Get("/projects/:id/qa", authz.RequireProjectAccess(check, "id"), func(c *fiber.Ctx) error {
 		return c.SendString("ok")
 	})
@@ -51,10 +55,15 @@ func TestRequireProjectAccess(t *testing.T) {
 			t.Errorf("%s member=%v other=%v: status %d, want %d", tc.role, tc.member, tc.other, resp.StatusCode, tc.want)
 		}
 	}
-	// A malformed id is a 404 too, never a 500.
+	// A guest may name its project by slug.
 	app, _ := projectAccessApp("guest", true)
-	resp, _ := app.Test(httptest.NewRequest("GET", "/projects/not-a-uuid/qa", nil))
+	resp, _ := app.Test(httptest.NewRequest("GET", "/projects/web/qa", nil))
+	if resp.StatusCode != 200 {
+		t.Errorf("guest by slug: status %d, want 200", resp.StatusCode)
+	}
+	// A ref naming no project is a 404 too, never a 500.
+	resp, _ = app.Test(httptest.NewRequest("GET", "/projects/not-a-project/qa", nil))
 	if resp.StatusCode != 404 {
-		t.Errorf("malformed id: status %d, want 404", resp.StatusCode)
+		t.Errorf("unknown ref: status %d, want 404", resp.StatusCode)
 	}
 }

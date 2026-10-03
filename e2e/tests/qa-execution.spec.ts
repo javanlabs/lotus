@@ -31,10 +31,10 @@ test('a run is created, executed from the keyboard, and its failure retested', a
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('qa-exec-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  const { projectId, planId } = await seedPlan(orgId);
+  const { planId } = await seedPlan(orgId);
 
   try {
-    await page.goto(`${origin}/projects/${projectId}/qa/plans/${planId}`);
+    await page.goto(`${origin}/projects/portal/qa/plans/${planId}`);
     await page.getByRole('link', { name: 'New run' }).click();
     await expect(page.locator('#run-preview')).toContainText('2 cases');
     await page.locator('input[name="tester_id"]').first().check();
@@ -77,10 +77,10 @@ test('a file over the limit is refused in the browser with a message, and nothin
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('qa-exec-big-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  const { projectId, planId } = await seedPlan(orgId);
+  const { planId } = await seedPlan(orgId);
 
   try {
-    await page.goto(`${origin}/projects/${projectId}/qa/plans/${planId}/runs/new`);
+    await page.goto(`${origin}/projects/portal/qa/plans/${planId}/runs/new`);
     await page.getByRole('button', { name: 'Create run' }).click();
     const row = page.locator('[data-item-row]').first();
     await row.getByRole('button').first().click();

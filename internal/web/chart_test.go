@@ -65,13 +65,13 @@ func TestMetricCharts_NewMetricKeyAppearsWithoutTemplateChange(t *testing.T) {
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme-chart-newkey." + dashboardTestDomain
 
-	projectID, componentID, bindingID := seedChartFixture(t, db, orgID, "gitlab", "grp/billing-api")
+	_, componentID, bindingID := seedChartFixture(t, db, orgID, "gitlab", "grp/billing-api")
 	// A key no real collector declares — proves the chart grid is driven
 	// entirely by the metric_keys catalog (task 3.7), not a hardcoded
 	// per-kind field list: task 4.6's own acceptance criterion.
 	seedMetricKeyAndFact(t, db, orgID, "gitlab", componentID, bindingID, "gitlab.made_up_metric", "Made Up Metric", "count", "higher_better", true, 42)
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/p/"+projectID+"/c/"+componentID+"/m/"+bindingID, raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, metricPathOf(t, db, orgID, componentID, bindingID), raw))
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -91,10 +91,10 @@ func TestMetricCharts_InactiveMetricStillViewableWithSinceDate(t *testing.T) {
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme-chart-inactive." + dashboardTestDomain
 
-	projectID, componentID, bindingID := seedChartFixture(t, db, orgID, "sonarqube", "grp/billing-api")
+	_, componentID, bindingID := seedChartFixture(t, db, orgID, "sonarqube", "grp/billing-api")
 	seedMetricKeyAndFact(t, db, orgID, "sonarqube", componentID, bindingID, "sonar.coverage", "Coverage", "%", "higher_better", false, 88.5)
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/p/"+projectID+"/c/"+componentID+"/m/"+bindingID, raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, metricPathOf(t, db, orgID, componentID, bindingID), raw))
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -116,10 +116,10 @@ func TestMetricCharts_RangeSwapReturnsAFragmentNotAFullPage(t *testing.T) {
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme-chart-range." + dashboardTestDomain
 
-	projectID, componentID, bindingID := seedChartFixture(t, db, orgID, "trivy", "library/billing-api")
+	_, componentID, bindingID := seedChartFixture(t, db, orgID, "trivy", "library/billing-api")
 	seedMetricKeyAndFact(t, db, orgID, "trivy", componentID, bindingID, "trivy.critical", "Critical", "count", "lower_better", true, 2)
 
-	base := "/p/" + projectID + "/c/" + componentID + "/m/" + bindingID
+	base := metricPathOf(t, db, orgID, componentID, bindingID)
 	resp, err := app.Test(reqWithSession(http.MethodGet, host, base+"/charts?range=30d", raw))
 	if err != nil {
 		t.Fatalf("request: %v", err)
@@ -147,9 +147,9 @@ func TestMetricCharts_CrossOrgBindingIs404(t *testing.T) {
 	orgB, _ := seedMember(t, db, "acme-chart-cross-b", "owner")
 	raw := seedSession(t, db, orgA, userA)
 
-	projectID, componentID, bindingID := seedChartFixture(t, db, orgB, "gitlab", "grp/other")
+	_, componentID, bindingID := seedChartFixture(t, db, orgB, "gitlab", "grp/other")
 	host := "acme-chart-cross-a." + dashboardTestDomain
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/p/"+projectID+"/c/"+componentID+"/m/"+bindingID+"/charts", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, metricPathOf(t, db, orgB, componentID, bindingID)+"/charts", raw))
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}

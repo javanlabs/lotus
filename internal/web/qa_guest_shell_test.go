@@ -14,52 +14,75 @@ import (
 var routeParam = regexp.MustCompile(`:[A-Za-z_]+\??|\*`)
 
 // TestGuestShell_CrawlEveryGetRoute visits every registered GET route as a
-// guest listed on one project. Only QA pages of that project (and /qa,
-// /qa/my, filtered to it) answer 200; a QA page it may not act on is 403;
-// everything else is 404, never a page.
+// guest listed on one project, naming each project by slug and by id. Only
+// QA pages of that project (and /qa, /qa/my, filtered to it) answer 200 —
+// or, by id, 301 to the slug URL; a QA page it may not act on is 403;
+// everything else is 404, never a page — nor a redirect that would show
+// another project's slug.
 func TestGuestShell_CrawlEveryGetRoute(t *testing.T) {
 	e := newQAEnv(t, "acme-guest-crawl")
 	_, adminID := e.session(t, "admin@acme.example", "admin")
 	listed, other := e.project(t, "Portal"), e.project(t, "Mobile")
 	guest, _, _ := inviteAndAccept(t, e, e.relogin(t, adminID), "client@bank.example", listed)
+	refs := map[uuid.UUID][]string{
+		listed: {"Portal", listed.String()},
+		other:  {"Mobile", other.String()},
+	}
 
 	var seen []string
 	for _, route := range e.app.GetRoutes(true) {
 		if route.Method != fiber.MethodGet || guestCrawlPublic(route.Handlers) {
 			continue
 		}
+	projects:
 		for _, project := range []uuid.UUID{listed, other} {
-			path := strings.Replace(route.Path, ":id", project.String(), 1)
-			path = routeParam.ReplaceAllString(path, uuid.NewString())
-			status, _ := e.get(t, guest, path)
-			qa := strings.HasPrefix(route.Path, "/projects/:id/qa") || route.Path == "/qa" || strings.HasPrefix(route.Path, "/qa/")
-			switch {
-			case qa && project == listed:
-				// Its own QA: pages answer 200, unknown ids 404, write
-				// pages it lacks the permission for 403.
-				if status != http.StatusOK && status != http.StatusNotFound && status != http.StatusForbidden {
-					t.Errorf("guest GET %s = %d, want 200, 403 or 404", route.Path, status)
+			for _, ref := range refs[project] {
+				path := strings.Replace(route.Path, ":id", ref, 1)
+				path = routeParam.ReplaceAllString(path, uuid.NewString())
+				status, _ := e.get(t, guest, path)
+				guestCrawlCheck(t, route.Path, project == listed, ref == project.String(), status)
+				if !strings.Contains(route.Path, ":id") {
+					break projects // no project in the path: one visit is enough
 				}
-			case route.Path == "/projects":
-				// The landing page sends a guest home (TestGuestShell_HomeIsMyWork).
-			case strings.HasPrefix(route.Path, "/api/qa/"):
-				// The QA API takes API tokens only; a browser session is
-				// no credential there (TestQAAPI_TokensOnlyAndJSONErrors).
-				if status != http.StatusUnauthorized {
-					t.Errorf("guest session GET %s = %d, want 401", route.Path, status)
-				}
-			case status != http.StatusNotFound:
-				t.Errorf("guest GET %s (project listed=%v) = %d, want 404", route.Path, project == listed, status)
-			}
-			seen = append(seen, route.Path)
-			if !strings.Contains(route.Path, ":id") {
-				break // no project in the path: one visit is enough
 			}
 		}
+		seen = append(seen, route.Path)
 	}
 	sort.Strings(seen)
 	if len(seen) < 20 {
 		t.Fatalf("crawled only %d routes: %v", len(seen), seen)
+	}
+}
+
+// guestCrawlCheck is TestGuestShell_CrawlEveryGetRoute's verdict on one
+// visit: route, whether its project is the guest's, whether the project
+// was named by id, and the status the guest got.
+func guestCrawlCheck(t *testing.T, route string, listed, byID bool, status int) {
+	t.Helper()
+	qa := strings.HasPrefix(route, "/projects/:id/qa") || route == "/qa" || strings.HasPrefix(route, "/qa/")
+	switch {
+	case qa && listed && byID && strings.HasPrefix(route, "/projects/"):
+		// Its own QA by id: the page moves to its slug URL, unless the
+		// guest may not open it at all.
+		if status != http.StatusMovedPermanently && status != http.StatusForbidden {
+			t.Errorf("guest GET %s by id = %d, want 301 or 403", route, status)
+		}
+	case qa && listed:
+		// Its own QA: pages answer 200, unknown ids 404, write
+		// pages it lacks the permission for 403.
+		if status != http.StatusOK && status != http.StatusNotFound && status != http.StatusForbidden {
+			t.Errorf("guest GET %s = %d, want 200, 403 or 404", route, status)
+		}
+	case route == "/projects":
+		// The landing page sends a guest home (TestGuestShell_HomeIsMyWork).
+	case strings.HasPrefix(route, "/api/qa/"):
+		// The QA API takes API tokens only; a browser session is
+		// no credential there (TestQAAPI_TokensOnlyAndJSONErrors).
+		if status != http.StatusUnauthorized {
+			t.Errorf("guest session GET %s = %d, want 401", route, status)
+		}
+	case status != http.StatusNotFound:
+		t.Errorf("guest GET %s (project listed=%v, by id=%v) = %d, want 404", route, listed, byID, status)
 	}
 }
 
@@ -88,7 +111,7 @@ func TestGuestShell_HomeIsMyWork(t *testing.T) {
 			t.Errorf("guest sidebar links %s", hidden)
 		}
 	}
-	if !strings.Contains(body, `href="/projects/`+listed.String()+`/qa"`) {
+	if !strings.Contains(body, `href="/projects/Portal/qa"`) {
 		t.Errorf("guest sidebar has no link to its project's QA")
 	}
 	if !strings.Contains(body, `data-testid="guest-notice"`) {
@@ -97,7 +120,7 @@ func TestGuestShell_HomeIsMyWork(t *testing.T) {
 	if _, body := e.get(t, e.owner, "/qa/my"); strings.Contains(body, `data-testid="guest-notice"`) {
 		t.Errorf("owner page shows the guest access notice")
 	}
-	if status, _ := e.get(t, guest, "/projects/"+listed.String()+"/qa/cases/new"); status != http.StatusForbidden {
+	if status, _ := e.get(t, guest, e.projectPath(t, listed)+"/qa/cases/new"); status != http.StatusForbidden {
 		t.Errorf("guest new case page = %d, want 403", status)
 	}
 }

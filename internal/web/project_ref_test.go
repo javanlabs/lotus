@@ -1,0 +1,195 @@
+package web
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
+
+	"github.com/uyab/lotus/internal/repo"
+)
+
+// get3 fetches path and returns status, Location and body — without
+// following a redirect, which is what these tests look at.
+func (e qaEnv) get3(t *testing.T, raw, path string) (int, string, string) {
+	t.Helper()
+	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, path, raw))
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, resp.Header.Get("Location"), string(body)
+}
+
+func (e qaEnv) component(t *testing.T, projectID uuid.UUID, slug string) *repo.Component {
+	t.Helper()
+	comp, err := repo.CreateComponent(context.Background(), e.s, repo.NewComponent{ProjectID: projectID, Slug: slug, Name: slug, Kind: "backend"})
+	if err != nil {
+		t.Fatalf("create component %q: %v", slug, err)
+	}
+	return comp
+}
+
+func TestProjectRef_SlugOpensThePageAndAnIDMovesThere(t *testing.T) {
+	e := newQAEnv(t, "acme-ref")
+	p := e.project(t, "portal")
+
+	if status, _, body := e.get3(t, e.owner, "/projects/portal"); status != http.StatusOK || !strings.Contains(body, `href="/projects/portal/qa"`) {
+		t.Fatalf("by slug = %d; want 200 with slug links", status)
+	}
+	// An id moves to the slug URL, keeping the rest of the path and the
+	// query.
+	cases := map[string]string{
+		"/projects/" + p.String():                                    "/projects/portal",
+		"/projects/" + p.String() + "/qa":                            "/projects/portal/qa",
+		"/projects/" + p.String() + "/qa/cases?section=x&q=a%20b":    "/projects/portal/qa/cases?section=x&q=a%20b",
+		"/projects/" + p.String() + "/qa/plans/" + uuid.Nil.String(): "/projects/portal/qa/plans/" + uuid.Nil.String(),
+		"/projects/" + p.String() + "/components/new":                "/projects/portal/components/new",
+	}
+	for from, to := range cases {
+		status, loc, _ := e.get3(t, e.owner, from)
+		if status != http.StatusMovedPermanently || loc != to {
+			t.Errorf("GET %s = %d → %q; want 301 → %q", from, status, loc, to)
+		}
+	}
+	for _, path := range []string{"/projects/nope", "/projects/nope/qa", "/projects/" + uuid.NewString(), "/projects/" + uuid.NewString() + "/qa"} {
+		if status, _, _ := e.get3(t, e.owner, path); status != http.StatusNotFound {
+			t.Errorf("GET %s = %d; want 404", path, status)
+		}
+	}
+}
+
+func TestProjectRef_GuestCannotTellAnUnlistedProjectFromAMissingOne(t *testing.T) {
+	e := newQAEnv(t, "acme-ref-guest")
+	mine, other := e.project(t, "mine"), e.project(t, "theirs")
+	guest, guestID := e.session(t, "client@bank.example", "guest")
+	if err := repo.AddProjectMember(context.Background(), e.s, mine, guestID); err != nil {
+		t.Fatal(err)
+	}
+
+	if status, _, _ := e.get3(t, guest, "/projects/mine/qa"); status != http.StatusOK {
+		t.Fatalf("guest on its project by slug = %d", status)
+	}
+	if status, loc, _ := e.get3(t, guest, "/projects/"+mine.String()+"/qa"); status != http.StatusMovedPermanently || loc != "/projects/mine/qa" {
+		t.Fatalf("guest on its project by id = %d → %q", status, loc)
+	}
+	// The unlisted project by slug and by id — the id never redirects,
+	// which would show its slug — answers exactly as a missing one.
+	_, _, missing := e.get3(t, guest, "/projects/missing/qa")
+	for _, path := range []string{"/projects/theirs/qa", "/projects/" + other.String() + "/qa", "/projects/" + uuid.NewString() + "/qa"} {
+		status, loc, body := e.get3(t, guest, path)
+		if status != http.StatusNotFound || loc != "" || body != missing {
+			t.Errorf("guest GET %s = %d → %q; want the same 404 as a missing project", path, status, loc)
+		}
+	}
+}
+
+func TestProjectRef_ComponentAndMetricURLs(t *testing.T) {
+	e := newQAEnv(t, "acme-ref-comp")
+	projectID, componentID, _, bindingID := seedMetricChromeFixture(t, e.db, e.orgID, "gitlab", "grp/api") // project p, component c
+	otherProject := e.project(t, "other")
+	stranger := e.component(t, otherProject, "stranger")
+
+	status, _, body := e.get3(t, e.owner, "/projects/p/components/c")
+	if status != http.StatusOK {
+		t.Fatalf("component by slugs = %d", status)
+	}
+	for _, want := range []string{`href="/projects/p"`, `href="/projects/p/components/c/bind"`, `href="/projects/p/components/c/metrics/` + bindingID + `"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("component page missing %s", want)
+		}
+	}
+	status, _, body = e.get3(t, e.owner, "/projects/p/components/c/metrics/"+bindingID)
+	if status != http.StatusOK || !strings.Contains(body, `href="/projects/p/components/c/metrics/`+bindingID+`/runs"`) {
+		t.Fatalf("metric page by slugs = %d", status)
+	}
+
+	moves := map[string]string{
+		// The retired addresses, as bookmarks and old mail carry them.
+		"/components/" + componentID:                                                      "/projects/p/components/c",
+		"/components/" + componentID + "/bind?kind=sentry":                                "/projects/p/components/c/bind?kind=sentry",
+		"/components/" + componentID + "/sparkline":                                       "/projects/p/components/c/sparkline",
+		"/p/" + projectID + "/c/" + componentID + "/m/" + bindingID:                       "/projects/p/components/c/metrics/" + bindingID,
+		"/p/" + projectID + "/c/" + componentID + "/m/" + bindingID + "/runs":             "/projects/p/components/c/metrics/" + bindingID + "/runs",
+		"/p/" + projectID + "/c/" + componentID + "/m/" + bindingID + "/charts?range=30d": "/projects/p/components/c/metrics/" + bindingID + "/charts?range=30d",
+		// Ids under the new shape, in either position.
+		"/projects/" + projectID + "/components/" + componentID:         "/projects/p/components/c",
+		"/projects/p/components/" + componentID + "/bind":               "/projects/p/components/c/bind",
+		"/projects/" + projectID + "/components/c/metrics/" + bindingID: "/projects/p/components/c/metrics/" + bindingID,
+	}
+	for from, to := range moves {
+		status, loc, _ := e.get3(t, e.owner, from)
+		if status != http.StatusMovedPermanently || loc != to {
+			t.Errorf("GET %s = %d → %q; want 301 → %q", from, status, loc, to)
+		}
+	}
+	// A component is looked up within its project: another project's, by
+	// slug or by id, is 404 — as is a binding under the wrong component.
+	for _, path := range []string{
+		"/projects/p/components/stranger",
+		"/projects/p/components/" + stranger.ID.String(),
+		"/projects/other/components/c/metrics/" + bindingID,
+		"/projects/p/components/nope",
+	} {
+		if status, _, _ := e.get3(t, e.owner, path); status != http.StatusNotFound {
+			t.Errorf("GET %s = %d; want 404", path, status)
+		}
+	}
+}
+
+func TestProjectRef_PostByIDStillWorks(t *testing.T) {
+	e := newQAEnv(t, "acme-ref-post")
+	p := e.project(t, "portal")
+	// A form loaded before slug URLs posts to the id address: it is taken,
+	// and what follows is the slug URL.
+	resp, _ := e.post(t, e.owner, "/projects/"+p.String()+"/qa/sections", url.Values{"name": {"Auth"}}, false)
+	if resp.StatusCode != http.StatusFound || !strings.HasPrefix(resp.Header.Get("Location"), "/projects/portal/qa/cases?section=") {
+		t.Fatalf("post by id = %d → %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+}
+
+func TestProjectRef_SlugsAreEscapedAndUnroutableOnesFallBackToTheID(t *testing.T) {
+	e := newQAEnv(t, "acme-ref-esc")
+	// Inserted directly: these are slugs the forms no longer accept, or
+	// that need escaping.
+	var ids [3]uuid.UUID
+	withOrgTx(t, e.db, e.orgID, func(tx *sqlx.Tx) {
+		for i, slug := range []string{"a b/ü?", "new", "0123456789abcdef0123456789abcdef"} {
+			if err := tx.Get(&ids[i], `INSERT INTO projects (org_id, slug, name) VALUES ($1,$2,$2) RETURNING id`, e.orgID, slug); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+
+	// A slug needing escapes is escaped in links and found by them.
+	escaped := "/projects/a%20b%2F%C3%BC%3F"
+	if got := e.projectPath(t, ids[0]); got != escaped {
+		t.Fatalf("link = %q, want %q", got, escaped)
+	}
+	if status, _, body := e.get3(t, e.owner, escaped+"/qa"); status != http.StatusOK || !strings.Contains(body, escaped+"/qa/cases") {
+		t.Fatalf("escaped slug = %d", status)
+	}
+	if status, loc, _ := e.get3(t, e.owner, "/projects/"+ids[0].String()); status != http.StatusMovedPermanently || loc != escaped {
+		t.Fatalf("by id = %d → %q, want 301 → %q", status, loc, escaped)
+	}
+
+	// "new" predates the refusal: /projects/new is the create form, so the
+	// project keeps its id URL, and that URL does not redirect to itself.
+	if got := e.projectPath(t, ids[1]); got != "/projects/"+ids[1].String() {
+		t.Fatalf("reserved slug link = %q, want the id", got)
+	}
+	if status, _, _ := e.get3(t, e.owner, "/projects/"+ids[1].String()+"/qa"); status != http.StatusOK {
+		t.Fatalf("reserved slug's id URL = %d, want 200", status)
+	}
+
+	// 32 hex digits are a slug, not an id.
+	if status, _, _ := e.get3(t, e.owner, "/projects/0123456789abcdef0123456789abcdef/qa"); status != http.StatusOK {
+		t.Fatalf("hex slug = %d, want 200", status)
+	}
+}

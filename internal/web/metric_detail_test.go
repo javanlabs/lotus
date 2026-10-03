@@ -66,7 +66,7 @@ func TestMetricDetailPage_GitlabRendersFromSeededSnapshot(t *testing.T) {
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-metric-gl", "owner")
 	raw := seedSession(t, db, orgID, userID)
-	projectID, componentID, _, bindingID := seedMetricChromeFixture(t, db, orgID, "gitlab", "grp/billing-api")
+	_, componentID, _, bindingID := seedMetricChromeFixture(t, db, orgID, "gitlab", "grp/billing-api")
 
 	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
 		if _, err := tx.Exec(`
@@ -78,7 +78,7 @@ func TestMetricDetailPage_GitlabRendersFromSeededSnapshot(t *testing.T) {
 	})
 
 	host := "acme-metric-gl." + dashboardTestDomain
-	path := fmt.Sprintf("/p/%s/c/%s/m/%s", projectID, componentID, bindingID)
+	path := metricPathOf(t, db, orgID, componentID, bindingID)
 	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw))
 	if err != nil {
 		t.Fatalf("request: %v", err)
@@ -99,7 +99,7 @@ func TestSonarDetail_HistoricalDateShowsThatDatesSnapshotNotLatest(t *testing.T)
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-metric-sonar", "owner")
 	raw := seedSession(t, db, orgID, userID)
-	projectID, componentID, _, bindingID := seedMetricChromeFixture(t, db, orgID, "sonarqube", "grp/billing-api")
+	_, componentID, _, bindingID := seedMetricChromeFixture(t, db, orgID, "sonarqube", "grp/billing-api")
 
 	oldDate := time.Now().AddDate(0, 0, -10)
 	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
@@ -118,7 +118,7 @@ func TestSonarDetail_HistoricalDateShowsThatDatesSnapshotNotLatest(t *testing.T)
 	})
 
 	host := "acme-metric-sonar." + dashboardTestDomain
-	base := fmt.Sprintf("/p/%s/c/%s/m/%s", projectID, componentID, bindingID)
+	base := metricPathOf(t, db, orgID, componentID, bindingID)
 
 	latestResp, err := app.Test(reqWithSession(http.MethodGet, host, base, raw))
 	if err != nil {
@@ -152,7 +152,7 @@ func TestTrivyDetail_RendersPerCVETableFromStoredBlobOnly(t *testing.T) {
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-metric-trivy", "owner")
 	raw := seedSession(t, db, orgID, userID)
-	projectID, componentID, _, bindingID := seedMetricChromeFixture(t, db, orgID, "trivy", "library/billing-api")
+	_, componentID, _, bindingID := seedMetricChromeFixture(t, db, orgID, "trivy", "library/billing-api")
 
 	rawJSON := `{"severity":"Critical","vulnerabilities":[
 		{"id":"CVE-2024-9999","package":"openssl","version":"1.1","fix_version":"1.2","severity":"Critical","description":"a stored finding","links":[],"cwe_ids":[]}
@@ -167,7 +167,7 @@ func TestTrivyDetail_RendersPerCVETableFromStoredBlobOnly(t *testing.T) {
 	})
 
 	host := "acme-metric-trivy." + dashboardTestDomain
-	path := fmt.Sprintf("/p/%s/c/%s/m/%s", projectID, componentID, bindingID)
+	path := metricPathOf(t, db, orgID, componentID, bindingID)
 	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw))
 	if err != nil {
 		t.Fatalf("request: %v", err)
@@ -192,7 +192,7 @@ func TestTrivyNotes_SaveThenDeleteRoundTrip(t *testing.T) {
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-metric-trivynote", "owner")
 	raw := seedSession(t, db, orgID, userID)
-	projectID, componentID, _, bindingID := seedMetricChromeFixture(t, db, orgID, "trivy", "library/billing-api")
+	_, componentID, _, bindingID := seedMetricChromeFixture(t, db, orgID, "trivy", "library/billing-api")
 
 	rawJSON := `{"severity":"High","vulnerabilities":[
 		{"id":"CVE-2024-8888","package":"libcurl","version":"7.0","fix_version":"","severity":"High","description":"d","links":[],"cwe_ids":[]}
@@ -207,7 +207,7 @@ func TestTrivyNotes_SaveThenDeleteRoundTrip(t *testing.T) {
 	})
 
 	host := "acme-metric-trivynote." + dashboardTestDomain
-	base := fmt.Sprintf("/p/%s/c/%s/m/%s", projectID, componentID, bindingID)
+	base := metricPathOf(t, db, orgID, componentID, bindingID)
 
 	form := url.Values{"cve_id": {"CVE-2024-8888"}, "package": {"libcurl"}, "comment": {"not reachable from our entrypoint"}}
 	saveReq := reqWithSession(http.MethodPost, host, base+"/trivy-notes", raw)
@@ -266,7 +266,7 @@ func TestRunHistoryPage_ShowsStatusDurationErrorClassAndWarnings(t *testing.T) {
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-metric-runs", "owner")
 	raw := seedSession(t, db, orgID, userID)
-	projectID, componentID, connID, bindingID := seedMetricChromeFixture(t, db, orgID, "gitlab", "grp/billing-api")
+	_, componentID, connID, bindingID := seedMetricChromeFixture(t, db, orgID, "gitlab", "grp/billing-api")
 
 	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
 		if _, err := tx.Exec(`
@@ -278,7 +278,7 @@ func TestRunHistoryPage_ShowsStatusDurationErrorClassAndWarnings(t *testing.T) {
 	})
 
 	host := "acme-metric-runs." + dashboardTestDomain
-	path := fmt.Sprintf("/p/%s/c/%s/m/%s/runs", projectID, componentID, bindingID)
+	path := metricPathOf(t, db, orgID, componentID, bindingID) + "/runs"
 	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw))
 	if err != nil {
 		t.Fatalf("request: %v", err)

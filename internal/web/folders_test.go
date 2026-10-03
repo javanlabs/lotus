@@ -267,7 +267,7 @@ func TestProjects_MoveIntoAFolderIsAudited(t *testing.T) {
 
 	resp, err := app.Test(folderFormReq(host, "/projects/"+projectID.String()+"/move", raw,
 		url.Values{"folder_id": {product.String()}}, false))
-	if err != nil || resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects/"+projectID.String() {
+	if err != nil || resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects/syarq" {
 		t.Fatalf("move = %v, %v; want 302 back to the project", resp, err)
 	}
 	var folderID *uuid.UUID

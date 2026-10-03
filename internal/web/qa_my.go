@@ -82,7 +82,7 @@ func qaMyPage(d Deps) fiber.Handler {
 		data := qaMyData{Total: len(items), CanWorkload: mustPrincipal(c).Can("qa.workload.read")}
 		var lastProject, lastPlan, lastRun uuid.UUID
 		for _, it := range items {
-			base := "/projects/" + it.ProjectID.String() + "/qa"
+			base := qaBaseFor(it.ProjectID, it.ProjectSlug)
 			if it.ProjectID != lastProject {
 				data.Projects = append(data.Projects, qaMyProject{Name: it.ProjectName, Href: base})
 				lastProject, lastPlan, lastRun = it.ProjectID, uuid.Nil, uuid.Nil

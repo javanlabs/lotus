@@ -75,11 +75,11 @@ func componentSparklineFragment(d Deps) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		id, err := uuid.Parse(c.Params("id"))
+		_, comp, err := resolveComponentRoute(c)
 		if err != nil {
-			return fiber.ErrNotFound
+			return err
 		}
-		bindings, err := repo.ListBindingsForComponent(c.Context(), s, id, false)
+		bindings, err := repo.ListBindingsForComponent(c.Context(), s, comp.ID, false)
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
@@ -114,8 +114,10 @@ func preferredTrendBinding(bindings []repo.Binding) *repo.Binding {
 func registerSparklineRoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
 	app.Get("/bindings/:id/sparkline", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("dashboard.read"), bindingSparklineFragment(d))
-	app.Get("/components/:id/sparkline", tenant.RequireTenant(), requireSession, loadPrincipal,
-		authz.Require("dashboard.read"), componentSparklineFragment(d))
+	app.Get("/projects/:id/components/:cid/sparkline", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("dashboard.read"), canonicalURL(), componentSparklineFragment(d))
+	app.Get("/components/:component_id/sparkline", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("dashboard.read"), legacyComponentRedirect("/sparkline"))
 }
 
 // bindingChart renders one binding's primary metric over rangeKey. Shared

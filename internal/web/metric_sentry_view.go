@@ -136,7 +136,7 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 		Charts         chartGridData
 		Dates          []string
 		SelectedDate   string
-	}{Chrome: chrome, Explainer: sentryScoreExplainer, Charts: newChartGridData(cards, "7d", chrome.basePath()),
+	}{Chrome: chrome, Explainer: sentryScoreExplainer, Charts: newChartGridData(cards, "7d", chrome.BasePath()),
 		Dates: dates, SelectedDate: selectedDate}
 
 	if selectedEnv == "" {

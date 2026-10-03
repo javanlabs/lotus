@@ -49,7 +49,7 @@ func TestQAHome_ListsProjectsWithTheirCounts(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
-	if !strings.Contains(body, `href="/projects/`+portal.String()+`/qa"`) ||
+	if !strings.Contains(body, `href="`+e.projectPath(t, portal)+`/qa"`) ||
 		!strings.Contains(body, "Portal &lt;b&gt;v2&lt;/b&gt;") || strings.Contains(body, "<b>v2</b>") {
 		t.Fatalf("portal row missing or unescaped:\n%s", body)
 	}

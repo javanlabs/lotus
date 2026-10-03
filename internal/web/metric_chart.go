@@ -112,7 +112,7 @@ func metricChartsFragment(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		c.Type("html")
-		return d.Renderer.RenderNamed(c, "metric_charts", newChartGridData(cards, rangeKey, chrome.basePath()))
+		return d.Renderer.RenderNamed(c, "metric_charts", newChartGridData(cards, rangeKey, chrome.BasePath()))
 	}
 }
 
@@ -135,5 +135,5 @@ func newChartGridData(cards []metricChartCard, rangeKey, basePath string) chartG
 
 func registerMetricChartRoutes(app *fiber.App, base string, d Deps, requireSession, loadPrincipal fiber.Handler) {
 	app.Get(base+"/charts", tenant.RequireTenant(), requireSession, loadPrincipal,
-		authz.Require("dashboard.read"), metricChartsFragment(d))
+		authz.Require("dashboard.read"), canonicalURL(), metricChartsFragment(d))
 }
