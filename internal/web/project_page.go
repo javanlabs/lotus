@@ -64,13 +64,6 @@ func projectPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		var guests projectGuestsView
-		canGuests := mustPrincipal(c).Can("project_member.manage")
-		if canGuests {
-			if guests, err = projectGuestsFor(c, d, s, project.ID); err != nil {
-				return writeRepoErr(c, err)
-			}
-		}
 		folderValue := ""
 		if project.FolderID != nil {
 			folderValue = project.FolderID.String()
@@ -84,16 +77,12 @@ func projectPage(d Deps) fiber.Handler {
 				Dashboard    dashboardViewModel
 				CanMove      bool
 				CanQA        bool
-				CanGuests    bool
-				Guests       projectGuestsView
 				FolderSelect []httpx.SelectOption
 				FolderValue  string
 			}{
 				Project: *project, Dashboard: vm,
 				CanMove:      mustPrincipal(c).Can("project.update"),
 				CanQA:        mustPrincipal(c).Can("qa.read"),
-				CanGuests:    canGuests,
-				Guests:       guests,
 				FolderSelect: folderSelect(folderOptionsFor(folders), nil),
 				FolderValue:  folderValue,
 			},

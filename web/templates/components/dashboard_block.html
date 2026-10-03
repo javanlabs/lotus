@@ -92,6 +92,7 @@
       <div @click="sortBy(2,'num','score')" :title="hint(2)" style="cursor:pointer;user-select:none">SCORE<span x-text="arrow(2)" style="opacity:.75"></span></div>
       {{if .ShowTrend}}<div>TREND · 14D</div>{{end}}
       {{range $i, $c := .Columns}}<div @click="sortBy({{$.FirstMetricCol}}+{{$i}},'num','{{$c.Label}}')" :title="hint({{$.FirstMetricCol}}+{{$i}})" style="text-align:center;cursor:pointer;user-select:none">{{$c.Label}}<span x-text="arrow({{$.FirstMetricCol}}+{{$i}})" style="opacity:.75"></span></div>{{end}}
+      {{if .ShowUpdated}}<div @click="sortBy({{.FirstMetricCol}}+{{len .Columns}},'num','last updated')" :title="hint({{.FirstMetricCol}}+{{len .Columns}})" style="cursor:pointer;user-select:none;white-space:nowrap">LAST UPDATED<span x-text="arrow({{.FirstMetricCol}}+{{len .Columns}})" style="opacity:.75"></span></div>{{end}}
     </div>
 
     <div x-ref="rows" style="display:contents">
@@ -123,6 +124,15 @@
       {{end}}
     </div>
   {{template "lotus_card_section_close" .}}
+  {{if .ShowUpdated}}
+  {{/* One tooltip for every stale-metric warning, outside the table card:
+       the card's horizontal scroller would clip a tooltip drawn inside a
+       row. Static styles in style, position through an object-form
+       :style, which merges (AGENTS.md). */}}
+  <div x-data="lotusTip()" @lotus-tip.window="show($event.detail)" x-show="text" x-cloak role="tooltip"
+       style="position:fixed;z-index:60;max-width:340px;padding:10px 12px;border-radius:var(--radius-petal-sm);background:#FFFFFF;box-shadow:0 10px 28px -12px rgba(67,40,78,.45);font-size:12px;line-height:1.5;color:var(--ink-700);white-space:pre-line;pointer-events:none"
+       :style="{ top: top + 'px', left: left + 'px' }" x-text="text"></div>
+  {{end}}
 {{end}}
 
 {{/* project_row_metrics is a project or component row's cells after its
@@ -142,6 +152,15 @@
       </div>
       {{end}}
       {{range .Cells}}<div data-sort="{{if .Sort}}{{.Sort}}{{end}}" style="display:flex;justify-content:center;min-width:0">{{template "status_badge" .}}</div>{{end}}
+      {{with .Updated}}<div data-sort="{{if .Sort}}{{.Sort}}{{end}}" style="display:flex;align-items:center;gap:6px;min-width:0;font:400 11px 'IBM Plex Mono',monospace;color:#6B7280;white-space:nowrap">
+        <span title="{{.Title}}">{{.Text}}</span>
+        {{if .Stale}}<span role="img" aria-label="{{.Stale}}" data-tip="{{.Stale}}"
+              @mouseenter="$dispatch('lotus-tip', { text: $el.dataset.tip, rect: $el.getBoundingClientRect() })"
+              @mouseleave="$dispatch('lotus-tip', null)"
+              style="display:inline-flex;color:var(--status-warn-text);cursor:help">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></g></svg>
+        </span>{{end}}
+      </div>{{end}}
 {{end}}
 
 {{/* folder_view_row is one row of the organization dashboard's folder view:

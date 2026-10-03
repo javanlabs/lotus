@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -299,4 +300,48 @@ func splitKinds(s string) []string {
 		}
 	}
 	return out
+}
+
+// Each kind keeps its own last-synced time: writing one kind moves only
+// that kind's updated_at, so a kind that stopped syncing stays visibly old
+// while the others advance the row's own updated_at.
+func TestUpsertComponentMetric_StampsEachKindItsOwnUpdatedAt(t *testing.T) {
+	db := dbtest.Open(t)
+	var orgID uuid.UUID
+	if err := db.Get(&orgID, `INSERT INTO organizations (subdomain, name) VALUES ('acme','acme') RETURNING id`); err != nil {
+		t.Fatalf("insert org: %v", err)
+	}
+	componentID := seedProjectComponent(t, db, orgID, "p")
+	scope := tenant.FromRun(db, orgID)
+	ctx := context.Background()
+
+	if err := repo.UpsertComponentMetric(ctx, scope, componentID, "trivy", collector.Headline{Status: collector.StatusPass}); err != nil {
+		t.Fatal(err)
+	}
+	// Age trivy's stamp as if it had last synced two days ago.
+	withOrgTxCM(t, db, orgID, func(tx *sqlx.Tx) {
+		if _, err := tx.Exec(`UPDATE component_metrics_current
+			SET metrics = jsonb_set(metrics, '{trivy,updated_at}', to_jsonb(now() - interval '2 days'))
+			WHERE component_id = $1`, componentID); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err := repo.UpsertComponentMetric(ctx, scope, componentID, "gitlab", collector.Headline{Status: collector.StatusPass}); err != nil {
+		t.Fatal(err)
+	}
+	cm, err := repo.GetComponentMetric(ctx, scope, componentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := cm.Metrics()
+	trivy, gitlab := kinds["trivy"].UpdatedAt, kinds["gitlab"].UpdatedAt
+	if trivy == nil || gitlab == nil {
+		t.Fatalf("missing per-kind updated_at: %+v", kinds)
+	}
+	if age := cm.UpdatedAt.Sub(*trivy); age < 47*time.Hour {
+		t.Fatalf("trivy moved with gitlab's write: %v old", age)
+	}
+	if d := cm.UpdatedAt.Sub(*gitlab); d < -time.Second || d > time.Second {
+		t.Fatalf("gitlab updated_at %v, row %v", *gitlab, cm.UpdatedAt)
+	}
 }

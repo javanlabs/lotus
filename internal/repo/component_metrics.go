@@ -47,6 +47,13 @@ type KindHeadline struct {
 	CountLabel string `json:"count_label,omitempty"`
 	Summary    string `json:"summary,omitempty"`
 	DeepLink   string `json:"deep_link,omitempty"`
+	// UpdatedAt is when this kind was last collected successfully — set by
+	// the database on every upsert, deduped snapshot or not, so it means
+	// "last successful sync" rather than "last change". The row's own
+	// updated_at is only the newest of these, which hides one integration
+	// that stopped syncing behind the others that still do. Nil only on a
+	// row written before migration 00034 backfilled it.
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
 func kindHeadlineFrom(h collector.Headline) KindHeadline {
@@ -87,9 +94,9 @@ func upsertComponentMetricTx(ctx context.Context, tx *sqlx.Tx, orgID, projectID,
 	var mergedJSON []byte
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO component_metrics_current (org_id, project_id, component_id, metrics, status, score, updated_at)
-		VALUES ($1, $2, $3, jsonb_build_object($4::text, $5::jsonb), 'unknown', NULL, now())
+		VALUES ($1, $2, $3, jsonb_build_object($4::text, $5::jsonb || jsonb_build_object('updated_at', now())), 'unknown', NULL, now())
 		ON CONFLICT (component_id) DO UPDATE SET
-			metrics = component_metrics_current.metrics || jsonb_build_object($4::text, $5::jsonb),
+			metrics = component_metrics_current.metrics || jsonb_build_object($4::text, $5::jsonb || jsonb_build_object('updated_at', now())),
 			updated_at = now()
 		RETURNING metrics`,
 		orgID, projectID, componentID, kind, kindJSON).Scan(&mergedJSON)

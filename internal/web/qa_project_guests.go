@@ -9,60 +9,16 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/uyab/lotus/internal/authz"
-	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/repo"
 	"github.com/uyab/lotus/internal/repo/global"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
 // Guests of a project (project_member.manage): the organization's guests
-// listed on it see its QA, nothing else. The panel sits on the project
-// page; invitations can name projects too (Settings -> Members).
-
-type projectGuest struct {
-	ID    uuid.UUID
-	Label string
-}
-
-type projectGuestsView struct {
-	Listed  []projectGuest
-	Options []httpx.SelectOption // guests of the organization not listed yet
-}
-
-// projectGuestsFor builds the panel: who is listed, and who could be.
-func projectGuestsFor(c *fiber.Ctx, d Deps, s tenant.Scope, projectID uuid.UUID) (projectGuestsView, error) {
-	var v projectGuestsView
-	members, err := global.ListMembersForOrg(c.Context(), d.DB, s.OrgID())
-	if err != nil {
-		return v, err
-	}
-	listed, err := repo.ListProjectMemberUserIDs(c.Context(), s, projectID)
-	if err != nil {
-		return v, err
-	}
-	on := map[uuid.UUID]bool{}
-	for _, id := range listed {
-		on[id] = true
-	}
-	v.Options = []httpx.SelectOption{}
-	for _, m := range members {
-		if m.RoleKey != "guest" {
-			continue
-		}
-		label := m.Name
-		if strings.TrimSpace(label) == "" {
-			label = m.Email
-		} else {
-			label += " · " + m.Email
-		}
-		if on[m.UserID] {
-			v.Listed = append(v.Listed, projectGuest{ID: m.UserID, Label: label})
-		} else {
-			v.Options = append(v.Options, httpx.SelectOption{Value: m.UserID.String(), Label: label})
-		}
-	}
-	return v, nil
-}
+// listed on it see its QA, nothing else. Invitations name the projects
+// (Settings -> Members). The project page's panel for these endpoints was
+// removed on 2026-10-04; the endpoints stay for whichever screen takes
+// guest listings over.
 
 func auditProjectMember(c *fiber.Ctx, s tenant.Scope, action string, projectID, userID uuid.UUID) error {
 	raw, _ := json.Marshal(fiber.Map{"project_id": projectID, "user_id": userID})

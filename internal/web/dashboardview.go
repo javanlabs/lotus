@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -36,6 +37,10 @@ type dashboardRow struct {
 	// Cells is positional: one entry per dashboardViewModel.Columns, in the
 	// same order.
 	Cells []badgeCell
+
+	// Updated is the component's "last updated" cell (project page only;
+	// nil on the organization dashboard, which has no such column).
+	Updated *updatedCell
 
 	// TrendURL lazily loads the row's 14-day sparkline (project page only;
 	// empty on the organization dashboard, which has no trend column).
@@ -120,6 +125,66 @@ type scoreCard struct {
 	HealthyN, FailingN     int
 }
 
+// updatedCell is a component's "last updated" column: when any of its
+// integrations last synced, and a warning when one of them has not synced
+// for longer than staleAfter.
+type updatedCell struct {
+	Text  string // "12 min ago", or "–" before any sync
+	Title string // the absolute time of Text
+	// Sort is the update time in Unix minutes, nil before any sync.
+	Sort *int
+	// Stale lists, one per line, every integration that has not synced
+	// for longer than staleAfter, with what that means. Empty when all
+	// are fresh.
+	Stale string
+}
+
+// staleAfter is how old a metric may get before its component is flagged:
+// every integration is synced many times a day, so a day without one
+// means the syncs have been failing, not that nothing changed.
+const staleAfter = 24 * time.Hour
+
+// dashboardNow is the clock updatedCellFor measures against; tests pin it.
+var dashboardNow = time.Now
+
+// updatedCellFor builds the cell from a component's projection row.
+// A kind written before per-kind times existed falls back to the row's
+// own updated_at, the newest it can be.
+func updatedCellFor(cm repo.ComponentMetric, has bool) *updatedCell {
+	if !has {
+		return &updatedCell{Text: "–", Title: "Not synced yet"}
+	}
+	now := dashboardNow()
+	kinds := cm.Metrics()
+	latest := cm.UpdatedAt
+	var stale []string
+	for _, kind := range bindableKinds {
+		kh, ok := kinds[kind]
+		if !ok {
+			continue
+		}
+		at := cm.UpdatedAt
+		if kh.UpdatedAt != nil {
+			at = *kh.UpdatedAt
+		}
+		if now.Sub(at) > staleAfter {
+			stale = append(stale, fmt.Sprintf("• %s: last synced %s (%s)", kindLabels[kind], relativeTimeStrAt(at, now), at.UTC().Format("02 Jan 2006 15:04 MST")))
+		}
+	}
+	sortMin := int(latest.Unix() / 60)
+	cell := &updatedCell{
+		Text:  relativeTimeStrAt(latest, now),
+		Title: "Last synced " + latest.UTC().Format("02 Jan 2006 15:04 MST"),
+		Sort:  &sortMin,
+	}
+	if len(stale) > 0 {
+		cell.Stale = "Not synced in more than 24 hours:\n" + strings.Join(stale, "\n") +
+			"\n\nThe numbers shown for " + plural(len(stale), "this integration", "these integrations") +
+			" may be out of date. Lotus normally syncs every integration several times a day, so its recent syncs have most likely failed. Check this component's sync history, or the connection in Settings → Connections."
+	}
+	return cell
+}
+
 type dashboardViewModel struct {
 	// TableTitle and RowHeading name what the rows are, because the same
 	// dashboard_block component renders both the organization dashboard
@@ -152,6 +217,10 @@ type dashboardViewModel struct {
 	// integer count, never from user input, so declaring it safe is
 	// accurate rather than a way around the checker.
 	GridTemplate template.CSS
+
+	// ShowUpdated adds the "LAST UPDATED" column after the integration
+	// columns (project page only); every row then carries Updated.
+	ShowUpdated bool
 
 	// ShowSummary draws the Lotus Score tile and the four KPI cards above
 	// the table. Off for the organization dashboard, which leads with the
@@ -321,6 +390,7 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 			Name: comp.Name, Href: "/components/" + comp.ID.String(),
 			Score: scoreStr, ScoreValue: scoreValue, ScorePct: scorePct, Tone: toneOf(status),
 			Cells:    cellsFor(componentColumns, func(k string) badgeCell { return badgeFor(kindMap, k) }),
+			Updated:  updatedCellFor(cm, has),
 			TrendURL: trendURLFor(comp.ID),
 		})
 	}
@@ -342,7 +412,8 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 		Columns:        componentColumns,
 		ShowTrend:      showTrendColumn,
 		FirstMetricCol: firstMetricCol(showTrendColumn),
-		GridTemplate:   gridTemplateFor(componentColumns, showTrendColumn),
+		GridTemplate:   gridTemplateFor(componentColumns, showTrendColumn) + " minmax(118px,.9fr)",
+		ShowUpdated:    true,
 		ProjectCount:   projectCount,
 		Score:          buildScoreCard(statuses, repo.RollupProject(projectMetrics).Score),
 		KPIs:           buildKPIs(kindStatuses, kindMeasured, len(components)),
@@ -592,15 +663,11 @@ const showTrendColumn = false
 // collectors that actually report data today.
 var projectColumns = columnsFor(bindableKinds)
 
-// componentColumns mirrors the Claude Design mockup's repositories table.
-// PERF and SECURITY carry an empty Key deliberately: the design anticipates
-// them (the sidebar already lists both as forthcoming) but nothing collects
-// them yet, so they render as "no data" rather than as a passing or failing
-// verdict nobody measured.
-var componentColumns = append(columnsFor(bindableKinds),
-	dashboardColumn{Key: "", Label: "PERF"},
-	dashboardColumn{Key: "", Label: "SECURITY"},
-)
+// componentColumns is a project page's integration columns: the same four
+// as the organization dashboard. The design's PERF and SECURITY columns
+// were dropped (2026-10-04): nothing collects them, and two columns that
+// only ever said "no data" pushed the last-updated column off screen.
+var componentColumns = columnsFor(bindableKinds)
 
 // columnHeadings are the short, all-caps forms used in table headers —
 // deliberately terser than bindview.go's kindLabels, which are the

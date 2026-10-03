@@ -64,7 +64,7 @@ func TestGuests_InvitedToTwoProjectsSeesExactlyThose(t *testing.T) {
 	}
 }
 
-func TestGuests_ProjectPanelAddsAndRemoves(t *testing.T) {
+func TestGuests_ProjectEndpointsAddAndRemove(t *testing.T) {
 	e := newQAEnv(t, "acme-guests-panel")
 	admin, adminID := e.session(t, "admin@acme.example", "admin")
 	_, memberID := e.session(t, "qa@acme.example", "member")
@@ -72,9 +72,11 @@ func TestGuests_ProjectPanelAddsAndRemoves(t *testing.T) {
 	guest, guestID, _ := inviteAndAccept(t, e, admin, "client@bank.example", a)
 	admin, member := e.relogin(t, adminID), e.relogin(t, memberID)
 
+	// The project page no longer carries a guests panel (removed
+	// 2026-10-04); the endpoints behind it still work.
 	status, body := e.get(t, admin, "/projects/"+b.String())
-	if status != http.StatusOK || !strings.Contains(body, "Guests") || !strings.Contains(body, "client@bank.example") {
-		t.Fatalf("project page for admin = %d, no guests panel", status)
+	if status != http.StatusOK || strings.Contains(body, "Clients who see this project") || strings.Contains(body, `action="/projects/`+b.String()+`/guests"`) {
+		t.Fatalf("project page for admin = %d, still shows the guests panel", status)
 	}
 	if resp, _ := e.post(t, admin, "/projects/"+b.String()+"/guests", url.Values{"user_id": {guestID.String()}}, false); resp.StatusCode != http.StatusFound {
 		t.Fatalf("add guest = %d", resp.StatusCode)
@@ -92,9 +94,6 @@ func TestGuests_ProjectPanelAddsAndRemoves(t *testing.T) {
 		t.Fatalf("audit rows = %d; want 2", n)
 	}
 	// A member cannot manage guests; only guests can be listed.
-	if _, body = e.get(t, member, "/projects/"+b.String()); strings.Contains(body, `action="/projects/`+b.String()+`/guests"`) {
-		t.Fatal("member sees the guests panel controls")
-	}
 	if resp, _ := e.post(t, member, "/projects/"+b.String()+"/guests", url.Values{"user_id": {guestID.String()}}, false); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("member add = %d; want 403", resp.StatusCode)
 	}

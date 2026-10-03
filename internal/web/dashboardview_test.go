@@ -3,7 +3,9 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -291,6 +293,65 @@ func TestKindOrderIsConsistentEverywhere(t *testing.T) {
 		}
 		if kindLabels[k] == "" {
 			t.Fatalf("kindLabels has no entry for %q", k)
+		}
+	}
+}
+
+func TestUpdatedCell_WarnsAboutEachIntegrationNotSyncedForADay(t *testing.T) {
+	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	dashboardNow = func() time.Time { return now }
+	t.Cleanup(func() { dashboardNow = time.Now })
+
+	at := func(d time.Duration) *time.Time { v := now.Add(-d); return &v }
+	comp := uuid.New()
+	cm := repo.ComponentMetric{
+		ComponentID: comp, Status: "pass", UpdatedAt: now.Add(-10 * time.Minute),
+		MetricsJSON: metricsJSON(t, map[string]repo.KindHeadline{
+			"gitlab":    {Status: "pass", UpdatedAt: at(10 * time.Minute)},
+			"sonarqube": {Status: "pass", UpdatedAt: at(3 * 24 * time.Hour)},
+			"sentry":    {Status: "pass", UpdatedAt: at(23 * time.Hour)},
+		}),
+	}
+	vm := buildDashboardViewModel("1 repo", 1, []componentInfo{{ID: comp, Name: "api"}}, map[uuid.UUID]repo.ComponentMetric{comp: cm})
+	if !vm.ShowUpdated {
+		t.Fatal("project page has no last-updated column")
+	}
+	got := vm.Rows[0].Updated
+	if got == nil || got.Text != "10 min ago" || got.Sort == nil {
+		t.Fatalf("updated cell = %+v, want '10 min ago' with a sort key", got)
+	}
+	if !strings.Contains(got.Stale, "SonarQube: last synced 3 days ago") {
+		t.Fatalf("stale note misses SonarQube:\n%s", got.Stale)
+	}
+	for _, fresh := range []string{"GitLab", "Sentry"} {
+		if strings.Contains(got.Stale, fresh) {
+			t.Fatalf("stale note names %s, synced within a day:\n%s", fresh, got.Stale)
+		}
+	}
+
+	// All fresh: no warning. Never synced: a dash and no sort key.
+	cm.MetricsJSON = metricsJSON(t, map[string]repo.KindHeadline{"gitlab": {Status: "pass", UpdatedAt: at(time.Hour)}})
+	if c := updatedCellFor(cm, true); c.Stale != "" {
+		t.Fatalf("fresh component warns: %s", c.Stale)
+	}
+	if c := updatedCellFor(repo.ComponentMetric{}, false); c.Text != "–" || c.Sort != nil || c.Stale != "" {
+		t.Fatalf("never-synced cell = %+v", c)
+	}
+	// A kind written before per-kind times falls back to the row's time.
+	cm.UpdatedAt = now.Add(-30 * time.Hour)
+	cm.MetricsJSON = metricsJSON(t, map[string]repo.KindHeadline{"trivy": {Status: "pass"}})
+	if c := updatedCellFor(cm, true); !strings.Contains(c.Stale, "Trivy (Harbor): last synced 1 day ago") {
+		t.Fatalf("legacy kind without its own time: %+v", c)
+	}
+}
+
+// The integration columns are the four collectors and nothing else: PERF
+// and SECURITY were dropped, and every row has one cell per column plus
+// the last-updated cell.
+func TestComponentColumns_NoPlaceholderColumns(t *testing.T) {
+	for _, c := range componentColumns {
+		if c.Key == "" {
+			t.Fatalf("placeholder column %q is back", c.Label)
 		}
 	}
 }

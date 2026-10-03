@@ -300,6 +300,39 @@ function lotusTree() {
 // pushed the page around every time it opened. Fixed positioning is
 // measured against the viewport, so it escapes the clip entirely and
 // nothing under it moves.
+// lotusTip is the single hover tooltip the project page's stale-metric
+// warnings share: a warning dispatches lotus-tip with its text and box on
+// mouseenter and null on mouseleave; the tooltip places itself below the
+// warning, flipping above or pulling left to stay on screen.
+function lotusTip() {
+  return {
+    text: '',
+    top: 0,
+    left: 0,
+
+    show(detail) {
+      if (!detail || !detail.text) {
+        this.text = '';
+        return;
+      }
+      const b = detail.rect;
+      this.text = detail.text;
+      this.$nextTick(() => {
+        const p = this.$el.getBoundingClientRect();
+        const margin = 8;
+        let top = b.bottom + 6;
+        if (top + p.height > window.innerHeight - margin) {
+          top = Math.max(margin, b.top - p.height - 6);
+        }
+        let left = b.right - p.width;
+        if (left < margin) left = margin;
+        this.top = Math.round(top);
+        this.left = Math.round(left);
+      });
+    },
+  };
+}
+
 function lotusInfo() {
   return {
     key: null,

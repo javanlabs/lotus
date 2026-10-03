@@ -27,8 +27,12 @@ import (
 // of the legacy Lotus's own relativeTime (handlers/sonar.go) — same
 // thresholds, since they were a fine choice, just not the Indonesian
 // wording this app's UI otherwise doesn't use.
-func relativeTimeStr(t time.Time) string {
-	d := time.Since(t)
+func relativeTimeStr(t time.Time) string { return relativeTimeStrAt(t, time.Now()) }
+
+// relativeTimeStrAt is relativeTimeStr measured from now instead of the
+// wall clock.
+func relativeTimeStrAt(t, now time.Time) string {
+	d := now.Sub(t)
 	switch {
 	case d < time.Minute:
 		return "just now"
@@ -36,6 +40,8 @@ func relativeTimeStr(t time.Time) string {
 		return fmt.Sprintf("%d min ago", int(d.Minutes()))
 	case d < 24*time.Hour:
 		return fmt.Sprintf("%d hr ago", int(d.Hours()))
+	case d < 48*time.Hour:
+		return "1 day ago"
 	default:
 		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
 	}
