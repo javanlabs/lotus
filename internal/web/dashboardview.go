@@ -84,6 +84,9 @@ type badgeCell struct {
 	// data attribute so the client sorts those rows last in both
 	// directions rather than treating them as zero.
 	Sort *int
+	// Stale is the hover note of a cell whose integration has not synced
+	// for more than a day (drawn dashed), "" otherwise.
+	Stale string
 	// Title is the hover tooltip. The cell shows the score alone, so the
 	// collector's own phrasing ("4 stale branches", "2 critical findings")
 	// lives here rather than being lost — it is the reason the number is
@@ -126,63 +129,68 @@ type scoreCard struct {
 }
 
 // updatedCell is a component's "last updated" column: when any of its
-// integrations last synced, and a warning when one of them has not synced
-// for longer than staleAfter.
+// integrations last synced. Which integration is out of date is shown on
+// that integration's own cell (badgeCell.Stale), not here.
 type updatedCell struct {
 	Text  string // "12 min ago", or "–" before any sync
 	Title string // the absolute time of Text
 	// Sort is the update time in Unix minutes, nil before any sync.
 	Sort *int
-	// Stale lists, one per line, every integration that has not synced
-	// for longer than staleAfter, with what that means. Empty when all
-	// are fresh.
-	Stale string
 }
 
-// staleAfter is how old a metric may get before its component is flagged:
+// staleAfter is how old a metric may get before its cell is marked stale:
 // every integration is synced many times a day, so a day without one
 // means the syncs have been failing, not that nothing changed.
 const staleAfter = 24 * time.Hour
 
-// dashboardNow is the clock updatedCellFor measures against; tests pin it.
+// dashboardNow is the clock staleness is measured against; tests pin it.
 var dashboardNow = time.Now
 
-// updatedCellFor builds the cell from a component's projection row.
-// A kind written before per-kind times existed falls back to the row's
-// own updated_at, the newest it can be.
+// kindSyncedAt is when kind last synced on cm. A kind written before
+// per-kind times existed falls back to the row's own updated_at, the
+// newest it can be.
+func kindSyncedAt(cm repo.ComponentMetric, kh repo.KindHeadline) time.Time {
+	if kh.UpdatedAt != nil {
+		return *kh.UpdatedAt
+	}
+	return cm.UpdatedAt
+}
+
+// staleNote is the hover text of a cell whose integration has not synced
+// for longer than staleAfter, or "" when it is fresh.
+func staleNote(kind string, at, now time.Time) string {
+	if now.Sub(at) <= staleAfter {
+		return ""
+	}
+	return fmt.Sprintf("Stale: %s has not synced in more than 24 hours.\nLast synced %s (%s).\n\n"+
+		"This value may be out of date. Lotus normally syncs every integration several times a day, "+
+		"so its recent syncs have most likely failed. Check the metric's sync history, or the connection in Settings → Connections.",
+		kindLabels[kind], relativeTimeStrAt(at, now), at.UTC().Format("02 Jan 2006 15:04 MST"))
+}
+
+// markStale sets Stale on every cell of cols whose integration on cm has
+// not synced for longer than staleAfter.
+func markStale(cells []badgeCell, cols []dashboardColumn, cm repo.ComponentMetric, kinds map[string]repo.KindHeadline) {
+	now := dashboardNow()
+	for i, col := range cols {
+		if kh, ok := kinds[col.Key]; ok {
+			cells[i].Stale = staleNote(col.Key, kindSyncedAt(cm, kh), now)
+		}
+	}
+}
+
+// updatedCellFor builds the last-updated cell from a component's
+// projection row.
 func updatedCellFor(cm repo.ComponentMetric, has bool) *updatedCell {
 	if !has {
 		return &updatedCell{Text: "–", Title: "Not synced yet"}
 	}
-	now := dashboardNow()
-	kinds := cm.Metrics()
-	latest := cm.UpdatedAt
-	var stale []string
-	for _, kind := range bindableKinds {
-		kh, ok := kinds[kind]
-		if !ok {
-			continue
-		}
-		at := cm.UpdatedAt
-		if kh.UpdatedAt != nil {
-			at = *kh.UpdatedAt
-		}
-		if now.Sub(at) > staleAfter {
-			stale = append(stale, fmt.Sprintf("• %s: last synced %s (%s)", kindLabels[kind], relativeTimeStrAt(at, now), at.UTC().Format("02 Jan 2006 15:04 MST")))
-		}
-	}
-	sortMin := int(latest.Unix() / 60)
-	cell := &updatedCell{
-		Text:  relativeTimeStrAt(latest, now),
-		Title: "Last synced " + latest.UTC().Format("02 Jan 2006 15:04 MST"),
+	sortMin := int(cm.UpdatedAt.Unix() / 60)
+	return &updatedCell{
+		Text:  relativeTimeStrAt(cm.UpdatedAt, dashboardNow()),
+		Title: "Last synced " + cm.UpdatedAt.UTC().Format("02 Jan 2006 15:04 MST"),
 		Sort:  &sortMin,
 	}
-	if len(stale) > 0 {
-		cell.Stale = "Not synced in more than 24 hours:\n" + strings.Join(stale, "\n") +
-			"\n\nThe numbers shown for " + plural(len(stale), "this integration", "these integrations") +
-			" may be out of date. Lotus normally syncs every integration several times a day, so its recent syncs have most likely failed. Check this component's sync history, or the connection in Settings → Connections."
-	}
-	return cell
 }
 
 type dashboardViewModel struct {
@@ -386,10 +394,14 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 			scorePct = fmt.Sprintf("%d%%", clamp(*score, 0, 100))
 		}
 		scoreValue := score
+		cells := cellsFor(componentColumns, func(k string) badgeCell { return badgeFor(kindMap, k) })
+		if has {
+			markStale(cells, componentColumns, cm, kindMap)
+		}
 		rows = append(rows, dashboardRow{
 			Name: comp.Name, Href: "/components/" + comp.ID.String(),
 			Score: scoreStr, ScoreValue: scoreValue, ScorePct: scorePct, Tone: toneOf(status),
-			Cells:    cellsFor(componentColumns, func(k string) badgeCell { return badgeFor(kindMap, k) }),
+			Cells:    cells,
 			Updated:  updatedCellFor(cm, has),
 			TrendURL: trendURLFor(comp.ID),
 		})

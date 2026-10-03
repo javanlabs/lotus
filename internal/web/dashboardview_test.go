@@ -297,7 +297,7 @@ func TestKindOrderIsConsistentEverywhere(t *testing.T) {
 	}
 }
 
-func TestUpdatedCell_WarnsAboutEachIntegrationNotSyncedForADay(t *testing.T) {
+func TestStaleCells_MarkEachIntegrationNotSyncedForADay(t *testing.T) {
 	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
 	dashboardNow = func() time.Time { return now }
 	t.Cleanup(func() { dashboardNow = time.Now })
@@ -310,38 +310,40 @@ func TestUpdatedCell_WarnsAboutEachIntegrationNotSyncedForADay(t *testing.T) {
 			"gitlab":    {Status: "pass", UpdatedAt: at(10 * time.Minute)},
 			"sonarqube": {Status: "pass", UpdatedAt: at(3 * 24 * time.Hour)},
 			"sentry":    {Status: "pass", UpdatedAt: at(23 * time.Hour)},
+			"trivy":     {Status: "fail", UpdatedAt: at(30 * time.Hour)},
 		}),
 	}
 	vm := buildDashboardViewModel("1 repo", 1, []componentInfo{{ID: comp, Name: "api"}}, map[uuid.UUID]repo.ComponentMetric{comp: cm})
 	if !vm.ShowUpdated {
 		t.Fatal("project page has no last-updated column")
 	}
-	got := vm.Rows[0].Updated
-	if got == nil || got.Text != "10 min ago" || got.Sort == nil {
-		t.Fatalf("updated cell = %+v, want '10 min ago' with a sort key", got)
+	row := vm.Rows[0]
+	if row.Updated == nil || row.Updated.Text != "10 min ago" || row.Updated.Sort == nil {
+		t.Fatalf("updated cell = %+v, want '10 min ago' with a sort key", row.Updated)
 	}
-	if !strings.Contains(got.Stale, "SonarQube: last synced 3 days ago") {
-		t.Fatalf("stale note misses SonarQube:\n%s", got.Stale)
+	stale := map[string]string{}
+	for i, col := range vm.Columns {
+		stale[col.Key] = row.Cells[i].Stale
 	}
-	for _, fresh := range []string{"GitLab", "Sentry"} {
-		if strings.Contains(got.Stale, fresh) {
-			t.Fatalf("stale note names %s, synced within a day:\n%s", fresh, got.Stale)
-		}
+	// Both out-of-date integrations are marked, each on its own cell.
+	if !strings.Contains(stale["sonarqube"], "SonarQube has not synced") || !strings.Contains(stale["sonarqube"], "Last synced 3 days ago") {
+		t.Fatalf("sonarqube cell note:\n%s", stale["sonarqube"])
+	}
+	if !strings.Contains(stale["trivy"], "Trivy (Harbor) has not synced") || !strings.Contains(stale["trivy"], "Last synced 1 day ago") {
+		t.Fatalf("trivy cell note:\n%s", stale["trivy"])
+	}
+	if stale["gitlab"] != "" || stale["sentry"] != "" {
+		t.Fatalf("fresh cells marked stale: gitlab=%q sentry=%q", stale["gitlab"], stale["sentry"])
 	}
 
-	// All fresh: no warning. Never synced: a dash and no sort key.
-	cm.MetricsJSON = metricsJSON(t, map[string]repo.KindHeadline{"gitlab": {Status: "pass", UpdatedAt: at(time.Hour)}})
-	if c := updatedCellFor(cm, true); c.Stale != "" {
-		t.Fatalf("fresh component warns: %s", c.Stale)
-	}
-	if c := updatedCellFor(repo.ComponentMetric{}, false); c.Text != "–" || c.Sort != nil || c.Stale != "" {
+	// Never synced: a dash and no sort key.
+	if c := updatedCellFor(repo.ComponentMetric{}, false); c.Text != "–" || c.Sort != nil {
 		t.Fatalf("never-synced cell = %+v", c)
 	}
 	// A kind written before per-kind times falls back to the row's time.
 	cm.UpdatedAt = now.Add(-30 * time.Hour)
-	cm.MetricsJSON = metricsJSON(t, map[string]repo.KindHeadline{"trivy": {Status: "pass"}})
-	if c := updatedCellFor(cm, true); !strings.Contains(c.Stale, "Trivy (Harbor): last synced 1 day ago") {
-		t.Fatalf("legacy kind without its own time: %+v", c)
+	if got := kindSyncedAt(cm, repo.KindHeadline{Status: "pass"}); !got.Equal(cm.UpdatedAt) {
+		t.Fatalf("legacy kind synced at %v, want the row's %v", got, cm.UpdatedAt)
 	}
 }
 

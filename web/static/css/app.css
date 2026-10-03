@@ -343,6 +343,10 @@ body {
 .lotus-badge-pass { color: var(--status-pass); background: var(--status-pass-bg); }
 .lotus-badge-fail { color: var(--status-fail); background: var(--status-fail-bg); }
 .lotus-badge-none { color: var(--status-none); background: var(--status-none-bg); }
+/* Stale: the integration has not synced for more than a day, so the value
+   may be out of date. A dashed outline keeps the tone readable; the
+   hover note says which sync is missing and since when. */
+.lotus-badge-stale { outline: 1px dashed currentColor; outline-offset: -1px; cursor: help; }
 
 .lotus-status-dot { display: block; width: 3px; height: 16px; border-radius: 2px; flex: none; }
 .lotus-status-dot-pass { background: var(--status-pass); }

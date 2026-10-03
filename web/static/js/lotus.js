@@ -300,10 +300,10 @@ function lotusTree() {
 // pushed the page around every time it opened. Fixed positioning is
 // measured against the viewport, so it escapes the clip entirely and
 // nothing under it moves.
-// lotusTip is the single hover tooltip the project page's stale-metric
-// warnings share: a warning dispatches lotus-tip with its text and box on
-// mouseenter and null on mouseleave; the tooltip places itself below the
-// warning, flipping above or pulling left to stay on screen.
+// lotusTip is the single hover tooltip the project page's stale metric
+// cells share: a cell dispatches lotus-tip with its text and box on hover
+// or focus and null when left; the tooltip places itself below the cell,
+// flipping above or pulling left to stay on screen.
 function lotusTip() {
   return {
     text: '',

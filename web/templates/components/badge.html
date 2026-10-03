@@ -3,7 +3,9 @@
      stale branches"). Text is the score; Title is the collector's own
      phrasing, shown on hover so the reason behind the number is one
      pointer away rather than crowding the cell. */}}
-{{define "status_badge"}}<span class="lotus-badge lotus-badge-{{.Tone}}"{{if .Title}} title="{{.Title}}"{{end}}>{{.Text}}</span>{{end}}
+{{define "status_badge"}}{{if .Stale}}<span class="lotus-badge lotus-badge-{{.Tone}} lotus-badge-stale" tabindex="0" aria-label="{{.Text}}. {{.Stale}}" data-tip="{{.Stale}}"
+  @mouseenter="$dispatch('lotus-tip', { text: $el.dataset.tip, rect: $el.getBoundingClientRect() })" @mouseleave="$dispatch('lotus-tip', null)"
+  @focus="$dispatch('lotus-tip', { text: $el.dataset.tip, rect: $el.getBoundingClientRect() })" @blur="$dispatch('lotus-tip', null)">{{.Text}}</span>{{else}}<span class="lotus-badge lotus-badge-{{.Tone}}"{{if .Title}} title="{{.Title}}"{{end}}>{{.Text}}</span>{{end}}{{end}}
 
 {{/* status_dot is the small vertical bar used next to a repository name
      to show its rollup status at a glance, same Tone vocabulary. */}}
@@ -15,4 +17,5 @@
   <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-pass);display:block"></i>pass</span>
   <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-fail);display:block"></i>fail</span>
   <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-none);display:block"></i>no data</span>
+  {{if .ShowUpdated}}<span style="display:flex;align-items:center;gap:5px" title="Not synced in more than 24 hours; hover a dashed value for details"><i class="lotus-shape-xs" style="width:9px;height:9px;border:1px dashed var(--color-ink-soft);box-sizing:border-box;display:block"></i>stale</span>{{end}}
 </div>{{end}}

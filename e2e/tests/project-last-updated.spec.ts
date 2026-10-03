@@ -8,7 +8,7 @@ function tenantOrigin(subdomain: string): string {
   return `http://${subdomain}.${BASE_DOMAIN}:${PORT}`;
 }
 
-test('a component whose metric has not synced for a day shows a warning that explains it', async ({ page, context }) => {
+test('a metric that has not synced for a day is drawn dashed, with a note saying why', async ({ page, context }) => {
   const { sessionToken, orgId, subdomain } = await seedOwnerSession('last-updated-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   const projectId = await withDB(async (client) => {
@@ -43,19 +43,21 @@ test('a component whose metric has not synced for a day shows a warning that exp
   await expect(page.getByText('SECURITY')).toHaveCount(0);
   await expect(page.getByText('Clients who see this project')).toHaveCount(0);
 
+  await expect(page.getByText('stale', { exact: true })).toBeVisible(); // legend
+
   const freshRow = page.locator('.lotus-repo-row', { hasText: 'billing-api' });
   const staleRow = page.locator('.lotus-repo-row', { hasText: 'ledger-api' });
   await expect(freshRow.getByText('5 min ago')).toBeVisible();
-  await expect(freshRow.getByRole('img')).toHaveCount(0);
+  await expect(freshRow.locator('.lotus-badge-stale')).toHaveCount(0);
 
-  const warning = staleRow.getByRole('img');
-  await expect(warning).toBeVisible();
-  await warning.hover();
+  // Only the out-of-date integration's own cell is dashed.
+  const staleCells = staleRow.locator('.lotus-badge-stale');
+  await expect(staleCells).toHaveCount(1);
+  await staleCells.first().hover();
   const tip = page.getByRole('tooltip');
   await expect(tip).toBeVisible();
-  await expect(tip).toContainText('Not synced in more than 24 hours');
-  await expect(tip).toContainText('Trivy (Harbor): last synced 3 days ago');
-  await expect(tip).not.toContainText('GitLab');
+  await expect(tip).toContainText('Trivy (Harbor) has not synced in more than 24 hours');
+  await expect(tip).toContainText('Last synced 3 days ago');
   await page.screenshot({ path: 'test-results/project-last-updated.png', fullPage: true });
 
   await page.mouse.move(0, 0);
