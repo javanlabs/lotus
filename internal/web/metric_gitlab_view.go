@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -39,6 +40,12 @@ type gitlabDetailView struct {
 	Protected  bool
 	Visibility string
 	Archived   bool
+
+	// CapturedAt is when this state was first seen, SyncedAt when a sync
+	// last confirmed it (a sync that finds nothing changed only touches
+	// collected_at); each has its absolute time beside it for the hover.
+	CapturedAt, CapturedAtFull string
+	SyncedAt, SyncedAtFull     string
 }
 
 func buildGitlabDetailView(snap *repo.GitlabSnapshot) gitlabDetailView {
@@ -50,6 +57,8 @@ func buildGitlabDetailView(snap *repo.GitlabSnapshot) gitlabDetailView {
 		return v
 	}
 	v.HasData = true
+	v.CapturedAt, v.CapturedAtFull = relativeTimeStr(snap.CapturedAt), absTime(snap.CapturedAt)
+	v.SyncedAt, v.SyncedAtFull = relativeTimeStr(snap.CollectedAt), absTime(snap.CollectedAt)
 
 	if snap.PrimaryLanguage != nil {
 		v.Language = *snap.PrimaryLanguage
@@ -119,6 +128,9 @@ func buildGitlabDetailView(snap *repo.GitlabSnapshot) gitlabDetailView {
 	v.Archived = snap.Archived != nil && *snap.Archived
 	return v
 }
+
+// absTime is the absolute form of a relative time, for its hover title.
+func absTime(t time.Time) string { return t.UTC().Format("02 Jan 2006 15:04 MST") }
 
 // fmtDuration formats a pipeline duration (seconds) as "2m 13s" / "47s" —
 // ported verbatim from the legacy handlers/gitlab.go.

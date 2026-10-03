@@ -88,7 +88,7 @@ func TestMetricDetailPage_GitlabRendersFromSeededSnapshot(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d:\n%s", resp.StatusCode, body)
 	}
-	for _, want := range []string{"Go", "main", "private"} {
+	for _, want := range []string{"Go", "main", "private", "snapshot captured", "last synced"} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
 		}

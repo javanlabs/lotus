@@ -7,6 +7,10 @@
   No GitLab data collected for this repository yet.
 {{template "lotus_card_section_close" .}}
 {{else}}
+<p style="margin:0 0 14px;font-size:11px;color:#9CA3AF">
+  snapshot captured <span title="{{.Data.View.CapturedAtFull}}">{{.Data.View.CapturedAt}}</span>
+  · last synced <span title="{{.Data.View.SyncedAtFull}}">{{.Data.View.SyncedAt}}</span>
+</p>
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
   {{template "stat_card" dict "Label" "LANGUAGE" "Value" (or .Data.View.Language "–") "Tone" "none"}}
   {{template "stat_card" dict "Label" "DEFAULT BRANCH" "Value" .Data.View.DefaultBranch "Tone" "none"}}
