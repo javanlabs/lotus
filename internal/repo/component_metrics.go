@@ -104,8 +104,32 @@ func upsertComponentMetricTx(ctx context.Context, tx *sqlx.Tx, orgID, projectID,
 		return err
 	}
 
+	return rollupProjectionTx(ctx, tx, componentID, mergedJSON)
+}
+
+// dropKindFromProjectionTx removes kind from componentID's projection row
+// and recomputes the row's rollup from the kinds left. A row with no kind
+// left keeps existing with status unknown, as before its first collect.
+func dropKindFromProjectionTx(ctx context.Context, tx *sqlx.Tx, componentID uuid.UUID, kind string) error {
+	var left []byte
+	err := tx.QueryRowContext(ctx, `
+		UPDATE component_metrics_current SET metrics = metrics - $2::text
+		WHERE component_id = $1
+		RETURNING metrics`, componentID, kind).Scan(&left)
+	if isNoRows(err) {
+		return nil // never collected: nothing to drop
+	}
+	if err != nil {
+		return err
+	}
+	return rollupProjectionTx(ctx, tx, componentID, left)
+}
+
+// rollupProjectionTx sets componentID's rollup status and score from its
+// kinds (metricsJSON).
+func rollupProjectionTx(ctx context.Context, tx *sqlx.Tx, componentID uuid.UUID, metricsJSON []byte) error {
 	var merged map[string]KindHeadline
-	if err := json.Unmarshal(mergedJSON, &merged); err != nil {
+	if err := json.Unmarshal(metricsJSON, &merged); err != nil {
 		return err
 	}
 	statuses := make([]collector.Status, 0, len(merged))
@@ -117,7 +141,7 @@ func upsertComponentMetricTx(ctx context.Context, tx *sqlx.Tx, orgID, projectID,
 	rollupStatus := RollupStatus(statuses)
 	rollupScore := RollupScore(scores)
 
-	_, err = tx.ExecContext(ctx, `UPDATE component_metrics_current SET status = $1, score = $2 WHERE component_id = $3`,
+	_, err := tx.ExecContext(ctx, `UPDATE component_metrics_current SET status = $1, score = $2 WHERE component_id = $3`,
 		string(rollupStatus), rollupScore, componentID)
 	return err
 }

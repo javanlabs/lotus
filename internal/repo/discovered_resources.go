@@ -171,7 +171,7 @@ func ClaimDiscoveredResources(ctx context.Context, s tenant.Scope, connectionID 
 				INSERT INTO metric_bindings (org_id, component_id, connection_id, kind, external_key, config)
 				VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
 				s.OrgID(), componentID, connectionID, bindingKind, externalKey, []byte(validatedConfig)); err != nil {
-				return err
+				return bindingWriteErr(err)
 			}
 			if _, err := tx.ExecContext(ctx, `UPDATE discovered_resources SET bound_binding_id = $2 WHERE id = $1`, claim.DiscoveredResourceID, bindingID); err != nil {
 				return err

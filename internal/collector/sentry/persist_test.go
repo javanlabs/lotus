@@ -202,17 +202,25 @@ func TestPersist_EnvironmentPruneScopedToOneBindingOnly(t *testing.T) {
 	orgID, componentID, bindingA := seedSentryFixture(t, db, "acme")
 	scope := tenant.FromRun(db, orgID)
 
-	// A second binding on the same component/connection, also with two
-	// environments — pruning binding A must never touch binding B.
-	var bindingB uuid.UUID
+	// A second Sentry binding on the same connection, on a sibling
+	// component (one binding per kind per component, migration 00035),
+	// also with two environments — pruning binding A must never touch
+	// binding B.
+	var bindingB, componentB uuid.UUID
 	withOrgTxSentry(t, db, orgID, func(tx *sqlx.Tx) {
 		var connID uuid.UUID
 		if err := tx.Get(&connID, `SELECT id FROM integration_connections WHERE org_id = $1`, orgID); err != nil {
 			t.Fatalf("lookup connection: %v", err)
 		}
+		if err := tx.Get(&componentB, `
+			INSERT INTO components (org_id, project_id, slug, name, kind)
+			SELECT org_id, project_id, 'frontend', 'frontend', 'frontend' FROM components WHERE id = $1
+			RETURNING id`, componentID); err != nil {
+			t.Fatalf("insert component B: %v", err)
+		}
 		if err := tx.Get(&bindingB, `
 			INSERT INTO metric_bindings (org_id, component_id, connection_id, kind, external_key)
-			VALUES ($1, $2, $3, 'sentry', 'frontend') RETURNING id`, orgID, componentID, connID); err != nil {
+			VALUES ($1, $2, $3, 'sentry', 'frontend') RETURNING id`, orgID, componentB, connID); err != nil {
 			t.Fatalf("insert binding B: %v", err)
 		}
 	})
@@ -222,16 +230,17 @@ func TestPersist_EnvironmentPruneScopedToOneBindingOnly(t *testing.T) {
 	cfg2env, _ := json.Marshal(map[string]any{"mode": "dedicated", "environments": []string{"production", "staging"}})
 
 	for _, b := range []struct {
+		componentID uuid.UUID
 		bindingID   uuid.UUID
 		externalKey string
-	}{{bindingA, "backend"}, {bindingB, "frontend"}} {
+	}{{componentID, bindingA, "backend"}, {componentB, bindingB, "frontend"}} {
 		session := openSession(t, srv, "javan")
 		result, err := session.Collect(context.Background(), collector.CollectRequest{ExternalKey: b.externalKey, Config: cfg2env})
 		if err != nil {
 			t.Fatalf("Collect %s: %v", b.externalKey, err)
 		}
 		session.Close()
-		if err := sentrycollector.Persist(context.Background(), scope, componentID, b.bindingID, result); err != nil {
+		if err := sentrycollector.Persist(context.Background(), scope, b.componentID, b.bindingID, result); err != nil {
 			t.Fatalf("Persist %s: %v", b.externalKey, err)
 		}
 	}

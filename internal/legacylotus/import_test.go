@@ -337,3 +337,26 @@ func TestImport_LastHoursOfAUTCMonthInAWIBDatabase(t *testing.T) {
 		t.Fatalf("report = %+v, %v; want both rows imported", rep, err)
 	}
 }
+
+// A component watches one image (one binding per kind, migration 00035).
+// The -dev and -release images of one service map to the same component:
+// the first one seen gets the binding, the other is reported, not merged
+// into its history.
+func TestImport_SecondImageOfAComponentIsReported(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	two := `{"kind":"meta","exported_at":"2026-09-28T13:10:00Z"}
+{"kind":"trivy","repo":"alurkerja-v2/alurkerja-bpm-release","image":"alurkerja-bpm-release","captured_at":"2026-06-02 05:57:39+00:00","total":9}
+{"kind":"trivy","repo":"alurkerja-v2/alurkerja-bpm-dev","image":"alurkerja-bpm-dev","captured_at":"2026-06-03 05:57:39+00:00","total":4}
+`
+	rep, err := legacylotus.Import(ctx, f.app, f.ddl, f.s.OrgID(), strings.NewReader(two), legacylotus.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Imported != 1 || len(rep.MissingBindings) != 1 || !strings.Contains(rep.MissingBindings[0], "alurkerja-bpm-dev") {
+		t.Fatalf("report = %+v; want the release image imported and the dev image reported", rep)
+	}
+	if n := count(t, f, `SELECT count(*) FROM metric_bindings WHERE kind = 'trivy' AND component_id = $1 AND deleted_at IS NULL`, f.bpm); n != 1 {
+		t.Fatalf("trivy bindings on the component = %d, want 1", n)
+	}
+}

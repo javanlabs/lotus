@@ -35,7 +35,9 @@ func newBindingsTestApp(t *testing.T) (*fiber.App, *sqlx.DB, config.Config) {
 	return app, db, cfg
 }
 
-func TestBindings_TwoGitLabBindingsOnSameComponentAllowed(t *testing.T) {
+// A component has one binding per kind (migration 00035): a second GitLab
+// repo on the same component is refused, a different kind is not.
+func TestBindings_OneBindingPerKindOnAComponent(t *testing.T) {
 	app, db, cfg := newBindingsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -44,32 +46,24 @@ func TestBindings_TwoGitLabBindingsOnSameComponentAllowed(t *testing.T) {
 	projectID := mustSeedProject(t, db, orgID, "web")
 	componentID := mustSeedComponent(t, db, orgID, projectID, "app")
 	connID := mustSeedConnection(t, db, orgID)
-
-	body1 := `{"connection_id":"` + connID.String() + `","kind":"gitlab","external_key":"group/frontend","config":{}}`
-	resp1, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/components/"+componentID.String()+"/bindings", raw, body1))
-	if err != nil {
-		t.Fatalf("create 1: %v", err)
-	}
-	if resp1.StatusCode != http.StatusCreated {
-		t.Fatalf("create 1 status = %d, want 201", resp1.StatusCode)
-	}
-
-	body2 := `{"connection_id":"` + connID.String() + `","kind":"gitlab","external_key":"group/backend","config":{}}`
-	resp2, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/components/"+componentID.String()+"/bindings", raw, body2))
-	if err != nil {
-		t.Fatalf("create 2: %v", err)
-	}
-	if resp2.StatusCode != http.StatusCreated {
-		t.Fatalf("create 2 (second GitLab binding, different external_key, same component) status = %d, want 201", resp2.StatusCode)
+	post := func(kind, key string) int {
+		t.Helper()
+		body := `{"connection_id":"` + connID.String() + `","kind":"` + kind + `","external_key":"` + key + `","config":{}}`
+		resp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/components/"+componentID.String()+"/bindings", raw, body))
+		if err != nil {
+			t.Fatalf("create %s %s: %v", kind, key, err)
+		}
+		return resp.StatusCode
 	}
 
-	// Same kind + external_key on the same component is rejected.
-	resp3, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/components/"+componentID.String()+"/bindings", raw, body1))
-	if err != nil {
-		t.Fatalf("create 3: %v", err)
+	if got := post("gitlab", "group/frontend"); got != http.StatusCreated {
+		t.Fatalf("first GitLab binding = %d, want 201", got)
 	}
-	if resp3.StatusCode != http.StatusConflict {
-		t.Fatalf("create 3 (duplicate kind+external_key) status = %d, want 409", resp3.StatusCode)
+	if got := post("gitlab", "group/backend"); got != http.StatusConflict {
+		t.Fatalf("second GitLab binding, other repo = %d, want 409", got)
+	}
+	if got := post("gitlab", "group/frontend"); got != http.StatusConflict {
+		t.Fatalf("same GitLab binding again = %d, want 409", got)
 	}
 }
 

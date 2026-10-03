@@ -113,9 +113,9 @@ func LatestTrivySnapshot(ctx context.Context, s tenant.Scope, bindingID uuid.UUI
 }
 
 // ListTrivySnapshotsForComponent returns every binding's latest Trivy
-// snapshot for a component — task 3.4's own acceptance criterion: a
-// component with two Trivy bindings must show two cells, not one
-// overwriting the other, since each is keyed by its own binding_id.
+// snapshot for a component, retired bindings included: a component has
+// one live Trivy binding (migration 00035), but a replaced one keeps its
+// own history, keyed by its own binding_id, never merged into the new one.
 func ListTrivySnapshotsForComponent(ctx context.Context, s tenant.Scope, componentID uuid.UUID) ([]TrivySnapshot, error) {
 	var out []TrivySnapshot
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {

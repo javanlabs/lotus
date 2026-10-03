@@ -363,10 +363,11 @@ func (im *importer) load(ctx context.Context) error {
 			return err
 		}
 		for _, b := range binds {
+			// A component has one binding per kind (migration 00035), so
+			// the empty-key entry finds it whatever its external key; the
+			// keyed entry tells a Trivy image apart from another one.
 			im.bindings[bindingKey{b.Kind, b.ExternalKey, b.Component}] = b.ID
-			if b.Kind != "trivy" { // one sonar and one gitlab binding per component
-				im.bindings[bindingKey{b.Kind, "", b.Component}] = b.ID
-			}
+			im.bindings[bindingKey{b.Kind, "", b.Component}] = b.ID
 		}
 		err := tx.GetContext(ctx, &im.harborConn, `
 			SELECT id FROM integration_connections WHERE provider = 'harbor_trivy' ORDER BY created_at LIMIT 1`)
@@ -408,12 +409,22 @@ func (im *importer) binding(ctx context.Context, rw row) (uuid.UUID, uuid.UUID, 
 		if id, ok := im.bindings[key]; ok {
 			return comp, id, nil
 		}
+		if _, other := im.bindings[bindingKey{"trivy", "", comp}]; other {
+			// The component already watches another image, and it can
+			// watch only one: this image's history has no binding to go to.
+			im.missing[rw.Image+"/trivy (component already bound to another image)"] = true
+			return uuid.Nil, uuid.Nil, nil
+		}
 		if im.harborConn == uuid.Nil {
 			im.missing[rw.Image+"/trivy (no Harbor connection)"] = true
 			return uuid.Nil, uuid.Nil, nil
 		}
 		if im.opts.DryRun {
-			return comp, uuid.Nil, nil // would be created
+			// Would be created; remembered so a second image of the same
+			// component is reported here as it would be for real.
+			im.bindings[key] = uuid.Nil
+			im.bindings[bindingKey{"trivy", "", comp}] = uuid.Nil
+			return comp, uuid.Nil, nil
 		}
 		var id uuid.UUID
 		if err := im.s.Tx(ctx, func(tx *sqlx.Tx) error {
@@ -422,13 +433,14 @@ func (im *importer) binding(ctx context.Context, rw row) (uuid.UUID, uuid.UUID, 
 			return tx.GetContext(ctx, &id, `
 				INSERT INTO metric_bindings (org_id, component_id, connection_id, kind, external_key, config)
 				VALUES ($1, $2, $3, 'trivy', $4, '{}')
-				ON CONFLICT (component_id, kind, external_key) WHERE deleted_at IS NULL
+				ON CONFLICT (component_id, kind) WHERE deleted_at IS NULL
 				DO UPDATE SET enabled = metric_bindings.enabled
 				RETURNING id`, im.s.OrgID(), comp, im.harborConn, rw.Repo)
 		}); err != nil {
 			return uuid.Nil, uuid.Nil, err
 		}
 		im.bindings[key] = id
+		im.bindings[bindingKey{"trivy", "", comp}] = id
 		return comp, id, nil
 	}
 	return uuid.Nil, uuid.Nil, fmt.Errorf("unknown kind %q", rw.Kind)

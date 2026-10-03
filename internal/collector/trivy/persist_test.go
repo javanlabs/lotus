@@ -56,13 +56,16 @@ func seedTrivyFixture(t *testing.T, db *sqlx.DB, subdomain string) (orgID, compo
 	return orgID, componentID, bindingID
 }
 
-// addSecondTrivyBinding creates a second Trivy binding on the same
-// component with a different external_key — task 3.4's own acceptance
-// criterion: a component with two Trivy bindings must show two distinct
-// snapshot cells.
+// addSecondTrivyBinding replaces the component's Trivy binding with one
+// watching another image: a component has one live binding per kind
+// (migration 00035), so the first is retired, as ReplaceBinding does.
 func addSecondTrivyBinding(t *testing.T, db *sqlx.DB, orgID, componentID uuid.UUID) (bindingID uuid.UUID) {
 	t.Helper()
 	withOrgTxTrivy(t, db, orgID, func(tx *sqlx.Tx) {
+		if _, err := tx.Exec(`UPDATE metric_bindings SET enabled = false, deleted_at = now()
+			WHERE component_id = $1 AND kind = 'trivy' AND deleted_at IS NULL`, componentID); err != nil {
+			t.Fatalf("retire first binding: %v", err)
+		}
 		var connID uuid.UUID
 		if err := tx.Get(&connID, `INSERT INTO integration_connections (org_id, provider, name, base_url) VALUES ($1, 'harbor_trivy', 'harbor2', 'https://harbor.example.com') RETURNING id`, orgID); err != nil {
 			t.Fatalf("insert connection: %v", err)
@@ -150,7 +153,7 @@ func TestPersist_PushAndPullProduceSameRowShapeDifferingOnlyBySource(t *testing.
 	}
 }
 
-func TestListTrivySnapshotsForComponent_TwoBindingsShowTwoCells(t *testing.T) {
+func TestListTrivySnapshotsForComponent_ReplacedBindingKeepsItsOwnSnapshot(t *testing.T) {
 	db := dbtest.Open(t)
 	orgID, componentID, bindingA := seedTrivyFixture(t, db, "acme")
 	bindingB := addSecondTrivyBinding(t, db, orgID, componentID)
@@ -184,7 +187,7 @@ func TestListTrivySnapshotsForComponent_TwoBindingsShowTwoCells(t *testing.T) {
 		t.Fatalf("ListTrivySnapshotsForComponent: %v", err)
 	}
 	if len(snaps) != 2 {
-		t.Fatalf("got %d snapshots, want 2 (one per binding)", len(snaps))
+		t.Fatalf("got %d snapshots, want 2 (the replaced binding's and the new one's)", len(snaps))
 	}
 	seen := map[uuid.UUID]bool{}
 	for _, s := range snaps {
