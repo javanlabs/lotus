@@ -370,8 +370,6 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 	// RollupProject so this page's headline score is computed identically
 	// to the one the organization dashboard shows for this project.
 	var projectMetrics []repo.ComponentMetric
-	kindStatuses := map[string][]collector.Status{"gitlab": nil, "sonarqube": nil, "trivy": nil, "sentry": nil}
-	kindMeasured := map[string]int{}
 
 	for _, comp := range components {
 		cm, has := metrics[comp.ID]
@@ -386,13 +384,6 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 		statuses = append(statuses, status)
 		if has {
 			projectMetrics = append(projectMetrics, cm)
-		}
-
-		for kind := range kindStatuses {
-			if kh, ok := kindMap[kind]; ok {
-				kindStatuses[kind] = append(kindStatuses[kind], collector.Status(kh.Status))
-				kindMeasured[kind]++
-			}
 		}
 
 		scoreStr, scorePct := "–", "0%"
@@ -435,7 +426,7 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 		ShowUpdated:    true,
 		ProjectCount:   projectCount,
 		Score:          buildScoreCard(statuses, repo.RollupProject(projectMetrics).Score),
-		KPIs:           buildKPIs(kindStatuses, kindMeasured, len(components)),
+		KPIs:           projectKPIs(components, metrics),
 		Rows:           rows,
 		RowCount:       len(rows),
 		Subtitle:       subtitle,
@@ -508,6 +499,26 @@ var kpiDefs = []struct {
 		"Share of components Sentry grades A or B (score 80+). C, D and E don't count."},
 	{"gitlab", "GIT HYGIENE",
 		"Share of components whose last pipeline passed. Still-running counts as at risk."},
+}
+
+// projectKPIs is a project's four KPI cards over its components: each
+// kind's pass rate across the components reporting it. The project page's
+// card strip and each project-level integration page's headline both read
+// it, so the headline cannot drift from the card that links to it.
+func projectKPIs(components []componentInfo, metrics map[uuid.UUID]repo.ComponentMetric) []kpiCard {
+	kindStatuses := map[string][]collector.Status{}
+	kindMeasured := map[string]int{}
+	for _, comp := range components {
+		cm, has := metrics[comp.ID]
+		if !has {
+			continue
+		}
+		for kind, kh := range cm.Metrics() {
+			kindStatuses[kind] = append(kindStatuses[kind], collector.Status(kh.Status))
+			kindMeasured[kind]++
+		}
+	}
+	return buildKPIs(kindStatuses, kindMeasured, len(components))
 }
 
 func buildKPIs(kindStatuses map[string][]collector.Status, measured map[string]int, totalComponents int) []kpiCard {

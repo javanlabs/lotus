@@ -1,0 +1,126 @@
+{{/* project_metric is a project's page for one integration
+     (internal/web/project_metric.go): the project-page KPI card it was
+     opened from, the kind's summary cards, and one row per component
+     binding of the kind, each opening that binding's detail page. .Data is
+     a kindPage. */}}
+{{define "content"}}
+{{template "shell_open" .}}
+{{$p := .Data}}
+
+<header style="margin-bottom:18px">
+  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E;overflow-wrap:anywhere">{{$p.KindLabel}} <span style="color:#C4B5CC;font-weight:400">·</span> {{$p.Project.Name}}</h1>
+  <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{len $p.Rows}} of {{$p.ComponentCount}} component{{if ne $p.ComponentCount 1}}s{{end}} bound</p>
+</header>
+
+<div class="lotus-pm-cards">
+  {{with $p.Headline}}
+  {{template "lotus_card_open" (dict "Variant" "inverse" "Padding" "14px 16px" "Class" "lotus-pm-headline"
+    "Style" "display:flex;flex-direction:column;justify-content:space-between")}}
+    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:var(--text-on-dark-accent)">{{.Label}}</div>
+    <div style="display:flex;align-items:baseline;gap:6px;margin:9px 0 7px">
+      <div data-headline style="font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1">{{.Value}}</div>
+      <div style="font:500 11px 'IBM Plex Mono',monospace;color:var(--text-on-dark-muted)">{{.Unit}}</div>
+    </div>
+    <div style="height:4px;border-radius:2px;background:rgba(247,237,225,.14);overflow:hidden">
+      <div class="lotus-bar-{{.Tone}}" style="height:100%;width:{{.Pct}};border-radius:2px"></div>
+    </div>
+    <div style="margin-top:7px;font-size:10.5px;color:var(--text-on-dark-muted);line-height:1.35">{{.Sub}}</div>
+    <div style="margin-top:3px;font-size:10.5px;color:var(--text-on-dark-muted);line-height:1.35">{{.Info}}</div>
+  {{template "lotus_card_close" .}}
+  {{end}}
+  {{range $p.Stats}}{{template "stat_card" (dict "Label" .Label "Value" .Value "Tone" .Tone "Sub" .Sub)}}{{end}}
+</div>
+
+{{if not $p.Rows}}
+{{template "lotus_card_section_open" (dict "Padding" "32px" "Style" "display:flex;flex-direction:column;gap:8px;max-width:560px")}}
+  <div style="font-size:15px;font-weight:600;color:#111827">No component has {{$p.KindLabel}} bound</div>
+  <p style="margin:0;font-size:12.5px;color:#6B7280;line-height:1.5">Bind it from a component's page{{if $p.Unbound}}:{{else}}. This project has no components yet.{{end}}</p>
+  {{if $p.Unbound}}
+  <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px">
+    {{range $p.Unbound}}<a href="{{.Href}}" style="color:#23808F">{{.Name}}</a>{{end}}
+  </div>
+  {{end}}
+{{template "lotus_card_section_close" .}}
+{{else}}
+{{template "lotus_card_section_open" (dict "Padding" "4px"
+  "Style" (printf "overflow:hidden;--lotus-row-grid:%s;--lotus-row-min:%dpx" $p.GridTemplate $p.MinWidth)
+  "Attrs" `x-data="lotusSort('COMPONENT')"`)}}
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
+    <div style="font-size:13px;font-weight:600;color:#43284E">Components</div>
+    <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF" x-text="label"></div>
+    <div style="margin-left:auto;max-width:100%;overflow:hidden">{{template "status_legend" (dict "ShowUpdated" true)}}</div>
+  </div>
+
+  <div style="overflow-x:auto">
+    <div class="lotus-table-head lotus-pm-grid">
+      <div>#</div>
+      <div @click="sortBy(1,'text','component')" :title="hint(1)" style="cursor:pointer;user-select:none">COMPONENT<span x-text="arrow(1)" style="opacity:.75"></span></div>
+      {{range $p.Columns}}
+      <div {{if .Sort}}@click="sortBy({{.Col}},'{{.Sort}}','{{.Label}}')" :title="hint({{.Col}})"{{end}}
+           style="{{if .Sort}}cursor:pointer;user-select:none;{{end}}white-space:nowrap;overflow:hidden;text-overflow:ellipsis{{if .Right}};text-align:right{{end}}">
+        <span{{if .Title}} title="{{.Title}}"{{end}}>{{.Label}}</span>{{if .Sort}}<span x-text="arrow({{.Col}})" style="opacity:.75"></span>{{end}}
+      </div>
+      {{end}}
+      <div @click="sortBy({{$p.SyncedCol}},'num','last synced')" :title="hint({{$p.SyncedCol}})" style="padding-left:6px;cursor:pointer;user-select:none;white-space:nowrap">LAST SYNCED<span x-text="arrow({{$p.SyncedCol}})" style="opacity:.75"></span></div>
+    </div>
+
+    <div x-ref="rows" style="display:contents">
+    {{range $i, $r := $p.Rows}}
+    <div class="lotus-pm-row lotus-pm-grid">
+      <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{inc $i}}</div>
+      <div data-sort="{{$r.Name}}" style="display:flex;align-items:center;gap:8px;min-width:0">
+        {{template "status_dot" $r.Tone}}
+        <div style="display:flex;flex-direction:column;min-width:0">
+          <a href="{{$r.Href}}" class="lotus-row-link" style="font-size:12.5px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{$r.Name}}</a>
+          <div style="display:flex;align-items:center;gap:5px;min-width:0">
+            <span style="font:400 10px 'IBM Plex Mono',monospace;color:#9CA3AF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{$r.ExternalKey}}">{{$r.ExternalKey}}</span>
+            {{if $r.ProviderURL}}<a href="{{$r.ProviderURL}}" target="_blank" rel="noopener" class="lotus-row-action lotus-pm-out" title="Open in {{$p.KindLabel}}" aria-label="Open {{$r.Name}} in {{$p.KindLabel}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.996 17h2a5 5 0 0 0 0-10h-2m-6 10h-2a5 5 0 0 1 0-10h2m-.5 5h7"></path></svg></a>{{end}}
+          </div>
+        </div>
+      </div>
+      {{range $j, $c := $r.Cells}}{{$col := index $p.Columns $j}}
+      <div data-sort="{{$c.Sort}}" class="lotus-pm-cell{{if $col.Right}} lotus-pm-right{{end}}">
+        {{if eq $c.Type "badge"}}
+          <span class="lotus-row-action" style="display:inline-flex;max-width:100%">{{if $c.Href}}<a href="{{$c.Href}}" target="_blank" rel="noopener" style="display:inline-flex;max-width:100%;text-decoration:none" title="Open in {{$p.KindLabel}}">{{template "status_badge" $c.Badge}}</a>{{else}}{{template "status_badge" $c.Badge}}{{end}}</span>
+        {{else if eq $c.Type "grades"}}
+          <span style="display:inline-flex;gap:3px">{{range $c.Grades}}{{template "status_badge" .}}{{end}}</span>
+        {{else if eq $c.Type "governance"}}
+          <span style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px">
+            {{if $c.Protected}}<span title="Default branch protected" style="display:inline-flex;color:var(--status-pass)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-label="protected"><g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.268 18.845c.225 1.67 1.608 2.979 3.292 3.056c1.416.065 2.855.099 4.44.099s3.024-.034 4.44-.1c1.684-.076 3.067-1.385 3.292-3.055c.147-1.09.268-2.207.268-3.345s-.121-2.255-.268-3.345c-.225-1.67-1.608-2.979-3.292-3.056A95 95 0 0 0 12 9c-1.585 0-3.024.034-4.44.1c-1.684.076-3.067 1.385-3.292 3.055C4.12 13.245 4 14.362 4 15.5s.121 2.255.268 3.345Z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 9V6.5a4.5 4.5 0 0 1 9 0V9"></path></g></svg></span>
+            {{else}}<span class="lotus-badge lotus-badge-fail" title="Default branch not protected">unprotected</span>{{end}}
+            {{if $c.Visibility}}<span class="lotus-badge lotus-badge-none">{{$c.Visibility}}</span>{{end}}
+            {{if $c.Archived}}<span class="lotus-badge lotus-badge-fail">archived</span>{{end}}
+          </span>
+        {{else}}
+          <span class="lotus-pm-text{{if $c.Fail}} lotus-text-fail{{end}}{{if $c.Mono}} lotus-pm-mono{{end}}"{{if $c.Title}} title="{{$c.Title}}"{{end}}>{{$c.Text}}</span>
+        {{end}}
+        {{if $c.Sub}}<span class="lotus-pm-sub">{{$c.Sub}}</span>{{end}}
+      </div>
+      {{end}}
+      {{with $r.Synced}}<div data-sort="{{if .Sort}}{{.Sort}}{{end}}" style="padding-left:6px;font:400 11px 'IBM Plex Mono',monospace;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span title="{{.Title}}">{{.Text}}</span></div>{{end}}
+    </div>
+    {{end}}
+    </div>
+  </div>
+
+  <div style="padding:9px 14px;font-size:11px;color:#6B7280;line-height:1.5">
+    Showing {{len $p.Rows}} of {{len $p.Rows}}
+    {{if $p.Unbound}}
+    <div data-unbound style="margin-top:2px;color:#9CA3AF">
+      {{len $p.Unbound}} component{{if ne (len $p.Unbound) 1}}s have{{else}} has{{end}} no {{$p.KindLabel}} binding:
+      {{range $i, $u := $p.Unbound}}{{if $i}}, {{end}}<a href="{{$u.Href}}" style="color:#6B7280">{{$u.Name}}</a>{{end}}
+    </div>
+    {{end}}
+  </div>
+{{template "lotus_card_section_close" .}}
+
+{{/* The one tooltip every stale cell shares, outside the table card so
+     its horizontal scroller cannot clip it (dashboard_block's). Static
+     styles in style, position in an object-form :style (AGENTS.md). */}}
+<div x-data="lotusTip()" @lotus-tip.window="show($event.detail)" x-show="text" x-cloak role="tooltip"
+     style="position:fixed;z-index:60;max-width:340px;padding:10px 12px;border-radius:var(--radius-petal-sm);background:#FFFFFF;box-shadow:0 10px 28px -12px rgba(67,40,78,.45);font-size:12px;line-height:1.5;color:var(--ink-700);white-space:pre-line;pointer-events:none"
+     :style="{ top: top + 'px', left: left + 'px' }" x-text="text"></div>
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}

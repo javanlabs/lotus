@@ -144,6 +144,9 @@ func New(d Deps) *fiber.App {
 	// the bind-metric wizard that creates a connection (if needed) and a
 	// binding together.
 	registerProjectPageDetailRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+	// A project's page per integration — the KPI cards on the project page
+	// open these.
+	registerProjectMetricRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerFolderRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
 	// Tenant host only (QA module, docs/superpowers/plans/2026-09-27-qa-phase-4.md):

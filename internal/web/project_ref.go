@@ -14,6 +14,7 @@ import (
 // Browser URLs name a project and a component by slug:
 //
 //	/projects/{project-slug}/…
+//	/projects/{project-slug}/metrics/{kind}
 //	/projects/{project-slug}/components/{component-slug}/…
 //	/projects/{project-slug}/components/{component-slug}/metrics/{binding-id}/…
 //
@@ -104,6 +105,12 @@ func componentURL(p *repo.Project, comp *repo.Component) string {
 
 func metricURL(p *repo.Project, comp *repo.Component, bindingID uuid.UUID) string {
 	return componentURL(p, comp) + "/metrics/" + bindingID.String()
+}
+
+// projectMetricURL is a project's page for one integration kind: every
+// component's binding of that kind, side by side.
+func projectMetricURL(p *repo.Project, kind string) string {
+	return projectURL(p) + "/metrics/" + kind
 }
 
 func qaBase(p *repo.Project) string { return projectURL(p) + "/qa" }

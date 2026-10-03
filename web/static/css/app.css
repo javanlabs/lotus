@@ -578,6 +578,62 @@ body {
 .lotus-row-select { position: relative; z-index: 1; display: flex; align-items: center; }
 .lotus-row-select input { margin: 0; cursor: pointer; accent-color: var(--text-brand); }
 .lotus-row-action { position: relative; z-index: 1; }
+
+/* A project's page per integration (pages/project_metric.html). The
+   summary strip wraps instead of scrolling: the headline takes the whole
+   first line on a narrow screen, and on a wide one two tracks and two rows
+   beside the stat cards, which keep their own height. */
+.lotus-pm-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr));
+  align-items: start;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.lotus-pm-cards > * { min-width: 0; }
+.lotus-pm-headline { grid-column: 1 / -1; }
+@media (min-width: 900px) { .lotus-pm-headline { grid-column: span 2; grid-row: span 2; align-self: stretch; } }
+/* Its rows hold two-line cells (a value and a muted note under it), so
+   they grow past the dashboard's fixed row height instead of clipping.
+   The header and the rows share the grid and the minimum width, both set
+   on the table card from the view model. */
+.lotus-pm-grid {
+  grid-template-columns: var(--lotus-row-grid);
+  column-gap: 8px;
+  min-width: var(--lotus-row-min);
+  box-sizing: border-box;
+}
+.lotus-pm-row {
+  position: relative;
+  display: grid;
+  align-items: center;
+  min-height: var(--row-height);
+  padding: 6px var(--space-13);
+  border-bottom: 1px solid var(--border-hairline);
+}
+.lotus-pm-row:hover { background: var(--surface-row-hover); }
+.lotus-pm-cell { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.lotus-pm-right { align-items: flex-end; text-align: right; }
+.lotus-pm-text {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--weight-medium) 11.5px var(--font-mono);
+  color: var(--ink-700);
+}
+.lotus-pm-mono { font-weight: 400; font-size: 11px; color: var(--text-muted); }
+.lotus-pm-text.lotus-text-fail { font-weight: var(--weight-semibold); color: var(--status-fail); }
+.lotus-pm-sub {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 9.5px var(--font-mono);
+  color: var(--text-faint);
+}
+.lotus-pm-out { display: inline-flex; flex: none; color: var(--text-faint); }
+.lotus-pm-out:hover { color: var(--text-brand); }
 /* Drag and drop: the folder row or breadcrumb segment being dragged over. */
 .lotus-drop-target { background: var(--plum-a06); box-shadow: inset 0 0 0 2px var(--text-brand); }
 /* A breadcrumb segment is a drop target on the folder view; while hovered by
