@@ -46,6 +46,7 @@ type QAWorkloadPerson struct {
 // QAWorkloadProject is one project's QA activity in a month.
 type QAWorkloadProject struct {
 	ProjectID     uuid.UUID `db:"project_id"`
+	ProjectSlug   string    `db:"project_slug"`
 	Name          string    `db:"name"`
 	CasesCreated  int       `db:"cases_created"`
 	RunsCreated   int       `db:"runs_created"`
@@ -60,6 +61,7 @@ type QAWorkloadRun struct {
 	RunID       uuid.UUID  `db:"run_id"`
 	ProjectID   uuid.UUID  `db:"project_id"`
 	ProjectName string     `db:"project_name"`
+	ProjectSlug string     `db:"project_slug"`
 	Name        string     `db:"name"`
 	AssigneeID  *uuid.UUID `db:"assignee_id"`
 	CreatedAt   time.Time  `db:"created_at"`
@@ -71,6 +73,7 @@ type QAWorkloadIssue struct {
 	IssueID     uuid.UUID  `db:"issue_id"`
 	ProjectID   uuid.UUID  `db:"project_id"`
 	ProjectName string     `db:"project_name"`
+	ProjectSlug string     `db:"project_slug"`
 	Key         int        `db:"key"`
 	Title       string     `db:"title"`
 	Status      string     `db:"status"`
@@ -173,7 +176,7 @@ func LoadQAWorkload(ctx context.Context, s tenant.Scope, month string) (*QAWorkl
 			issues AS (
 				SELECT i.project_id, count(*) AS n FROM qa_issues i, b
 				WHERE i.created_at >= b.lo AND i.created_at < b.hi GROUP BY i.project_id)
-			SELECT p.id AS project_id, p.name,
+			SELECT p.id AS project_id, p.slug AS project_slug, p.name,
 				COALESCE(cases.n, 0) AS cases_created,
 				COALESCE(items.runs, 0) AS runs_created,
 				COALESCE(issues.n, 0) AS issues_created,
@@ -190,17 +193,17 @@ func LoadQAWorkload(ctx context.Context, s tenant.Scope, month string) (*QAWorkl
 		}
 		if err := tx.SelectContext(ctx, &runs, `
 			WITH `+workloadMonth+`, `+workloadRuns+`
-			SELECT mr.id AS run_id, mr.project_id, p.name AS project_name, mr.name, mr.created_at,
+			SELECT mr.id AS run_id, mr.project_id, p.name AS project_name, p.slug AS project_slug, mr.name, mr.created_at,
 				it.assignee_id, `+workloadCounts+`
 			FROM mr JOIN projects p ON p.id = mr.project_id
 			LEFT JOIN qa_run_items it ON it.run_id = mr.id
-			GROUP BY mr.id, mr.project_id, p.name, mr.name, mr.created_at, it.assignee_id
+			GROUP BY mr.id, mr.project_id, p.name, p.slug, mr.name, mr.created_at, it.assignee_id
 			ORDER BY mr.created_at, mr.id`, first); err != nil {
 			return err
 		}
 		return tx.SelectContext(ctx, &out.Issues, `
 			WITH `+workloadMonth+`
-			SELECT i.id AS issue_id, i.project_id, p.name AS project_name, i.key, i.title, i.status, i.severity,
+			SELECT i.id AS issue_id, i.project_id, p.name AS project_name, p.slug AS project_slug, i.key, i.title, i.status, i.severity,
 				i.reported_by, COALESCE(NULLIF(btrim(u.name), ''), u.email, '') AS reporter, i.created_at
 			FROM qa_issues i JOIN projects p ON p.id = i.project_id
 			LEFT JOIN users u ON u.id = i.reported_by, b

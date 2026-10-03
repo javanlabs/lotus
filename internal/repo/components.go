@@ -81,6 +81,24 @@ func ComponentByID(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Componen
 	return &out, nil
 }
 
+// ComponentBySlug finds a component by its slug, unique within its
+// project.
+func ComponentBySlug(ctx context.Context, s tenant.Scope, projectID uuid.UUID, slug string) (*Component, error) {
+	var out Component
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.GetContext(ctx, &out, `
+			SELECT id, org_id, project_id, slug, name, kind, language, archived_at, sort_order, created_at
+			FROM components WHERE project_id = $1 AND slug = $2`, projectID, slug)
+	})
+	if err != nil {
+		if isNoRows(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &out, nil
+}
+
 func ListComponents(ctx context.Context, s tenant.Scope, projectID uuid.UUID, includeArchived bool) ([]Component, error) {
 	var out []Component
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {

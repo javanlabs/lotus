@@ -18,6 +18,7 @@ var QAOpenIssueStatuses = []string{"new", "open", "fixed", "reopened"}
 type QAProjectSummary struct {
 	ProjectID   uuid.UUID `db:"project_id"`
 	ProjectName string    `db:"project_name"`
+	ProjectSlug string    `db:"project_slug"`
 	Cases       int       `db:"cases"`
 	Scenarios   int       `db:"scenarios"`
 	OpenPlans   int       `db:"open_plans"`
@@ -32,7 +33,7 @@ func ListQAProjectSummaries(ctx context.Context, s tenant.Scope, projectIDs []uu
 	out := []QAProjectSummary{}
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.SelectContext(ctx, &out, `
-			SELECT p.id AS project_id, p.name AS project_name,
+			SELECT p.id AS project_id, p.name AS project_name, p.slug AS project_slug,
 				(SELECT count(*) FROM qa_cases c WHERE c.project_id = p.id AND c.archived_at IS NULL) AS cases,
 				(SELECT count(*) FROM qa_scenarios sc WHERE sc.project_id = p.id AND sc.archived_at IS NULL) AS scenarios,
 				(SELECT count(*) FROM qa_plans pl WHERE pl.project_id = p.id AND pl.closed_at IS NULL) AS open_plans,

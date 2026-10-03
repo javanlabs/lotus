@@ -225,6 +225,7 @@ type QAMyItem struct {
 	PlanName    string    `db:"plan_name"`
 	ProjectID   uuid.UUID `db:"project_id"`
 	ProjectName string    `db:"project_name"`
+	ProjectSlug string    `db:"project_slug"`
 }
 
 // ListMyQAItems lists untested items assigned to userID in open runs of open
@@ -250,7 +251,7 @@ func ListMyQAItems(ctx context.Context, s tenant.Scope, userID uuid.UUID, projec
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.SelectContext(ctx, &out, `
 			SELECT `+qaItemCols+`, r.name AS run_name, p.id AS plan_id, p.name AS plan_name,
-				pr.id AS project_id, pr.name AS project_name
+				pr.id AS project_id, pr.name AS project_name, pr.slug AS project_slug
 			FROM qa_run_items i
 			JOIN qa_runs r ON r.id = i.run_id AND r.closed_at IS NULL
 			JOIN qa_plans p ON p.id = r.plan_id AND p.closed_at IS NULL

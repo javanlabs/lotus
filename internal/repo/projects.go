@@ -93,6 +93,22 @@ func ProjectByID(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Project, e
 	return &out, nil
 }
 
+// ProjectBySlug finds a project by its slug, unique within the
+// organization (RLS supplies the organization).
+func ProjectBySlug(ctx context.Context, s tenant.Scope, slug string) (*Project, error) {
+	var out Project
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.GetContext(ctx, &out, `SELECT `+projectCols+` FROM projects WHERE slug = $1`, slug)
+	})
+	if err != nil {
+		if isNoRows(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &out, nil
+}
+
 // ListProjects returns every project in the org, ordered for dashboard
 // display (sort_order first, since that ordering is an editorial decision
 // — task 2.1 — not alphabetical). includeArchived controls whether
