@@ -37,7 +37,8 @@ func TestSentryDetail_DatePicker(t *testing.T) {
 	})
 	s := tenant.FromRun(db, orgID)
 	for _, n := range []int{4, 11} {
-		snap := repo.NewSentrySnapshot{ComponentID: componentID, ContentHash: "h" + string(rune('0'+n%10)), Environment: "production", ProjectSlug: "backend", TotalIssues: n}
+		snap := repo.NewSentrySnapshot{ComponentID: componentID, ContentHash: "h" + string(rune('0'+n%10)), Environment: "production", ProjectSlug: "backend", TotalIssues: n,
+			Issues: []repo.NewSentryIssue{{IssueID: "1", Substatus: "new"}}}
 		if err := repo.ReplaceSentrySnapshots(context.Background(), s, componentID, bindingID, collector.Headline{}, []repo.NewSentrySnapshot{snap}); err != nil {
 			t.Fatal(err)
 		}
@@ -55,6 +56,13 @@ func TestSentryDetail_DatePicker(t *testing.T) {
 	}
 	if status, body := getPage(t, app, host, page+"?date="+today, raw); status != http.StatusOK || !strings.Contains(body, "as of "+today) {
 		t.Errorf("sentry page ?date= = %d; no as-of note", status)
+	} else {
+		// Filtering the issues by substatus stays on the chosen day.
+		all := strings.Index(body, `name="status" value=""`)
+		form := strings.LastIndex(body[:max(all, 0)], "<form")
+		if all < 0 || form < 0 || !strings.Contains(body[form:all], `name="date" value="`+today+`"`) {
+			t.Errorf("the substatus filter drops ?date=%s", today)
+		}
 	}
 }
 

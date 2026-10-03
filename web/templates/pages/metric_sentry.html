@@ -58,6 +58,7 @@
     {{if .Data.Statuses}}
     <form method="get" style="margin-left:auto;display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:9px;padding:3px">
       <input type="hidden" name="env" value="{{.Data.SelectedEnv}}">
+      {{if .Data.SelectedDate}}<input type="hidden" name="date" value="{{.Data.SelectedDate}}">{{end}}
       <button type="submit" name="status" value="" style="padding:5px 11px;border-radius:6px;border:none;background:{{if eq .Data.SelectedStatus ""}}#FFFFFF{{else}}transparent{{end}};font-size:11px;font-weight:{{if eq .Data.SelectedStatus ""}}600{{else}}500{{end}};color:{{if eq .Data.SelectedStatus ""}}#43284E{{else}}#6B7280{{end}};cursor:pointer">All</button>
       {{range .Data.Statuses}}
       <button type="submit" name="status" value="{{.Value}}" style="padding:5px 11px;border-radius:6px;border:none;background:{{if .Selected}}#FFFFFF{{else}}transparent{{end}};font-size:11px;font-weight:{{if .Selected}}600{{else}}500{{end}};color:{{if .Selected}}#43284E{{else}}#6B7280{{end}};cursor:pointer">{{.Value}} ({{.Count}})</button>
