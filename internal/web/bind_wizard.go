@@ -38,6 +38,11 @@ type bindWizardData struct {
 	NewConnectionName string
 	ConnectionFields  []fieldView
 
+	// Existing is the component's live binding of Kind, nil when it has
+	// none. A component has one binding per kind, so submitting replaces
+	// it; the form carries its id back as confirmation.
+	Existing *repo.Binding
+
 	Error string
 }
 
@@ -62,6 +67,9 @@ func (h bindWizardHandlers) get(c *fiber.Ctx) error {
 	data := bindWizardData{
 		ComponentID: comp.ID, ComponentName: comp.Name, Kind: kind, Kinds: bindableKinds, KindLabels: kindLabels,
 		ConnectionID: "new",
+	}
+	if data.Existing, err = existingBinding(c, s, comp.ID, kind); err != nil {
+		return writeRepoErr(c, err)
 	}
 	return h.render(c, data, fiber.StatusOK)
 }
@@ -97,6 +105,17 @@ func (h bindWizardHandlers) post(c *fiber.Ctx) error {
 		ComponentID: comp.ID, ComponentName: comp.Name, Kind: kind, Kinds: bindableKinds, KindLabels: kindLabels,
 		ConnectionID: connectionID, ExternalKey: externalKey,
 		NewConnectionName: strings.TrimSpace(c.FormValue("new_connection_name")),
+	}
+
+	if data.Existing, err = existingBinding(c, s, comp.ID, kind); err != nil {
+		return writeRepoErr(c, err)
+	}
+	// The form names the binding it replaces. One that does not — or
+	// names another — was filled in before this kind was bound, or before
+	// it was rebound: show what it would replace and ask again.
+	if replace := c.FormValue("replace"); data.Existing != nil && replace != data.Existing.ID.String() {
+		data.Error = "This component already has a " + kindLabels[kind] + " binding (" + data.Existing.ExternalKey + "). Check it below, then submit again to replace it."
+		return h.render(c, data, fiber.StatusConflict)
 	}
 
 	if externalKey == "" {
@@ -155,9 +174,13 @@ func (h bindWizardHandlers) post(c *fiber.Ctx) error {
 		return h.render(c, data, fiber.StatusUnprocessableEntity)
 	}
 
-	binding, err := repo.CreateBinding(c.Context(), s, repo.NewBinding{
-		ComponentID: comp.ID, ConnectionID: connID, Kind: kind, ExternalKey: externalKey, Config: bindingConfig,
-	})
+	in := repo.NewBinding{ComponentID: comp.ID, ConnectionID: connID, Kind: kind, ExternalKey: externalKey, Config: bindingConfig}
+	var binding *repo.Binding
+	if data.Existing != nil {
+		binding, err = repo.ReplaceBinding(c.Context(), s, data.Existing.ID, in)
+	} else {
+		binding, err = repo.CreateBinding(c.Context(), s, in)
+	}
 	if err != nil {
 		data.Error = bindingCreateErrorMessage(err)
 		return h.render(c, data, fiber.StatusUnprocessableEntity)
@@ -165,6 +188,15 @@ func (h bindWizardHandlers) post(c *fiber.Ctx) error {
 	_ = scheduler.EnqueueImmediate(c.Context(), h.d.DB, s.OrgID(), binding.ConnectionID, binding.ID, binding.Kind)
 
 	return c.Redirect("/components/"+comp.ID.String(), fiber.StatusFound)
+}
+
+// existingBinding is componentID's live binding of kind, or nil.
+func existingBinding(c *fiber.Ctx, s tenant.Scope, componentID uuid.UUID, kind string) (*repo.Binding, error) {
+	b, err := repo.ActiveBindingForKind(c.Context(), s, componentID, kind)
+	if errors.Is(err, repo.ErrNotFound) {
+		return nil, nil
+	}
+	return b, err
 }
 
 func marshalConfig(m map[string]any) ([]byte, error) {

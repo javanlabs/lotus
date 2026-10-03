@@ -193,6 +193,58 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 	if strings.Contains(string(compBody), "No metrics bound yet") {
 		t.Fatalf("component page still shows the empty state after a binding exists:\n%s", compBody)
 	}
+
+	// Binding GitLab again replaces it: the form says so and names the
+	// binding it replaces; a post that does not name it is sent back.
+	var oldID string
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&oldID, `SELECT id FROM metric_bindings WHERE component_id=$1 AND kind='gitlab' AND deleted_at IS NULL`, componentID); err != nil {
+			t.Fatalf("lookup binding: %v", err)
+		}
+	})
+	again, err := app.Test(reqWithSession(http.MethodGet, host, "/components/"+componentID+"/bind?kind=gitlab", raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	againBody, _ := io.ReadAll(again.Body)
+	for _, want := range []string{`data-testid="replace-notice"`, `name="replace" value="` + oldID + `"`, "Replace binding"} {
+		if !strings.Contains(string(againBody), want) {
+			t.Fatalf("rebind form missing %q", want)
+		}
+	}
+	post := func(f url.Values) *http.Response {
+		req := httptest.NewRequest(http.MethodPost, "http://"+host+"/components/"+componentID+"/bind", strings.NewReader(f.Encode()))
+		req.Host = host
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	var connID string
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		_ = tx.Get(&connID, `SELECT id FROM integration_connections WHERE org_id=$1 AND provider='gitlab'`, orgID)
+	})
+	rebind := url.Values{"kind": {"gitlab"}, "connection_id": {connID}, "external_key": {"alurkerja/billing-web"}, "default_branch": {"main"}}
+	if resp := post(rebind); resp.StatusCode != http.StatusConflict {
+		t.Fatalf("rebind without confirming = %d, want 409", resp.StatusCode)
+	}
+	rebind.Set("replace", oldID)
+	if resp := post(rebind); resp.StatusCode != http.StatusFound {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("confirmed rebind = %d:\n%s", resp.StatusCode, body)
+	}
+	var live []string
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Select(&live, `SELECT external_key FROM metric_bindings WHERE component_id=$1 AND kind='gitlab' AND deleted_at IS NULL`, componentID); err != nil {
+			t.Fatalf("live bindings: %v", err)
+		}
+	})
+	if len(live) != 1 || live[0] != "alurkerja/billing-web" {
+		t.Fatalf("live GitLab bindings = %v, want only the replacement", live)
+	}
 }
 
 func TestBindWizard_MissingExternalKeyReRendersWithError(t *testing.T) {

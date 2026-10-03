@@ -19,8 +19,14 @@
   {{if .Data.Error}}
   <div style="padding:10px 12px;border-radius:8px 3px 8px 3px;background:var(--status-fail-bg);color:#9E2B47;font-size:12.5px">{{.Data.Error}}</div>
   {{end}}
+  {{with .Data.Existing}}
+  <div role="note" data-testid="replace-notice" style="padding:10px 12px;border-radius:8px 3px 8px 3px;background:var(--plum-a06);color:var(--plum-700);font-size:12.5px;line-height:1.5">
+    This component is already bound to <strong style="font-family:'IBM Plex Mono',monospace;font-weight:600">{{.ExternalKey}}</strong>. A component has one {{index $.Data.KindLabels $.Data.Kind}} binding, so binding another replaces it. The old binding's history stays with it.
+  </div>
+  {{end}}
   <form method="post" action="/components/{{.Data.ComponentID}}/bind" style="display:flex;flex-direction:column;gap:16px">
     <input type="hidden" name="kind" value="{{.Data.Kind}}">
+    {{with .Data.Existing}}<input type="hidden" name="replace" value="{{.ID}}">{{end}}
 
     <label style="display:flex;flex-direction:column;gap:6px">
       <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">{{.Data.ExternalKeyLabel}}</span>
@@ -58,7 +64,7 @@
 
     <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:6px">
       <a href="/components/{{.Data.ComponentID}}" class="btn-lotus btn-lotus-secondary">Cancel</a>
-      <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none">Bind metric</button>
+      <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none">{{if .Data.Existing}}Replace binding{{else}}Bind metric{{end}}</button>
     </div>
   </form>
 {{template "lotus_card_section_close" .}}
