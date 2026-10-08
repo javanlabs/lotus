@@ -578,31 +578,132 @@ body {
 .lotus-row-select { position: relative; z-index: 1; display: flex; align-items: center; }
 .lotus-row-select input { margin: 0; cursor: pointer; accent-color: var(--text-brand); }
 .lotus-row-action { position: relative; z-index: 1; }
-/* A KPI card that opens a page. Cards are read, not clicked, everywhere
-   else, so the one that is says so on hover: the glass firms up, its
-   hairline darkens a step and a soft plum shadow lifts it off the page —
-   depth, not movement (nothing in the system translates). */
-.lotus-kpi-link { transition: var(--transition-surface); }
-.lotus-kpi-link:hover {
-  background: rgba(255, 255, 255, .94);
-  border-color: var(--plum-a24);
-  box-shadow: var(--shadow-card), 0 8px 18px -10px rgba(67, 40, 78, .45);
-}
+/* The metric tabs (components/metric_tabs.html): a project's Lotus score
+   and its four integrations, the same on the project page and on every
+   integration page. Built only from what the system already has — it
+   defines no Tabs component:
 
-/* A project's page per integration (pages/project_metric.html). The
-   summary strip wraps instead of scrolling: the headline takes the whole
-   first line on a narrow screen, and on a wide one two tracks and two rows
-   beside the stat cards, which keep their own height. */
-.lotus-pm-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr));
-  align-items: start;
-  gap: 10px;
-  margin-bottom: 14px;
+   - the wrapper is the glass card (lotus_card); its 5px padding plus the
+     scroller's 3px puts the track 8px in, clear of the card's 4px ring;
+   - the tabs are the SegmentedControl, value for value the one qa_subnav
+     draws: the sunken plum track, 3px padding, 2px gaps, and the white
+     thumb on the open tab;
+   - each tab carries a KPI tile's anatomy (mono label, number, MeterBar,
+     note) at stat_card's 22px number;
+   - the open tab's other numbers sit in the same card under the track, in
+     stat_card's typography.
+
+   The score takes 1.35fr and the four kinds 1fr each, as the KPI row has
+   always been laid out; below 840px the track scrolls inside the card. */
+.lotus-mt { margin-bottom: 14px; }
+.lotus-mt-scroll {
+  overflow-x: auto;
+  /* Room for the thumb's 1px ring and the focus halo, which a scroll
+     container would otherwise clip. Padding, not a negative margin: that
+     made the scroller wider than the card and the page scroll on phones. */
+  padding: 3px;
 }
-.lotus-pm-cards > * { min-width: 0; }
-.lotus-pm-headline { grid-column: 1 / -1; }
-@media (min-width: 900px) { .lotus-pm-headline { grid-column: span 2; grid-row: span 2; align-self: stretch; } }
+.lotus-mt-tabs {
+  display: grid;
+  grid-template-columns: 1.35fr repeat(4, 1fr);
+  gap: 2px;
+  min-width: 840px;
+  padding: 3px;
+  background: rgba(67, 40, 78, .04);
+  border: 1px solid var(--plum-a09);
+  border-radius: var(--radius-group);
+  box-shadow: var(--shadow-segment-track);
+}
+.lotus-mt-tab {
+  position: relative;
+  min-width: 0;
+  border-radius: var(--radius-segment);
+  transition: var(--transition-surface);
+}
+.lotus-mt-tab.is-active {
+  background: linear-gradient(180deg, #FFFFFF 0%, #FAF9FB 100%);
+  box-shadow: var(--shadow-segment-thumb);
+}
+.lotus-mt-link {
+  display: flex;
+  flex-direction: column;
+  /* Right padding keeps the label clear of the info button. */
+  padding: 8px 26px 9px 11px;
+  border-radius: inherit;
+  color: inherit;
+  text-decoration: none;
+}
+.lotus-mt-link:hover { color: inherit; }
+.lotus-mt-link:focus-visible { outline: none; box-shadow: var(--shadow-focus-ring); }
+.lotus-mt-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 9.5px / 1.2 var(--font-mono);
+  letter-spacing: .09em;
+  color: var(--text-faint);
+}
+.lotus-mt-tab.is-active .lotus-mt-label { color: var(--text-brand); }
+.lotus-mt-main { display: flex; align-items: baseline; gap: 5px; margin: 7px 0 6px; }
+.lotus-mt-value { font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+.lotus-mt-value-brand { color: var(--text-brand); }
+.lotus-mt-unit { font: 500 10px var(--font-mono); color: var(--text-faint); }
+/* MeterBar, as the KPI tiles draw it. */
+.lotus-mt-bar { display: flex; height: 4px; border-radius: 2px; background: var(--ink-100); overflow: hidden; }
+.lotus-mt-bar > span { display: block; height: 100%; border-radius: 2px; }
+.lotus-mt-bar-split { gap: 2px; }
+.lotus-mt-sub {
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+.lotus-mt-info {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  display: flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 50%;
+  color: var(--text-faint);
+  opacity: .55;
+  cursor: pointer;
+}
+.lotus-mt-info:hover,
+.lotus-mt-info.is-open { opacity: 1; }
+.lotus-mt-info:focus-visible { outline: none; opacity: 1; box-shadow: var(--shadow-focus-ring); }
+
+/* The open tab's other numbers: stat_card's typography, in the same card
+   under the track, separated from it by a row hairline. */
+.lotus-mt-stats {
+  display: grid;
+  /* min(): a column never asks for more than the card has, or a phone's
+     narrow main column would push the page sideways. */
+  grid-template-columns: repeat(auto-fit, minmax(min(118px, 100%), 1fr));
+  gap: 10px 14px;
+  margin: 6px 3px 0;
+  padding: 10px 6px 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+.lotus-mt-stat { min-width: 0; }
+.lotus-mt-stat-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 9.5px / 1.2 var(--font-mono);
+  letter-spacing: .09em;
+  color: var(--text-faint);
+}
+.lotus-mt-stat-value { margin-top: 7px; font-size: 18px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+.lotus-mt-stat-neutral { color: var(--text-primary); }
+.lotus-mt-stat-sub { margin-top: 4px; font-size: 10.5px; color: var(--text-muted); }
+
+/* A project's page per integration (pages/project_metric.html). */
 /* Its rows hold two-line cells (a value and a muted note under it), so
    they grow past the dashboard's fixed row height instead of clipping.
    The header and the rows share the grid and the minimum width, both set

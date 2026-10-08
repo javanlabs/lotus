@@ -24,12 +24,14 @@ import (
 // A component has one live binding per kind (migration 00035), so each row
 // is one component's binding and opens that binding's own detail page.
 //
-// The headline is the project page's KPI card for the kind, computed by
-// the same projectKPIs: the card links here, and the number it shows must
-// be the number this page leads with.
+// The page leads with the same metric tabs as the project page (Score and
+// KPIs, from projectSummary), the kind's own tab active: the tab is the
+// headline, and it must show the number the project page's card does,
+// since that card is what links here. The kind's other numbers (Stats) sit
+// beneath it as the tab's panel.
 
 // kindPage is everything the page template draws. The four kinds differ
-// only in their summary cards and their columns; Columns and each row's
+// only in their summary stats and their columns; Columns and each row's
 // Cells are positional, built together per kind, so the header and the
 // rows cannot disagree.
 type kindPage struct {
@@ -39,8 +41,11 @@ type kindPage struct {
 	// ComponentCount is every component of the project, bound or not.
 	ComponentCount int
 
-	Headline kpiCard
-	Stats    []kindStat
+	// Score and KPIs are the project's metric tabs; Kind is the active one.
+	Score scoreCard
+	KPIs  []kpiCard
+	// Stats are the kind's other important numbers, drawn under the tabs.
+	Stats []kindStat
 
 	Columns []kindColumn
 	Rows    []kindRow
@@ -162,7 +167,7 @@ func syncedCell(at time.Time) *updatedCell {
 	return &updatedCell{Text: relativeTimeStrAt(at, dashboardNow()), Title: "Last synced " + absTime(at), Sort: &m}
 }
 
-// kindPageBase builds what every kind's page shares: the headline, the
+// kindPageBase builds what every kind's page shares: the metric tabs, the
 // rows' identity, tone and last-synced cell (from the component's
 // projection row, as the project page's own cells are), and the unbound
 // components. bindings comes from repo.ListProjectBindingsByKind.
@@ -181,11 +186,7 @@ func newKindPage(project *repo.Project, kind string, components []componentInfo,
 		Kind: kind, KindLabel: kindLabels[kind], Project: *project, ProjectURL: projectURL(project),
 		ComponentCount: len(components),
 	}}
-	for _, k := range projectKPIs(components, metrics) {
-		if k.Key == kind {
-			b.page.Headline = k
-		}
-	}
+	b.page.Score, b.page.KPIs = projectSummary(project, components, metrics)
 
 	byID := make(map[uuid.UUID]componentInfo, len(components))
 	for _, c := range components {

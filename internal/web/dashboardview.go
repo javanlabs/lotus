@@ -125,7 +125,10 @@ type kpiCard struct {
 // status distribution across every component with a projection row.
 type scoreCard struct {
 	// Info explains the headline number, same role as kpiCard.Info.
-	Info                   string
+	Info string
+	// Href opens the project's own page, which the score tab leads back to
+	// from a metric page; "" where there is no one project to open.
+	Href                   string
 	HasScore               bool
 	Score                  int
 	HealthyPct, FailingPct int // segment widths, sum to 100 (0 each if NoData)
@@ -369,11 +372,6 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 	}
 
 	rows := make([]dashboardRow, 0, len(components))
-	var statuses []collector.Status
-	// projectMetrics is the same set the rows are built from, handed to
-	// RollupProject so this page's headline score is computed identically
-	// to the one the organization dashboard shows for this project.
-	var projectMetrics []repo.ComponentMetric
 
 	for _, comp := range components {
 		cm, has := metrics[comp.ID]
@@ -384,10 +382,6 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 			kindMap = cm.Metrics()
 			status = cm.StatusValue()
 			score = cm.Score
-		}
-		statuses = append(statuses, status)
-		if has {
-			projectMetrics = append(projectMetrics, cm)
 		}
 
 		scoreStr, scorePct := "–", "0%"
@@ -419,13 +413,10 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 		rows[i].N = i + 1
 	}
 
-	// Every component here is the one project's: each KPI card opens that
-	// project's page for its kind.
-	kpis := projectKPIs(components, metrics)
+	// Every component here is the one project's: the score and the KPI
+	// cards are the project's metric tabs, each opening its own page.
 	project := &repo.Project{ID: components[0].ProjectID, Slug: components[0].ProjectSlug}
-	for i := range kpis {
-		kpis[i].Href = projectMetricURL(project, kpis[i].Key)
-	}
+	score, kpis := projectSummary(project, components, metrics)
 
 	vm := dashboardViewModel{
 		TableTitle:     "Components",
@@ -437,7 +428,7 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 		GridTemplate:   gridTemplateFor(componentColumns, showTrendColumn) + " minmax(118px,.9fr)",
 		ShowUpdated:    true,
 		ProjectCount:   projectCount,
-		Score:          buildScoreCard(statuses, repo.RollupProject(projectMetrics).Score),
+		Score:          score,
 		KPIs:           kpis,
 		Rows:           rows,
 		RowCount:       len(rows),
@@ -531,6 +522,36 @@ func projectKPIs(components []componentInfo, metrics map[uuid.UUID]repo.Componen
 		}
 	}
 	return buildKPIs(kindStatuses, kindMeasured, len(components))
+}
+
+// projectSummary is a project's metric tabs: the Lotus score and the four
+// KPI cards, each linking to its own page. The project page leads with
+// them and so does every integration page beneath it, so both read the
+// one computation — a tab cannot show one number on the page it opens and
+// another on the page it came from.
+//
+// The score is rolled up exactly as the organization dashboard's row for
+// this project is (RollupProject over the components that have a
+// projection row), so one project has one Lotus score everywhere.
+func projectSummary(project *repo.Project, components []componentInfo, metrics map[uuid.UUID]repo.ComponentMetric) (scoreCard, []kpiCard) {
+	statuses := make([]collector.Status, 0, len(components))
+	var projectMetrics []repo.ComponentMetric
+	for _, comp := range components {
+		status := collector.StatusUnknown
+		if cm, has := metrics[comp.ID]; has {
+			status = cm.StatusValue()
+			projectMetrics = append(projectMetrics, cm)
+		}
+		statuses = append(statuses, status)
+	}
+
+	score := buildScoreCard(statuses, repo.RollupProject(projectMetrics).Score)
+	score.Href = projectURL(project)
+	kpis := projectKPIs(components, metrics)
+	for i := range kpis {
+		kpis[i].Href = projectMetricURL(project, kpis[i].Key)
+	}
+	return score, kpis
 }
 
 func buildKPIs(kindStatuses map[string][]collector.Status, measured map[string]int, totalComponents int) []kpiCard {

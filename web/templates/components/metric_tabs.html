@@ -1,0 +1,79 @@
+{{/* metric_tabs is a project's metric strip: the Lotus score and one tab per
+     integration, as a SegmentedControl on a glass card (the system has no
+     Tabs component; see app.css .lotus-mt) that is the same on the
+     project page and on every integration page beneath it. Switching
+     between them changes which tab is active and nothing else — the strip
+     never goes away, so the way to the next integration is always where
+     the reader last saw it.
+
+     Each tab is a link carrying the number it opens (the pass rate for an
+     integration, the score for the first). The active tab opens into a
+     panel under the strip holding the page's other important numbers
+     (Stats), so a number always sits directly beneath the metric it
+     belongs to.
+
+     Takes (dict
+       "Active" "score" | a kind (the tab that is open)
+       "Score"  scoreCard
+       "KPIs"   []kpiCard, in bindableKinds order (AGENTS.md)
+       "Stats"  []kindStat for the active tab's panel — omit for none).
+
+     The info popover is outside the card on purpose: the card's
+     backdrop-filter makes it a containing block for fixed descendants,
+     which would pin the popover to the card instead of the viewport. */}}
+{{define "metric_tabs"}}
+{{$active := .Active}}
+<div x-data="lotusInfo()" @keydown.escape.window="close()">
+  {{template "lotus_card_open" (dict "Padding" "5px" "Class" "lotus-mt")}}
+    <nav class="lotus-mt-scroll" aria-label="Metrics">
+      <div class="lotus-mt-tabs">
+        {{with .Score}}
+        <div class="lotus-mt-tab{{if eq $active "score"}} is-active{{end}}">
+          <a href="{{.Href}}" class="lotus-mt-link"{{if eq $active "score"}} aria-current="page"{{end}}>
+            <span class="lotus-mt-label">LOTUS SCORE</span>
+            <span class="lotus-mt-main"><span class="lotus-mt-value lotus-mt-value-brand">{{if .HasScore}}{{.Score}}{{else}}–{{end}}</span><span class="lotus-mt-unit">/100</span></span>
+            <span class="lotus-mt-bar lotus-mt-bar-split"><span class="lotus-bar-pass" style="flex:{{.HealthyPct}}"></span><span class="lotus-bar-fail" style="flex:{{.FailingPct}}"></span></span>
+            <span class="lotus-mt-sub">{{.HealthyN}} healthy · {{.FailingN}} failing</span>
+          </a>
+          <button type="button" class="lotus-mt-info" @click.stop="toggle('score', $event)" :class="{ 'is-open': key === 'score' }" :aria-expanded="key === 'score'" aria-label="How this number is calculated"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8v.01"></path></g></svg></button>
+        </div>
+        {{end}}
+        {{range .KPIs}}
+        <div class="lotus-mt-tab{{if eq $active .Key}} is-active{{end}}">
+          <a href="{{.Href}}" class="lotus-mt-link"{{if eq $active .Key}} aria-current="page"{{end}}>
+            <span class="lotus-mt-label">{{.Label}}</span>
+            <span class="lotus-mt-main"><span class="lotus-mt-value lotus-text-{{.Tone}}"{{if eq $active .Key}} data-headline{{end}}>{{.Value}}</span><span class="lotus-mt-unit">{{.Unit}}</span></span>
+            <span class="lotus-mt-bar"><span class="lotus-bar-{{.Tone}}" style="width:{{.Pct}}"></span></span>
+            <span class="lotus-mt-sub">{{.Sub}}</span>
+          </a>
+          <button type="button" class="lotus-mt-info" @click.stop="toggle('{{.Key}}', $event)" :class="{ 'is-open': key === '{{.Key}}' }" :aria-expanded="key === '{{.Key}}'" aria-label="How this number is calculated"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8v.01"></path></g></svg></button>
+        </div>
+        {{end}}
+      </div>
+    </nav>
+    {{with .Stats}}
+    <div class="lotus-mt-stats">
+      {{range .}}
+      <div class="lotus-mt-stat">
+        <div class="lotus-mt-stat-label" title="{{.Label}}">{{.Label}}</div>
+        {{/* A figure with no verdict (lines of code) is a number, not an absence: grey is for "–". */}}
+        <div class="lotus-mt-stat-value {{if and (eq .Tone "none") (ne .Value "–")}}lotus-mt-stat-neutral{{else}}lotus-text-{{if .Tone}}{{.Tone}}{{else}}none{{end}}{{end}}">{{.Value}}</div>
+        {{if .Sub}}<div class="lotus-mt-stat-sub">{{.Sub}}</div>{{end}}
+      </div>
+      {{end}}
+    </div>
+    {{end}}
+  {{template "lotus_card_close" .}}
+
+  {{/* Static styles in Style; Alpine positions it through an object-form
+       :style in Attrs, which merges instead of replacing them (AGENTS.md). */}}
+  {{template "lotus_card_open" (dict "Style" "position:fixed;z-index:60;width:280px;padding:11px 13px;background:#FFFFFF;box-shadow:0 10px 28px -12px rgba(67,40,78,.45)"
+    "Attrs" `x-ref="panel" x-show="key" x-cloak @click.outside="close()" x-transition.opacity.duration.120ms :style="{ top: top + 'px', left: left + 'px' }"`)}}
+    <div x-show="key==='score'" style="font-size:12px;color:var(--ink-700);line-height:1.55">{{.Score.Info}}</div>
+    {{range .KPIs}}<div x-show="key==='{{.Key}}'" style="font-size:12px;color:var(--ink-700);line-height:1.55">
+      <span style="font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#23808F">{{.Label}}</span><br>{{.Info}}
+    </div>{{end}}
+    <a href="/scoring" style="display:inline-block;margin-top:7px;font-size:11.5px;color:#23808F">How scoring works &rarr;</a>
+  {{template "lotus_card_close" .}}
+</div>
+{{end}}

@@ -97,6 +97,10 @@ func (f kindPageFixture) checkKindPage(t *testing.T, kind string, wants ...strin
 	if kpi := f.projectKPI(t, kind); kpi.Value != "50" || kpi.Href != "/projects/payments/metrics/"+kind {
 		t.Fatalf("project page KPI = %+v", kpi)
 	}
+	// The project's metric tabs are here too, this kind's open, and the
+	// kind's other numbers sit directly under them.
+	assertMetricTabs(t, body, "/projects/payments", kind)
+	assertStatsBeneathTabs(t, body)
 	project := &repo.Project{ID: f.projectID, Slug: "payments"}
 	for _, row := range []struct {
 		id, binding uuid.UUID
@@ -273,21 +277,22 @@ func TestProjectMetricPage_NothingBound(t *testing.T) {
 	}
 }
 
-// Each KPI card on a project page opens the project's page for its kind;
+// Each metric tab on a project page opens the project's page for its kind;
 // the organization dashboard's cards (none are drawn there today) link
 // nowhere, since there is no one project to open.
-func TestProjectPage_KPICardsOpenTheKindPages(t *testing.T) {
+func TestProjectPage_MetricTabsOpenTheKindPages(t *testing.T) {
 	f := seedKindPage(t, "acme-pm-cards", "sonarqube")
 	status, body := f.e.get(t, f.e.owner, "/projects/payments")
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}
-	if n := strings.Count(body, "lotus-kpi-link"); n != len(bindableKinds) {
-		t.Errorf("%d clickable KPI cards, want %d", n, len(bindableKinds))
+	// The score tab and one tab per kind.
+	if n := strings.Count(body, `class="lotus-mt-link"`); n != len(bindableKinds)+1 {
+		t.Errorf("%d metric tabs, want %d", n, len(bindableKinds)+1)
 	}
 	for _, kind := range bindableKinds {
-		if !strings.Contains(body, `href="/projects/payments/metrics/`+kind+`" class="lotus-row-link"`) {
-			t.Errorf("no KPI card opens %s", kind)
+		if !strings.Contains(body, `href="/projects/payments/metrics/`+kind+`" class="lotus-mt-link"`) {
+			t.Errorf("no metric tab opens %s", kind)
 		}
 	}
 

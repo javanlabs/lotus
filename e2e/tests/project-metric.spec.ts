@@ -78,7 +78,7 @@ async function expectNoPageScroll(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
-test('a KPI card opens its integration across the project, and a row opens its binding', async ({ page, context }) => {
+test('a metric tab opens its integration across the project, and a row opens its binding', async ({ page, context }) => {
   const { sessionToken, orgId, subdomain } = await seedOwnerSession('project-metric-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   const ids = await seedProject(orgId);
@@ -87,19 +87,22 @@ test('a KPI card opens its integration across the project, and a row opens its b
   await page.goto(`${origin}/projects/payments`);
 
   // The info button still explains the number rather than navigating.
-  const card = page.locator('.lotus-kpi-link', { hasText: 'SONAR GATE' });
-  await card.getByRole('button', { name: 'How this number is calculated' }).click();
+  const tab = page.locator('.lotus-mt-tab', { hasText: 'SONAR GATE' });
+  await tab.getByRole('button', { name: 'How this number is calculated' }).click();
   await expect(page.getByText('Share of components whose quality gate passes').first()).toBeVisible();
   await expect(page).toHaveURL(`${origin}/projects/payments`);
   await page.keyboard.press('Escape');
 
-  await card.hover();
+  await tab.hover();
   await page.screenshot({ path: 'test-results/project-kpi-hover.png' });
-  // Anywhere else on the card opens the project's SonarQube page.
-  await card.click();
+  // Anywhere else on the tab opens the project's SonarQube page.
+  await tab.click();
   await expect(page).toHaveURL(`${origin}/projects/payments/metrics/sonarqube`);
   await expect(page.getByRole('heading', { name: 'SonarQube · Payments' })).toBeVisible();
   await expect(page.locator('[data-headline]')).toHaveText('50');
+  // Its other numbers sit directly under the open tab.
+  await expect(page.locator('.lotus-mt-stats')).toContainText('AVG COVERAGE');
+  await page.screenshot({ path: 'test-results/project-metric-tabs.png' });
   await expect(page.locator('[data-unbound]')).toContainText('1 component has no SonarQube binding: docs-site');
 
   // ledger's SonarQube last synced three days ago: its gate is dashed and
@@ -117,6 +120,38 @@ test('a KPI card opens its integration across the project, and a row opens its b
   await page.locator('.lotus-pm-row', { hasText: 'billing-api' }).getByRole('link', { name: 'billing-api', exact: true }).click();
   await expect(page).toHaveURL(`${origin}/projects/payments/components/billing/metrics/${ids.sonarBilling}`);
   await expect(page.getByRole('heading', { name: /SonarQube/ })).toBeVisible();
+});
+
+test('the metric tabs stay put while switching between the project and its integrations', async ({ page, context }) => {
+  const { sessionToken, orgId, subdomain } = await seedOwnerSession('project-metric-tabs', 'placeholder');
+  const origin = tenantOrigin(subdomain);
+  await seedProject(orgId);
+  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  const tabs = page.getByRole('navigation', { name: 'Metrics' });
+  const open = tabs.locator('[aria-current="page"]');
+  const labels = ['LOTUS SCORE', 'SONAR GATE', 'TRIVY CLEAN', 'SENTRY HEALTH', 'GIT HYGIENE'];
+  const urls = ['', '/metrics/sonarqube', '/metrics/trivy', '/metrics/sentry', '/metrics/gitlab'];
+
+  // Every page of the project has all five tabs, in the same order, with
+  // only the open one changing.
+  await page.goto(`${origin}/projects/payments`);
+  for (let i = 0; i < labels.length; i++) {
+    await expect(tabs.getByRole('link')).toHaveCount(labels.length);
+    await expect(tabs.getByRole('link').nth(i)).toContainText(labels[i]);
+    await expect(open).toHaveCount(1);
+    await expect(open).toContainText(labels[i]);
+    if (i + 1 < labels.length) {
+      await tabs.getByRole('link').nth(i + 1).click();
+      await expect(page).toHaveURL(`${origin}/projects/payments${urls[i + 1]}`);
+    }
+  }
+
+  // And back to the project from the last one.
+  await tabs.getByRole('link').first().click();
+  await expect(page).toHaveURL(`${origin}/projects/payments`);
+  await expect(open).toContainText('LOTUS SCORE');
 });
 
 test('every kind page fits a phone and a laptop without the page scrolling sideways', async ({ page, context }) => {

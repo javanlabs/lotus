@@ -1,6 +1,7 @@
 {{/* project_metric is a project's page for one integration
-     (internal/web/project_metric.go): the project-page KPI card it was
-     opened from, the kind's summary cards, and one row per component
+     (internal/web/project_metric.go): the project's metric tabs with this
+     kind's open — the same strip the project page leads with — the kind's
+     other numbers in the panel beneath it, and one row per component
      binding of the kind, each opening that binding's detail page. .Data is
      a kindPage. */}}
 {{define "content"}}
@@ -12,24 +13,7 @@
   <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{len $p.Rows}} of {{$p.ComponentCount}} component{{if ne $p.ComponentCount 1}}s{{end}} bound</p>
 </header>
 
-<div class="lotus-pm-cards">
-  {{with $p.Headline}}
-  {{template "lotus_card_open" (dict "Variant" "inverse" "Padding" "14px 16px" "Class" "lotus-pm-headline"
-    "Style" "display:flex;flex-direction:column;justify-content:space-between")}}
-    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:var(--text-on-dark-accent)">{{.Label}}</div>
-    <div style="display:flex;align-items:baseline;gap:6px;margin:9px 0 7px">
-      <div data-headline style="font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1">{{.Value}}</div>
-      <div style="font:500 11px 'IBM Plex Mono',monospace;color:var(--text-on-dark-muted)">{{.Unit}}</div>
-    </div>
-    <div style="height:4px;border-radius:2px;background:rgba(247,237,225,.14);overflow:hidden">
-      <div class="lotus-bar-{{.Tone}}" style="height:100%;width:{{.Pct}};border-radius:2px"></div>
-    </div>
-    <div style="margin-top:7px;font-size:10.5px;color:var(--text-on-dark-muted);line-height:1.35">{{.Sub}}</div>
-    <div style="margin-top:3px;font-size:10.5px;color:var(--text-on-dark-muted);line-height:1.35">{{.Info}}</div>
-  {{template "lotus_card_close" .}}
-  {{end}}
-  {{range $p.Stats}}{{template "stat_card" (dict "Label" .Label "Value" .Value "Tone" .Tone "Sub" .Sub)}}{{end}}
-</div>
+{{template "metric_tabs" (dict "Active" $p.Kind "Score" $p.Score "KPIs" $p.KPIs "Stats" $p.Stats)}}
 
 {{if not $p.Rows}}
 {{template "lotus_card_section_open" (dict "Padding" "32px" "Style" "display:flex;flex-direction:column;gap:8px;max-width:560px")}}
