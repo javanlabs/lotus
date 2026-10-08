@@ -8,6 +8,8 @@ package web
 import (
 	"fmt"
 	"html/template"
+	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -43,16 +45,66 @@ const sparkMaxBars = 24
 
 var chartToneColor = map[string]string{"pass": "#23808F", "fail": "#9E2B47", "none": "#6B7280"}
 
-// buildChartSVG renders points as a gap-aware line: a point with
-// HasValue=false breaks the path instead of pulling the line down to
-// zero — task 4.6's single most load-bearing acceptance criterion (the
-// spec's own words: drawing an empty bucket as zero is the most common
-// and most expensive-to-misread mistake in metric charts, since a
-// weekly-scanned SonarQube binding would otherwise look like it crashes
-// six days out of seven). direction ("higher_better"/"lower_better"/
-// "neutral") turns a first-value-to-last-value delta into pass/fail/none,
-// the same tone vocabulary the rest of the app already colors by.
-func buildChartSVG(points []repo.Point, direction, unit string, width, height float64) chartSVG {
+// gapFactor is how many times the series' usual spacing two readings may
+// be apart and still be drawn as one run; further apart, the line breaks.
+const gapFactor = 3
+
+// gapThreshold is the longest stretch between two consecutive readings
+// that is still "the same run": gapFactor times the median spacing of
+// the series' own readings. Measured from the data, not configured: a
+// binding synced every 15 minutes breaks after 45, a daily rollup after
+// three days. Zero (never break on time) when there are too few readings
+// to have a usual spacing.
+func gapThreshold(points []repo.Point) time.Duration {
+	var spacings []time.Duration
+	var prev *repo.Point
+	for i := range points {
+		p := &points[i]
+		if !p.HasValue {
+			prev = nil
+			continue
+		}
+		if prev != nil {
+			spacings = append(spacings, p.At.Sub(prev.At))
+		}
+		prev = p
+	}
+	if len(spacings) < 2 {
+		return 0
+	}
+	sort.Slice(spacings, func(i, j int) bool { return spacings[i] < spacings[j] })
+	return gapFactor * spacings[len(spacings)/2]
+}
+
+// buildChartSVG renders points as a gap-aware step line over [from, to],
+// the window the caller asked Series for (zero values fall back to the
+// first and last point).
+//
+// Gap-aware: a point with HasValue=false breaks the path instead of
+// pulling the line down to zero — task 4.6's single most load-bearing
+// acceptance criterion (the spec's own words: drawing an empty bucket as
+// zero is the most common and most expensive-to-misread mistake in
+// metric charts, since a weekly-scanned SonarQube binding would otherwise
+// look like it crashes six days out of seven). The raw tier marks no
+// empty buckets — it returns only the readings there are — so a stretch
+// with no readings longer than gapThreshold breaks the path too, instead
+// of being bridged by a diagonal that reads as a change spread over days
+// that were never measured.
+//
+// Step: a reading's value holds until the next one, then the line moves
+// straight to the new value. The integrations report values that change
+// at a scan or a pipeline, not continuously; a slope between two readings
+// would show a gradual change that did not happen. The latest run holds
+// on to the end of the window when its last reading is recent enough to
+// still be the current value.
+//
+// The window, not the readings, spans the x axis, so a reading sits at
+// its time and a stretch with none reads as empty.
+//
+// direction ("higher_better"/"lower_better"/"neutral") turns a
+// first-value-to-last-value delta into pass/fail/none, the same tone
+// vocabulary the rest of the app already colors by.
+func buildChartSVG(points []repo.Point, direction, unit string, from, to time.Time, width, height float64) chartSVG {
 	minV, maxV, haveAny := 0.0, 0.0, false
 	for _, p := range points {
 		if !p.HasValue {
@@ -77,7 +129,9 @@ func buildChartSVG(points []repo.Point, direction, unit string, width, height fl
 		valRange = 1
 	}
 
-	from, to := points[0].At, points[len(points)-1].At
+	if from.IsZero() || to.IsZero() {
+		from, to = points[0].At, points[len(points)-1].At
+	}
 	span := to.Sub(from).Seconds()
 	if span <= 0 {
 		span = 1
@@ -88,7 +142,11 @@ func buildChartSVG(points []repo.Point, direction, unit string, width, height fl
 	const marginFrac = 0.08
 	plotTop, plotHeight := height*marginFrac, height*(1-2*marginFrac)
 
-	x := func(t time.Time) float64 { return t.Sub(from).Seconds() / span * width }
+	// Clamped: a rollup bucket starts on the hour, so the first can sit
+	// slightly before the window.
+	x := func(t time.Time) float64 {
+		return math.Min(width, math.Max(0, t.Sub(from).Seconds()/span*width))
+	}
 	y := func(v float64) float64 { return plotTop + plotHeight - (v-minV)/valRange*plotHeight }
 
 	// Pass 1: first/last real value, purely to pick a tone — done before
@@ -124,29 +182,57 @@ func buildChartSVG(points []repo.Point, direction, unit string, width, height fl
 	}
 	color := chartToneColor[tone]
 
-	// Pass 2: build the path (one "M...L...L..." subpath per unbroken
-	// run of real points, a fresh "M" every time a gap is crossed) and a
-	// dot at every real point. The per-point dot matters specifically for
-	// an isolated single-point run — a binding collected once a week
-	// produces exactly that between two gaps, and a lone "M x,y" with no
-	// following "L" draws nothing at all on its own; without a dot, that
-	// whole week's real data point would be invisible, defeating the
-	// entire purpose of rendering the gap instead of hiding it.
-	var path, dots strings.Builder
-	inRun := false
+	// Pass 2: split the readings into runs — broken by an empty bucket
+	// or by a stretch longer than gapThreshold — and draw each as one
+	// "M x,y H.. V.." step subpath.
+	//
+	// Dots mark what a line cannot: a run of a single reading (a binding
+	// collected once a week produces exactly that between two gaps, and a
+	// lone "M x,y" with no following segment draws nothing at all —
+	// without a dot, that week's real reading would be invisible) and the
+	// latest reading, the value the panel's number repeats. A dot on every
+	// reading of a dense series only buried the line under them.
+	maxGap := gapThreshold(points)
+	var runs [][]repo.Point
+	var run []repo.Point
 	for _, p := range points {
 		if !p.HasValue {
-			inRun = false
+			if len(run) > 0 {
+				runs = append(runs, run)
+				run = nil
+			}
 			continue
 		}
-		px, py := x(p.At), y(p.Value)
-		cmd := "L"
-		if !inRun {
-			cmd = "M"
-			inRun = true
+		if len(run) > 0 && maxGap > 0 && p.At.Sub(run[len(run)-1].At) > maxGap {
+			runs = append(runs, run)
+			run = nil
 		}
-		fmt.Fprintf(&path, "%s%.2f,%.2f ", cmd, px, py)
-		fmt.Fprintf(&dots, `<circle cx="%.2f" cy="%.2f" r="2.5" fill="%s" vector-effect="non-scaling-stroke"/>`, px, py, color)
+		run = append(run, p)
+	}
+	if len(run) > 0 {
+		runs = append(runs, run)
+	}
+
+	dot := func(b *strings.Builder, p repo.Point) {
+		fmt.Fprintf(b, `<circle cx="%.2f" cy="%.2f" r="2.5" fill="%s" vector-effect="non-scaling-stroke"/>`, x(p.At), y(p.Value), color)
+	}
+	var path, dots strings.Builder
+	for i, r := range runs {
+		fmt.Fprintf(&path, "M%.2f,%.2f ", x(r[0].At), y(r[0].Value))
+		for _, p := range r[1:] {
+			fmt.Fprintf(&path, "H%.2f V%.2f ", x(p.At), y(p.Value))
+		}
+		last := r[len(r)-1]
+		latest := i == len(runs)-1
+		// The current value holds to the window's end — but only while it
+		// is still current: a series whose last reading is old stops
+		// where its readings do.
+		if latest && maxGap > 0 && to.Sub(last.At) <= maxGap {
+			fmt.Fprintf(&path, "H%.2f ", x(to))
+		}
+		if len(r) == 1 || latest {
+			dot(&dots, last)
+		}
 	}
 
 	// vector-effect="non-scaling-stroke": the <svg> is stretched to its

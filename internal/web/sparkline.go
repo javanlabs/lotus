@@ -150,5 +150,5 @@ func bindingChart(c *fiber.Ctx, s tenant.Scope, bindingID uuid.UUID, kind, range
 	if err != nil {
 		return chartSVG{}, writeRepoErr(c, err)
 	}
-	return buildChartSVG(points, direction, unit, 90, 28), nil
+	return buildChartSVG(points, direction, unit, from, to, 90, 28), nil
 }

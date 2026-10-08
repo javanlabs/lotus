@@ -85,7 +85,7 @@ func buildMetricChartCards(ctx context.Context, s tenant.Scope, bindingID uuid.U
 		if !k.Active {
 			card.InactiveSince = k.LastSeenAt.Local().Format("2006-01-02")
 		}
-		card.Chart = buildChartSVG(points, k.Direction, k.Unit, 560, 130)
+		card.Chart = buildChartSVG(points, k.Direction, k.Unit, from, to, 560, 130)
 		cards = append(cards, card)
 	}
 	return cards, nil

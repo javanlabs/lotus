@@ -226,7 +226,7 @@ func TestBuildChartSVG_SparkPointsAreCappedForTheBarRenderer(t *testing.T) {
 			At: base.Add(time.Duration(i) * time.Minute), HasValue: true, Value: float64(i % 50),
 		})
 	}
-	got := buildChartSVG(points, "higher_better", "%", 90, 26)
+	got := buildChartSVG(points, "higher_better", "%", time.Time{}, time.Time{}, 90, 26)
 	if !got.HasData {
 		t.Fatal("HasData = false for 300 real points")
 	}
