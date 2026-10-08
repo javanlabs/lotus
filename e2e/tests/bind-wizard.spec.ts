@@ -68,7 +68,8 @@ test('bind wizard creates a connection and a binding together, real browser roun
   await page.locator('input[name="token"]').fill('glpat-faketoken12345');
   await page.getByRole('button', { name: 'Bind metric' }).click();
 
-  await expect(page).toHaveURL(`${origin}/projects/p/components/c`);
+  // Onto the tab just bound.
+  await expect(page).toHaveURL(`${origin}/projects/p/components/c/metrics/gitlab`);
   await expect(page.getByText('alurkerja/billing-api')).toBeVisible();
   await expect(page.getByText('via gitlab.com')).toBeVisible();
   await expect(page.getByText('No metrics bound yet')).not.toBeVisible();

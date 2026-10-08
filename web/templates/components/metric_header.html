@@ -1,21 +1,37 @@
 {{/* metric_header (task 4.4) is the shared chrome every one of the four
-     metric detail pages (and /runs) opens with: breadcrumb back to the
-     component, the binding's kind + external key, which connection it
-     runs through, and a link to that binding's run history. Takes a
-     dict: Chrome (metricChrome), KindLabel (string). */}}
+     metric detail pages (and /runs) opens with: the component's own header
+     and metric tabs, this kind's tab open, then the binding's own line —
+     which integration project it reads, through which connection — with
+     its two views, Overview (the metric itself) and Syncs (its sync
+     runs), and what can be done to it: test it, pause or resume it,
+     remove it. Takes a dict: Chrome (metricChrome, with Tabs loaded),
+     KindLabel (string), Section ("syncs" on the run history; anything
+     else is Overview). */}}
 {{define "metric_header"}}
-<header style="margin-bottom:18px">
-  <p style="margin:0 0 4px;font-size:11px;color:#9CA3AF">
-    <a href="{{.Chrome.ProjectURL}}" style="color:#9CA3AF">{{.Chrome.Project.Name}}</a>
-    <span style="color:#D1D5DB"> / </span>
-    <a href="{{.Chrome.ComponentURL}}" style="color:#9CA3AF">{{.Chrome.Component.Name}}</a>
-  </p>
-  <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px">
-    <div style="flex:1;min-width:220px">
-      <h1 style="margin:0;font-size:21px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{.KindLabel}} <span style="font:400 14px 'IBM Plex Mono',monospace;color:#6B7280">{{.Chrome.Binding.ExternalKey}}</span></h1>
-      <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">via {{.Chrome.Connection.Name}}{{if not .Chrome.Binding.Enabled}} · disabled{{end}}</p>
-    </div>
-    <a href="{{.Chrome.BasePath}}/runs" class="btn-lotus btn-lotus-secondary">Run history</a>
+{{template "component_header" (dict "Component" .Chrome.Component "ProjectName" .Chrome.Project.Name "ProjectURL" .Chrome.ProjectURL "URL" .Chrome.ComponentURL)}}
+{{template "metric_tabs" (dict "Active" .Chrome.Binding.Kind "Tabs" .Chrome.Tabs)}}
+{{$b := .Chrome.Binding}}
+<div class="lotus-binding-bar">
+  <div class="lotus-binding-meta">
+    <h2>{{.KindLabel}}</h2>
+    <span class="lotus-binding-key">{{$b.ExternalKey}}</span>
+    <span class="lotus-binding-via">via {{.Chrome.Connection.Name}}{{if not $b.Enabled}} · disabled{{end}}</span>
   </div>
-</header>
+  {{$syncs := eq (printf "%v" .Section) "syncs"}}
+  <nav class="lotus-seg" aria-label="{{.KindLabel}} views">
+    <a href="{{.Chrome.BasePath}}" class="lotus-seg-item{{if not $syncs}} is-active{{end}}"{{if not $syncs}} aria-current="page"{{end}}>Overview</a>
+    <a href="{{.Chrome.BasePath}}/runs" class="lotus-seg-item{{if $syncs}} is-active{{end}}"{{if $syncs}} aria-current="page"{{end}}>Syncs</a>
+  </nav>
+  <div class="lotus-binding-actions">
+    <span id="test-result-{{$b.ID}}" class="lotus-binding-result"></span>
+    <button type="button" class="btn-lotus btn-lotus-secondary btn-lotus-sm"
+            hx-post="/bindings/{{$b.ID}}/test-ui" hx-target="#test-result-{{$b.ID}}" hx-swap="innerHTML">Test</button>
+    <form method="post" action="/bindings/{{$b.ID}}/{{if $b.Enabled}}disable-ui{{else}}enable-ui{{end}}">
+      <button type="submit" class="btn-lotus btn-lotus-secondary btn-lotus-sm">{{if $b.Enabled}}Disable{{else}}Enable{{end}}</button>
+    </form>
+    <form method="post" action="/bindings/{{$b.ID}}/delete-ui" onsubmit="return confirm('Remove this binding?')">
+      <button type="submit" class="btn-lotus btn-lotus-sm btn-lotus-danger-soft">Delete</button>
+    </form>
+  </div>
+</div>
 {{end}}

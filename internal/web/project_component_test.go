@@ -164,9 +164,9 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 		t.Fatalf("POST bind: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects/p/components/c" {
+	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects/p/components/c/metrics/gitlab" {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d → %q, want 302 to the component:\n%s", resp.StatusCode, resp.Header.Get("Location"), body)
+		t.Fatalf("status = %d → %q, want 302 to the component's GitLab tab:\n%s", resp.StatusCode, resp.Header.Get("Location"), body)
 	}
 
 	var connCount, bindingCount int
@@ -185,8 +185,9 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 		t.Errorf("bindings matching = %d, want 1", bindingCount)
 	}
 
-	// The component page now shows the binding, no longer the empty state.
-	compResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p/components/c", raw))
+	// The component now opens on the binding's tab, no longer the empty
+	// state.
+	compResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p/components/c/metrics/gitlab", raw))
 	if err != nil {
 		t.Fatalf("GET component page: %v", err)
 	}

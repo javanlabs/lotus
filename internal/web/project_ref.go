@@ -16,7 +16,7 @@ import (
 //	/projects/{project-slug}/…
 //	/projects/{project-slug}/metrics/{kind}
 //	/projects/{project-slug}/components/{component-slug}/…
-//	/projects/{project-slug}/components/{component-slug}/metrics/{binding-id}/…
+//	/projects/{project-slug}/components/{component-slug}/metrics/{kind}/…
 //
 // Every link the app builds comes from the helpers below, never from
 // concatenation at the call site, so the scheme lives in one place.
@@ -103,8 +103,12 @@ func componentURL(p *repo.Project, comp *repo.Component) string {
 	return projectURL(p) + "/components/" + urlRef(comp.Slug, comp.ID, reservedComponentSlugs)
 }
 
-func metricURL(p *repo.Project, comp *repo.Component, bindingID uuid.UUID) string {
-	return componentURL(p, comp) + "/metrics/" + bindingID.String()
+// metricURL is a component's page for one integration kind. A component
+// has at most one live binding per kind (migration 00035), so the kind
+// names it; the binding-id form it replaced redirects here
+// (canonicalMetricURL).
+func metricURL(p *repo.Project, comp *repo.Component, kind string) string {
+	return componentURL(p, comp) + "/metrics/" + kind
 }
 
 // projectMetricURL is a project's page for one integration kind: every

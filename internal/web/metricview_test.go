@@ -122,6 +122,29 @@ func TestBuildSonarDetailView_FailureThresholds(t *testing.T) {
 	if !v.DuplicationsFailed {
 		t.Error("DuplicationsFailed = false for 35% (> 30 threshold)")
 	}
+	// The panel's pills: the gate worded as the project page words it, the
+	// ratings toned as its R · S · M column tones them; counts carry
+	// separators.
+	if v.Gate != (badgeCell{Text: "Quality gate failed", Tone: "fail"}) {
+		t.Errorf("Gate = %+v", v.Gate)
+	}
+	wantRatings := []sonarRating{
+		{"Reliability", sonarGrade("C", "Reliability")}, {"Security", sonarGrade("B", "Security")}, {"Maintainability", sonarGrade("A", "Maintainability")},
+	}
+	if len(v.Ratings) != 3 {
+		t.Fatalf("Ratings = %+v", v.Ratings)
+	}
+	for i, w := range wantRatings {
+		if v.Ratings[i] != w {
+			t.Errorf("Ratings[%d] = %+v, want %+v", i, v.Ratings[i], w)
+		}
+	}
+	if v.Ratings[0].Badge.Tone != "fail" || v.Ratings[2].Badge.Tone != "pass" {
+		t.Errorf("rating tones = %+v", v.Ratings)
+	}
+	if v.NCLOC != "12,000" || v.Complexity != "500" {
+		t.Errorf("NCLOC/Complexity = %q/%q, want 12,000/500", v.NCLOC, v.Complexity)
+	}
 }
 
 func TestBuildSonarDetailView_PassingThresholdsAtTheBoundary(t *testing.T) {
@@ -130,8 +153,8 @@ func TestBuildSonarDetailView_PassingThresholdsAtTheBoundary(t *testing.T) {
 		CodeSmells: intPtr(100), DuplicatedLinesDensity: floatPtr(30.0),
 	}
 	v := buildSonarDetailView(snap)
-	if !v.QualityGatePass {
-		t.Error("QualityGatePass = false for OK gate")
+	if !v.QualityGatePass || v.Gate != (badgeCell{Text: "Quality gate passed", Tone: "pass"}) {
+		t.Errorf("OK gate = %v / %+v", v.QualityGatePass, v.Gate)
 	}
 	if v.CoverageFailed || v.BugsFailed || v.VulnerabilitiesFailed || v.CodeSmellsFailed || v.DuplicationsFailed {
 		t.Errorf("thresholds are exclusive (< / >), so exactly-at-boundary values must pass: %+v", v)

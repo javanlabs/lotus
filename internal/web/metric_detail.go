@@ -56,13 +56,27 @@ type metricChrome struct {
 	Component  repo.Component
 	Binding    repo.Binding
 	Connection repo.Connection
+	// Tabs is the component's metric strip (metric_header draws it), set
+	// by the pages that draw a header; the fragment and form handlers
+	// leave it empty rather than pay for its queries.
+	Tabs []metricTab
 }
 
-// BasePath is this binding's own detail URL — every sub-view (the kind
-// pages, /runs) and template builds its links off this instead of
-// re-formatting slugs and IDs.
+// loadTabs fills Tabs.
+func (m *metricChrome) loadTabs(c *fiber.Ctx, s tenant.Scope) error {
+	tabs, err := loadComponentTabs(c, s, &m.Project, &m.Component)
+	if err != nil {
+		return err
+	}
+	m.Tabs = tabs
+	return nil
+}
+
+// BasePath is this binding's own detail URL, by kind — every sub-view
+// (the kind pages, /runs, /charts, Trivy notes) and template builds its
+// links off this instead of re-formatting slugs and kinds.
 func (m metricChrome) BasePath() string {
-	return metricURL(&m.Project, &m.Component, m.Binding.ID)
+	return metricURL(&m.Project, &m.Component, m.Binding.Kind)
 }
 
 // ProjectURL and ComponentURL are the metric header's breadcrumb links.
@@ -70,29 +84,34 @@ func (m metricChrome) ProjectURL() string { return projectURL(&m.Project) }
 
 func (m metricChrome) ComponentURL() string { return componentURL(&m.Project, &m.Component) }
 
-// legacyMetricBase is the detail pages' old address, keyed by three ids;
-// metricBase replaced it.
+// metricBase names the metric by kind — or, in links made before that, by
+// binding id, which canonicalMetricURL moves to the kind. legacyMetricBase
+// is the older address, keyed by three ids.
 const (
-	metricBase       = "/projects/:id/components/:cid/metrics/:binding_id"
+	metricParam      = "metric"
+	metricBase       = "/projects/:id/components/:cid/metrics/:" + metricParam
 	legacyMetricBase = "/p/:project_id/c/:component_id/m/:binding_id"
 )
 
 // resolveMetricChrome loads and cross-validates the three path segments,
-// from metricBase (project and component by slug or id) or
-// legacyMetricBase (by id). Each lookup is independently RLS-scoped, so a
-// binding_id from another organization already 404s there; the extra
-// parent-matches-child checks catch a same-org URL whose segments were
-// swapped or don't actually nest (e.g. a copy-pasted component under the
-// wrong project) — a structural integrity check, not a second security
-// boundary. Anything not found is repo.ErrNotFound, so callers answer it
-// with writeRepoErr like any other repo error.
+// from metricBase (project and component by slug or id, the metric by
+// kind or binding id) or legacyMetricBase (by id). A kind resolves to the
+// component's live binding of it (one at most, migration 00035); an
+// unknown kind, or one the component has not bound, is not found. Each
+// lookup is independently RLS-scoped, so a binding_id from another
+// organization already 404s there; the extra parent-matches-child checks
+// catch a same-org URL whose segments were swapped or don't actually nest
+// (e.g. a copy-pasted component under the wrong project) — a structural
+// integrity check, not a second security boundary. Anything not found is
+// repo.ErrNotFound, so callers answer it with writeRepoErr like any other
+// repo error.
 func resolveMetricChrome(c *fiber.Ctx, s tenant.Scope) (*metricChrome, error) {
-	pparam, cparam := projectParam, componentParam
+	pparam, cparam, mparam := projectParam, componentParam, metricParam
 	if c.Params("project_id") != "" {
-		pparam, cparam = "project_id", legacyComponentParam
+		pparam, cparam, mparam = "project_id", legacyComponentParam, "binding_id"
 	}
-	bindingID, err := uuid.Parse(c.Params("binding_id"))
-	if err != nil {
+	ref := c.Params(mparam)
+	if !isIDRef(ref) && !isValidKind(ref) {
 		return nil, repo.ErrNotFound
 	}
 
@@ -104,7 +123,12 @@ func resolveMetricChrome(c *fiber.Ctx, s tenant.Scope) (*metricChrome, error) {
 	if err != nil {
 		return nil, repoNotFound(err)
 	}
-	binding, err := repo.BindingByID(c.Context(), s, bindingID)
+	var binding *repo.Binding
+	if isIDRef(ref) {
+		binding, err = repo.BindingByID(c.Context(), s, uuid.MustParse(ref))
+	} else {
+		binding, err = repo.ActiveBindingForKind(c.Context(), s, component.ID, ref)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +141,37 @@ func resolveMetricChrome(c *fiber.Ctx, s tenant.Scope) (*metricChrome, error) {
 	}
 
 	return &metricChrome{Project: *project, Component: *component, Binding: *binding, Connection: *connection}, nil
+}
+
+// canonicalMetricURL answers a GET of a metric page named by any id — the
+// project's, the component's, or the binding's in place of the kind —
+// with one 301 to its slug-and-kind URL plus suffix ("", "/runs",
+// "/charts"), keeping the query. It stands in for canonicalURL on these
+// routes, so a link carrying all three ids moves in one hop rather than
+// two. Anything else (a form post) is served by id as before.
+func canonicalMetricURL(suffix string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
+			return c.Next()
+		}
+		if !isIDRef(c.Params(projectParam)) && !isIDRef(c.Params(componentParam)) && !isIDRef(c.Params(metricParam)) {
+			return c.Next()
+		}
+		s, err := mustScope(c)
+		if err != nil {
+			return err
+		}
+		chrome, err := resolveMetricChrome(c, s)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+		to := chrome.BasePath() + suffix
+		if to == c.Path() {
+			// An entity whose slug cannot be routed keeps its id URL.
+			return c.Next()
+		}
+		return redirectPermanent(c, to)
+	}
 }
 
 // repoNotFound turns the resolvers' fiber 404 back into repo.ErrNotFound.
@@ -143,6 +198,9 @@ func metricDetailPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
+		if err := chrome.loadTabs(c, s); err != nil {
+			return writeRepoErr(c, err)
+		}
 		org, user, err := shellChrome(c, d.DB)
 		if err != nil {
 			return err
@@ -157,7 +215,7 @@ func metricDetailPage(d Deps) fiber.Handler {
 		}
 		nav := buildNav("projects", len(projects))
 		nav.Trail = componentTrail(folders, &chrome.Project, &chrome.Component,
-			httpx.NavCrumb{Label: chrome.Binding.Kind})
+			httpx.NavCrumb{Label: kindLabels[chrome.Binding.Kind]})
 
 		switch chrome.Binding.Kind {
 		case "gitlab":
@@ -242,6 +300,9 @@ func runHistoryPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
+		if err := chrome.loadTabs(c, s); err != nil {
+			return writeRepoErr(c, err)
+		}
 		org, user, err := shellChrome(c, d.DB)
 		if err != nil {
 			return err
@@ -262,11 +323,11 @@ func runHistoryPage(d Deps) fiber.Handler {
 		}
 		nav := buildNav("projects", len(projects))
 		nav.Trail = componentTrail(folders, &chrome.Project, &chrome.Component,
-			httpx.NavCrumb{Label: chrome.Binding.Kind, Href: chrome.BasePath()},
-			httpx.NavCrumb{Label: "Run history"})
+			httpx.NavCrumb{Label: kindLabels[chrome.Binding.Kind], Href: chrome.BasePath()},
+			httpx.NavCrumb{Label: "Syncs"})
 		c.Type("html")
 		return renderPage(c, d, "pages/metric_runs.html", httpx.ViewData{
-			Title: chrome.Component.Name + " run history", Org: org, User: user, Nav: nav,
+			Title: chrome.Component.Name + " · " + kindLabels[chrome.Binding.Kind] + " syncs", Org: org, User: user, Nav: nav,
 			Data: struct {
 				Chrome    metricChrome
 				KindLabel string
@@ -294,9 +355,9 @@ func legacyMetricRedirect(suffix string) fiber.Handler {
 
 func registerMetricDetailRoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
 	app.Get(metricBase, tenant.RequireTenant(), requireSession, loadPrincipal,
-		authz.Require("dashboard.read"), canonicalURL(), metricDetailPage(d))
+		authz.Require("dashboard.read"), canonicalMetricURL(""), metricDetailPage(d))
 	app.Get(metricBase+"/runs", tenant.RequireTenant(), requireSession, loadPrincipal,
-		authz.Require("dashboard.read"), canonicalURL(), runHistoryPage(d))
+		authz.Require("dashboard.read"), canonicalMetricURL("/runs"), runHistoryPage(d))
 	registerTrivyNoteRoutes(app, metricBase, requireSession, loadPrincipal)
 	registerMetricChartRoutes(app, metricBase, d, requireSession, loadPrincipal)
 

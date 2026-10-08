@@ -1,9 +1,6 @@
 package web
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 
@@ -16,21 +13,12 @@ import (
 	"github.com/uyab/lotus/internal/tenant"
 )
 
-// bindingRow is one metric binding as the component page shows it —
-// resolved connection name/provider alongside the raw repo.Binding, since
-// a binding only carries connection_id. LastStatus is pre-dereferenced
-// (repo.Binding.LastStatus is *string, nullable) — html/template prints a
-// non-nil pointer as its address, not its pointee, so every *T field a
-// template touches must be flattened to a plain value here first.
-type bindingRow struct {
-	repo.Binding
-	ConnectionName string
-	KindLabel      string
-	LastStatus     string
-	URL            string // the binding's metric detail page
-}
-
-// componentPage is GET /projects/:id/components/:cid.
+// componentPage is GET /projects/:id/components/:cid. A component's page
+// is its metrics, one tab per kind: it opens on the first kind it has
+// bound, in bindableKinds order — SonarQube when there is one — by a
+// redirect (302, not 301: which kind that is changes as bindings do).
+// Only a component with nothing bound is drawn here: its header, the
+// strip of unbound tabs, and the way to bind one.
 func componentPage(d Deps) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		s, err := mustScope(c)
@@ -41,6 +29,14 @@ func componentPage(d Deps) fiber.Handler {
 		if err != nil {
 			return err
 		}
+		bindings, err := repo.ListBindingsForComponent(c.Context(), s, comp.ID, false)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+		if kind := firstBoundKind(bindings); kind != "" {
+			return c.Redirect(metricURL(project, comp, kind), fiber.StatusFound)
+		}
+
 		org, user, err := shellChrome(c, d.DB)
 		if err != nil {
 			return err
@@ -49,47 +45,6 @@ func componentPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-
-		bindings, err := repo.ListBindingsForComponent(c.Context(), s, comp.ID, false)
-		if err != nil {
-			return writeRepoErr(c, err)
-		}
-		conns, err := repo.ListConnections(c.Context(), s)
-		if err != nil {
-			return writeRepoErr(c, err)
-		}
-		connNames := make(map[uuid.UUID]string, len(conns))
-		for _, cn := range conns {
-			connNames[cn.ID] = cn.Name
-		}
-		rows := make([]bindingRow, 0, len(bindings))
-		for _, b := range bindings {
-			lastStatus := ""
-			if b.LastStatus != nil {
-				lastStatus = *b.LastStatus
-			}
-			rows = append(rows, bindingRow{
-				Binding: b, ConnectionName: connNames[b.ConnectionID], KindLabel: kindLabels[b.Kind], LastStatus: lastStatus,
-				URL: metricURL(project, comp, b.ID),
-			})
-		}
-
-		metric, err := repo.GetComponentMetric(c.Context(), s, comp.ID)
-		var current *repo.ComponentMetric
-		tone, scoreText := "none", ""
-		switch {
-		case err == nil:
-			current = metric
-			tone = toneOf(metric.StatusValue())
-			if metric.Score != nil {
-				scoreText = fmt.Sprintf("%d", *metric.Score)
-			}
-		case errors.Is(err, repo.ErrNotFound):
-			// never collected yet — current stays nil, template shows "–"
-		default:
-			return writeRepoErr(c, err)
-		}
-
 		folders, err := repo.ListFolders(c.Context(), s)
 		if err != nil {
 			return writeRepoErr(c, err)
@@ -103,13 +58,10 @@ func componentPage(d Deps) fiber.Handler {
 				Project    repo.Project
 				URL        string // the component's own page; its links hang off it
 				ProjectURL string
-				Bindings   []bindingRow
-				Metric     *repo.ComponentMetric
-				Tone       string
-				ScoreText  string
-				Kinds      []string
-				KindLabel  map[string]string
-			}{Component: *comp, Project: *project, URL: componentURL(project, comp), ProjectURL: projectURL(project), Bindings: rows, Metric: current, Tone: tone, ScoreText: scoreText, Kinds: bindableKinds, KindLabel: kindLabels},
+				// Tabs is the component's metric strip, every kind unbound.
+				Tabs []metricTab
+			}{Component: *comp, Project: *project, URL: componentURL(project, comp), ProjectURL: projectURL(project),
+				Tabs: componentTabs(project, comp, nil, nil)},
 		})
 	}
 }
@@ -131,7 +83,7 @@ func setBindingEnabledUI(enabled bool) fiber.Handler {
 		if err := repo.SetBindingEnabled(c.Context(), s, id, enabled); err != nil {
 			return writeRepoErr(c, err)
 		}
-		return redirectToBindingComponent(c, s, binding)
+		return redirectToBindingComponent(c, s, binding, binding.Kind)
 	}
 }
 
@@ -152,12 +104,16 @@ func deleteBindingUI() fiber.Handler {
 		if err := repo.SoftDeleteBinding(c.Context(), s, id); err != nil {
 			return writeRepoErr(c, err)
 		}
-		return redirectToBindingComponent(c, s, binding)
+		// The kind is gone: back to the component, which opens on whatever
+		// it still has bound.
+		return redirectToBindingComponent(c, s, binding, "")
 	}
 }
 
-// redirectToBindingComponent ends a binding action on its component's page.
-func redirectToBindingComponent(c *fiber.Ctx, s tenant.Scope, binding *repo.Binding) error {
+// redirectToBindingComponent ends a binding action on its component's
+// metric page for kind — the page the action was taken from — or, with
+// kind "", on the component's page.
+func redirectToBindingComponent(c *fiber.Ctx, s tenant.Scope, binding *repo.Binding, kind string) error {
 	comp, err := repo.ComponentByID(c.Context(), s, binding.ComponentID)
 	if err != nil {
 		return writeRepoErr(c, err)
@@ -165,6 +121,9 @@ func redirectToBindingComponent(c *fiber.Ctx, s tenant.Scope, binding *repo.Bind
 	project, err := repo.ProjectByID(c.Context(), s, comp.ProjectID)
 	if err != nil {
 		return writeRepoErr(c, err)
+	}
+	if kind != "" {
+		return c.Redirect(metricURL(project, comp, kind), fiber.StatusFound)
 	}
 	return c.Redirect(componentURL(project, comp), fiber.StatusFound)
 }

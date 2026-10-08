@@ -13,7 +13,7 @@
   <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{len $p.Rows}} of {{$p.ComponentCount}} component{{if ne $p.ComponentCount 1}}s{{end}} bound</p>
 </header>
 
-{{template "metric_tabs" (dict "Active" $p.Kind "Score" $p.Score "KPIs" $p.KPIs "Stats" $p.Stats)}}
+{{template "metric_tabs" (dict "Active" $p.Kind "Tabs" $p.MetricTabs "Stats" $p.Stats)}}
 
 {{if not $p.Rows}}
 {{template "lotus_card_section_open" (dict "Padding" "32px" "Style" "display:flex;flex-direction:column;gap:8px;max-width:560px")}}

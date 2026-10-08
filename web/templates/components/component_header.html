@@ -1,0 +1,17 @@
+{{/* component_header is the top of every page of a component — its own
+     page (the Overview tab) and each metric page beneath it — so the name,
+     the action and the metric tabs under it stay exactly where they were
+     when the reader switches tab. Takes (dict "Component" repo.Component
+     "ProjectName" string "ProjectURL" string "URL" the component's page). */}}
+{{define "component_header"}}
+<header style="display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin-bottom:18px">
+  <div style="flex:1;min-width:min(220px,100%)">
+    <p style="margin:0 0 4px;font-size:11px;color:#9CA3AF"><a href="{{.ProjectURL}}" style="color:#9CA3AF">{{.ProjectName}}</a></p>
+    <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E;overflow-wrap:anywhere">{{.Component.Name}}</h1>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{.Component.Kind}}{{if .Component.Language}} · {{.Component.Language}}{{end}}</p>
+  </div>
+  <a href="{{.URL}}/bind" class="btn-lotus btn-lotus-primary">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Bind metric
+  </a>
+</header>
+{{end}}

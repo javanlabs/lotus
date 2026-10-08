@@ -202,7 +202,7 @@ func newKindPage(project *repo.Project, kind string, components []componentInfo,
 		bound[comp.ID] = true
 		row := kindRow{
 			Name: comp.Name, ExternalKey: bd.ExternalKey, Tone: "none",
-			Href: metricURL(project, &repo.Component{ID: comp.ID, Slug: comp.Slug}, bd.BindingID),
+			Href: metricURL(project, &repo.Component{ID: comp.ID, Slug: comp.Slug}, kind),
 		}
 		stale := ""
 		if cm, has := metrics[comp.ID]; has {

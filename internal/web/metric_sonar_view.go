@@ -20,8 +20,13 @@ import (
 type sonarDetailView struct {
 	HasData bool
 
-	QualityGate           string
-	QualityGatePass       bool
+	QualityGate     string
+	QualityGatePass bool
+	// Gate is the quality gate as a pill ("passed"/"failed"), worded as
+	// the project's SonarQube page words it.
+	Gate badgeCell
+	// Ratings are reliability, security and maintainability as pills.
+	Ratings               []sonarRating
 	Coverage              string
 	CoverageFailed        bool
 	Bugs                  string
@@ -44,6 +49,12 @@ type sonarDetailView struct {
 	CapturedAt            string
 }
 
+// sonarRating is one SonarQube rating, labelled, as its letter's pill.
+type sonarRating struct {
+	Label string
+	Badge badgeCell
+}
+
 // sonarPct/sonarInt/sonarFloat render a nullable Sonar metric the same
 // "–" when absent, otherwise formatted, pattern the legacy pct()/intStr()
 // helpers used — kept here rather than shared with GitLab's helpers
@@ -55,11 +66,13 @@ func sonarPct(v *float64) string {
 	return fmt.Sprintf("%.1f%%", *v)
 }
 
+// sonarInt writes a count with comma separators ("18,250"), as the
+// project's SonarQube page does.
 func sonarInt(v *int) string {
 	if v == nil {
 		return "–"
 	}
-	return fmt.Sprintf("%d", *v)
+	return thousands(int64(*v))
 }
 
 func sonarStr(v *string) string {
@@ -103,6 +116,14 @@ func buildSonarDetailView(snap *repo.SonarSnapshot) sonarDetailView {
 
 	v.QualityGate = sonarStr(snap.QualityGate)
 	v.QualityGatePass = snap.QualityGate != nil && *snap.QualityGate == "OK"
+	switch v.QualityGate {
+	case "OK":
+		v.Gate = badgeCell{Text: "Quality gate passed", Tone: "pass"}
+	case "ERROR", "WARN":
+		v.Gate = badgeCell{Text: "Quality gate failed", Tone: "fail"}
+	default:
+		v.Gate = badgeCell{Text: "No quality gate", Tone: "none"}
+	}
 
 	v.Coverage = sonarPct(snap.Coverage)
 	v.CoverageFailed = snap.Coverage != nil && *snap.Coverage < 90
@@ -126,6 +147,11 @@ func buildSonarDetailView(snap *repo.SonarSnapshot) sonarDetailView {
 	v.Reliability = sonarStr(snap.ReliabilityRating)
 	v.Security = sonarStr(snap.SecurityRating)
 	v.Maintainability = sonarStr(snap.SqaleRating)
+	for _, r := range []struct{ label, letter string }{
+		{"Reliability", v.Reliability}, {"Security", v.Security}, {"Maintainability", v.Maintainability},
+	} {
+		v.Ratings = append(v.Ratings, sonarRating{Label: r.label, Badge: sonarGrade(r.letter, r.label)})
+	}
 	v.Languages = sonarStr(snap.Languages)
 
 	if snap.TestExecutionTimeMs != nil {

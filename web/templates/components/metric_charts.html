@@ -1,29 +1,32 @@
 {{/* metric_charts (task 4.6): one chart per active numeric metric_keys
-     row for a binding, plus the 7d/30d range selector. Registered as a
-     component (not a partials/ fragment) specifically so the exact same
-     definition serves both a full page's first render and the htmx swap
-     target when the range selector changes — see httpx.Renderer.RenderNamed.
+     row for a binding, plus the 7d/30d range selector, in one panel — the
+     selector in its head, the charts divided by hairlines in its body
+     rather than a card each. Registered as a component (not a partials/
+     fragment) specifically so the exact same definition serves both a
+     full page's first render and the htmx swap target when the range
+     selector changes — see httpx.Renderer.RenderNamed.
      Takes (dict "Cards" []metricChartCard "SelectedRange" "7d"
      "RangeOptions" []string "BasePath" "/projects/.../metrics/..."). */}}
 {{define "metric_charts"}}
-<div id="metric-charts" style="display:flex;flex-direction:column;gap:10px">
-  <div style="display:flex;align-items:center;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:var(--radius-group);padding:3px;width:fit-content">
-    {{$base := .BasePath}}{{$current := .SelectedRange}}
-    {{range .RangeOptions}}
-    <button type="button" hx-get="{{$base}}/charts?range={{.}}" hx-target="#metric-charts" hx-swap="outerHTML"
-            style="padding:var(--pad-button-sm);border-radius:var(--radius-segment);border:none;white-space:nowrap;font-size:12px;cursor:pointer;{{if eq . $current}}font-weight:600;color:#43284E;background:linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%);box-shadow:var(--shadow-segment-thumb){{else}}font-weight:500;color:#6B7280;background:none{{end}}">{{.}}</button>
-    {{end}}
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel" "Attrs" `id="metric-charts"`)}}
+  <div class="lotus-panel-head">
+    <span class="lotus-panel-title">Trends</span>
+    <div class="lotus-panel-tools">
+      <div class="lotus-seg" role="group" aria-label="Range">
+        {{$base := .BasePath}}{{$current := .SelectedRange}}
+        {{range .RangeOptions}}
+        <button type="button" class="lotus-seg-item{{if eq . $current}} is-active{{end}}" hx-get="{{$base}}/charts?range={{.}}" hx-target="#metric-charts" hx-swap="outerHTML">{{.}}</button>
+        {{end}}
+      </div>
+    </div>
   </div>
 
   {{if not .Cards}}
-  {{template "lotus_card_open" (dict "Padding" "32px" "Style" "text-align:center;color:#9CA3AF;font-size:12px")}}
-    No numeric metrics declared for this binding yet.
-  {{template "lotus_card_close" .}}
+  <div class="lotus-panel-empty">No numeric metrics declared for this binding yet.</div>
   {{else}}
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
+  <div class="lotus-panel-charts">
     {{range .Cards}}
-    {{template "lotus_card_open" (dict "Padding" "13px 14px"
-      "Style" (printf "display:flex;flex-direction:column;gap:8px;%s" (ternary .Active "" "opacity:.6")))}}
+    <div class="lotus-panel-chart{{if not .Active}} is-inactive{{end}}">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
         <span style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.Label}}</span>
         {{if .Chart.HasData}}<span class="lotus-text-{{.Chart.Tone}}" style="font-size:15px;font-weight:700;white-space:nowrap">{{.Chart.Latest}}</span>{{end}}
@@ -39,9 +42,9 @@
       {{if not .Active}}
       <div style="font-size:10px;color:#A94D68">not collected since {{.InactiveSince}}</div>
       {{end}}
-    {{template "lotus_card_close" .}}
+    </div>
     {{end}}
   </div>
   {{end}}
-</div>
+{{template "lotus_card_section_close" .}}
 {{end}}

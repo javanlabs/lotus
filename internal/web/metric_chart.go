@@ -135,5 +135,5 @@ func newChartGridData(cards []metricChartCard, rangeKey, basePath string) chartG
 
 func registerMetricChartRoutes(app *fiber.App, base string, d Deps, requireSession, loadPrincipal fiber.Handler) {
 	app.Get(base+"/charts", tenant.RequireTenant(), requireSession, loadPrincipal,
-		authz.Require("dashboard.read"), canonicalURL(), metricChartsFragment(d))
+		authz.Require("dashboard.read"), canonicalMetricURL("/charts"), metricChartsFragment(d))
 }

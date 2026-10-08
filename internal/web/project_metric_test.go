@@ -103,10 +103,10 @@ func (f kindPageFixture) checkKindPage(t *testing.T, kind string, wants ...strin
 	assertStatsBeneathTabs(t, body)
 	project := &repo.Project{ID: f.projectID, Slug: "payments"}
 	for _, row := range []struct {
-		id, binding uuid.UUID
-		slug        string
-	}{{f.billing, f.billingBind, "billing"}, {f.ledger, f.ledgerBind, "ledger"}} {
-		href := metricURL(project, &repo.Component{ID: row.id, Slug: row.slug}, row.binding)
+		id   uuid.UUID
+		slug string
+	}{{f.billing, "billing"}, {f.ledger, "ledger"}} {
+		href := metricURL(project, &repo.Component{ID: row.id, Slug: row.slug}, kind)
 		if !strings.Contains(body, `href="`+href+`"`) {
 			t.Errorf("no row linking to %s", href)
 		}

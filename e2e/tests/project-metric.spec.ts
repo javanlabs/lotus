@@ -69,7 +69,7 @@ async function seedProject(orgId: string): Promise<Record<string, string>> {
         [orgId, bindings[`sentry:${comp}`], comp, gate === 'OK' ? 2 : 11],
       );
     }
-    return { billing, ledger, sonarBilling: bindings[`sonarqube:${billing}`] };
+    return { billing, ledger };
   });
 }
 
@@ -81,7 +81,7 @@ async function expectNoPageScroll(page: Page) {
 test('a metric tab opens its integration across the project, and a row opens its binding', async ({ page, context }) => {
   const { sessionToken, orgId, subdomain } = await seedOwnerSession('project-metric-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
-  const ids = await seedProject(orgId);
+  await seedProject(orgId);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${origin}/projects/payments`);
@@ -118,7 +118,7 @@ test('a metric tab opens its integration across the project, and a row opens its
   await expect(page.locator('.lotus-pm-row').first()).toContainText('ledger-api');
 
   await page.locator('.lotus-pm-row', { hasText: 'billing-api' }).getByRole('link', { name: 'billing-api', exact: true }).click();
-  await expect(page).toHaveURL(`${origin}/projects/payments/components/billing/metrics/${ids.sonarBilling}`);
+  await expect(page).toHaveURL(`${origin}/projects/payments/components/billing/metrics/sonarqube`);
   await expect(page.getByRole('heading', { name: /SonarQube/ })).toBeVisible();
 });
 

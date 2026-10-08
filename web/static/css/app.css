@@ -315,6 +315,13 @@ body {
   background: var(--gradient-button-primary);
   box-shadow: var(--shadow-button-primary);
 }
+/* The compact button rows of actions use (a binding's Test / Disable /
+   Delete): the 11px label those rows already set inline, on a shorter box. */
+.btn-lotus-sm { height: 28px; padding: 0 var(--space-9); font-size: 11px; }
+/* A destructive action that is not the page's primary one: the blush fill
+   and rose label the delete buttons already carry inline. */
+.btn-lotus-danger-soft { background: var(--surface-danger-soft); color: var(--text-danger); }
+.btn-lotus-danger-soft:hover { color: var(--text-danger); box-shadow: inset 0 0 0 1px rgba(158, 43, 71, .2); }
 .btn-lotus-primary:hover { background: var(--gradient-button-primary-hover); }
 .btn-lotus-primary:active { box-shadow: var(--shadow-button-primary-press); }
 .btn-lotus-primary:focus-visible {
@@ -593,8 +600,9 @@ body {
    - the open tab's other numbers sit in the same card under the track, in
      stat_card's typography.
 
-   The score takes 1.35fr and the four kinds 1fr each, as the KPI row has
-   always been laid out; below 840px the track scrolls inside the card. */
+   A lead tab (the project's score) takes 1.35 shares and every other tab
+   one, as the KPI row has always been laid out; a tab never narrows past
+   160px, below which the track scrolls inside the card. */
 .lotus-mt { margin-bottom: 14px; }
 .lotus-mt-scroll {
   overflow-x: auto;
@@ -604,10 +612,10 @@ body {
   padding: 3px;
 }
 .lotus-mt-tabs {
-  display: grid;
-  grid-template-columns: 1.35fr repeat(4, 1fr);
+  display: flex;
   gap: 2px;
-  min-width: 840px;
+  /* Never narrower than its tabs, so the track's fill scrolls with them. */
+  min-width: min-content;
   padding: 3px;
   background: rgba(67, 40, 78, .04);
   border: 1px solid var(--plum-a09);
@@ -616,10 +624,13 @@ body {
 }
 .lotus-mt-tab {
   position: relative;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: 160px;
   border-radius: var(--radius-segment);
   transition: var(--transition-surface);
 }
+.lotus-mt-tab.is-lead { flex-grow: 1.35; }
+.lotus-mt-tab.is-muted .lotus-mt-link { cursor: default; }
 .lotus-mt-tab.is-active {
   background: linear-gradient(180deg, #FFFFFF 0%, #FAF9FB 100%);
   box-shadow: var(--shadow-segment-thumb);
@@ -648,10 +659,16 @@ body {
 .lotus-mt-value { font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
 .lotus-mt-value-brand { color: var(--text-brand); }
 .lotus-mt-unit { font: 500 10px var(--font-mono); color: var(--text-faint); }
-/* MeterBar, as the KPI tiles draw it. */
-.lotus-mt-bar { display: flex; height: 4px; border-radius: 2px; background: var(--ink-100); overflow: hidden; }
+/* MeterBar, as the KPI tiles draw it: coloured runs over the --ink-100
+   track, 2px apart (the score's healthy/failing split); the unfilled
+   remainder is a transparent run. */
+.lotus-mt-bar { display: flex; gap: 2px; height: 4px; border-radius: 2px; background: var(--ink-100); overflow: hidden; }
 .lotus-mt-bar > span { display: block; height: 100%; border-radius: 2px; }
-.lotus-mt-bar-split { gap: 2px; }
+.lotus-mt-bar > .lotus-bar-rest { background: transparent; }
+/* A tab with nothing to show yet (an unbound kind): read as absent, the
+   way "no data" is grey everywhere, but still a link to bind it. */
+.lotus-mt-tab.is-muted .lotus-mt-label,
+.lotus-mt-tab.is-muted .lotus-mt-sub { color: var(--text-faint); }
 .lotus-mt-sub {
   margin-top: 6px;
   overflow: hidden;
@@ -702,6 +719,122 @@ body {
 .lotus-mt-stat-value { margin-top: 7px; font-size: 18px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
 .lotus-mt-stat-neutral { color: var(--text-primary); }
 .lotus-mt-stat-sub { margin-top: 4px; font-size: 10.5px; color: var(--text-muted); }
+
+/* A compact SegmentedControl: the track and thumb qa_subnav draws, value
+   for value, at the 11.5px of the controls it sits among (a metric page's
+   Overview / Syncs, the charts' 7d / 30d). Items are links or buttons. */
+.lotus-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: rgba(67, 40, 78, .04);
+  border: 1px solid var(--plum-a09);
+  border-radius: var(--radius-group);
+  box-shadow: var(--shadow-segment-track);
+}
+.lotus-seg-item {
+  padding: 3px 11px;
+  border: 0;
+  border-radius: var(--radius-segment);
+  background: none;
+  font: 500 11.5px / 16px var(--font-sans);
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: var(--transition-surface);
+}
+.lotus-seg-item:hover { color: var(--text-brand); }
+.lotus-seg-item:focus-visible { outline: none; box-shadow: var(--shadow-focus-ring); }
+.lotus-seg-item.is-active {
+  font-weight: 600;
+  color: var(--text-brand);
+  background: linear-gradient(180deg, #FFFFFF 0%, #FAF9FB 100%);
+  box-shadow: var(--shadow-segment-thumb);
+}
+
+/* A metric page's binding line (components/metric_header.html): what the
+   open tab reads and through which connection, on the left; what can be
+   done to the binding, on the right. Plain text on the page — no card —
+   so it reads as the caption of the panels under it. */
+.lotus-binding-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 12px;
+}
+.lotus-binding-meta {
+  flex: 1;
+  min-width: min(220px, 100%);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.lotus-binding-meta h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.02em; color: var(--text-brand); }
+.lotus-binding-key { font: 400 12px var(--font-mono); color: var(--text-muted); overflow-wrap: anywhere; }
+.lotus-binding-via { font-size: 11.5px; color: var(--text-faint); }
+.lotus-binding-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.lotus-binding-result { max-width: 260px; line-height: 1.4; text-align: right; }
+.lotus-binding-result:empty { display: none; }
+
+/* A metric page's panel: one card holding a section's head (title, its
+   state, its controls) over its body, sections divided by a hairline
+   rather than each number on a card of its own (pages/metric_sonar.html,
+   components/metric_charts.html). */
+.lotus-panel { margin-bottom: 12px; overflow: hidden; }
+.lotus-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+.lotus-panel-title { font-size: 13px; font-weight: 600; color: var(--text-brand); }
+.lotus-panel-note { font-size: 11px; color: var(--text-faint); }
+.lotus-panel-tools { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.lotus-panel-empty { padding: 32px 14px; text-align: center; font-size: 12.5px; color: var(--text-muted); }
+/* Figures in a grid, label over value, no dividers: whitespace groups
+   them, the panel's hairlines separate sections. Four to a row, so eight
+   read as two even rows; two to a row on a narrow screen. */
+.lotus-panel-figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px 18px;
+  padding: 14px 14px 16px;
+}
+@media (max-width: 900px) { .lotus-panel-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.lotus-panel-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 22px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-hairline);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.lotus-panel-foot dt { font: 600 9.5px var(--font-mono); letter-spacing: .09em; color: var(--text-faint); text-transform: uppercase; }
+.lotus-panel-foot dl { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; margin: 0; }
+.lotus-panel-foot dd { margin: 0; color: var(--text-primary); }
+/* Charts in one panel: each cell closes itself with a hairline right and
+   below, and the grid's own overflow clips the ones on its edge. */
+.lotus-panel-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); overflow: hidden; }
+.lotus-panel-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  box-shadow: 1px 0 0 var(--border-hairline), 0 1px 0 var(--border-hairline);
+}
+.lotus-panel-chart.is-inactive { opacity: .6; }
 
 /* A project's page per integration (pages/project_metric.html). */
 /* Its rows hold two-line cells (a value and a muted note under it), so

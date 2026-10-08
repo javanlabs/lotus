@@ -1,6 +1,6 @@
 {{define "content"}}
 {{template "shell_open" .}}
-{{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" .Data.KindLabel)}}
+{{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" .Data.KindLabel "Section" "syncs")}}
 
 {{if not .Data.Runs}}
 {{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}

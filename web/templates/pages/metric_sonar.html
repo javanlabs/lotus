@@ -1,59 +1,49 @@
+{{/* metric_sonar is a component's SonarQube tab: one panel for the
+     snapshot — the quality gate and when it was scanned in its head, the
+     figures under it, the ratings and the rest in its foot — and one for
+     the charts. Sections divide by a hairline inside the panel, not by a
+     card per number. */}}
 {{define "content"}}
 {{template "shell_open" .}}
 {{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" "SonarQube")}}
+{{$v := .Data.View}}
 
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-  {{if .Data.SelectedDate}}
-  <span style="font-size:11px;padding:4px 9px;border-radius:5px 2px 5px 2px;background:#E6F2F4;color:#23808F">📅 snapshot as of {{.Data.SelectedDate}} — not the latest</span>
-  {{end}}
-  {{if .Data.Dates}}
-  <form method="get" style="margin-left:auto">
-    {{template "lotus_select" (dict
-      "Name" "date" "Value" .Data.SelectedDate "Size" "sm" "AutoSubmit" true "Label" "Snapshot date"
-      "Options" (selectOptions (dict "Value" "" "Label" "📅 Latest") .Data.Dates))}}
-  </form>
-  {{end}}
-</div>
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel")}}
+  <div class="lotus-panel-head">
+    {{if $v.HasData}}{{template "status_badge" $v.Gate}}{{else}}<span class="lotus-panel-title">Snapshot</span>{{end}}
+    <span class="lotus-panel-note">
+      {{if .Data.SelectedDate}}As of {{.Data.SelectedDate}}, not the latest{{if $v.HasData}} · {{end}}{{end}}
+      {{if $v.HasData}}last scan {{$v.LastScanAt}} · captured {{$v.CapturedAt}}{{end}}
+    </span>
+    {{if .Data.Dates}}
+    <form method="get" class="lotus-panel-tools">
+      {{template "lotus_select" (dict
+        "Name" "date" "Value" .Data.SelectedDate "Size" "sm" "AutoSubmit" true "Label" "Snapshot date"
+        "Options" (selectOptions (dict "Value" "" "Label" "Latest") .Data.Dates))}}
+    </form>
+    {{end}}
+  </div>
 
-{{if not .Data.View.HasData}}
-{{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
-  {{if .Data.SelectedDate}}No SonarQube snapshot exists for this repository on {{.Data.SelectedDate}}.{{else}}No SonarQube data collected for this repository yet.{{end}}
+  {{if not $v.HasData}}
+  <div class="lotus-panel-empty">{{if .Data.SelectedDate}}No SonarQube snapshot exists for this repository on {{.Data.SelectedDate}}.{{else}}No SonarQube data collected for this repository yet.{{end}}</div>
+  {{else}}
+  <div class="lotus-panel-figures">
+    {{template "sonar_figure" (dict "Label" "COVERAGE" "Value" $v.Coverage "Tone" (ternary $v.CoverageFailed "fail" "pass"))}}
+    {{template "sonar_figure" (dict "Label" "BUGS" "Value" $v.Bugs "Tone" (ternary $v.BugsFailed "fail" "pass"))}}
+    {{template "sonar_figure" (dict "Label" "VULNERABILITIES" "Value" $v.Vulnerabilities "Tone" (ternary $v.VulnerabilitiesFailed "fail" "pass"))}}
+    {{template "sonar_figure" (dict "Label" "CODE SMELLS" "Value" $v.CodeSmells "Tone" (ternary $v.CodeSmellsFailed "fail" "pass"))}}
+    {{template "sonar_figure" (dict "Label" "SECURITY HOTSPOTS" "Value" $v.SecurityHotspots "Tone" "none")}}
+    {{template "sonar_figure" (dict "Label" "DUPLICATIONS" "Value" $v.Duplications "Tone" (ternary $v.DuplicationsFailed "fail" "pass"))}}
+    {{template "sonar_figure" (dict "Label" "LINES OF CODE" "Value" $v.NCLOC "Tone" "none")}}
+    {{template "sonar_figure" (dict "Label" "COMPLEXITY" "Value" $v.Complexity "Tone" "none")}}
+  </div>
+  <div class="lotus-panel-foot">
+    {{range $v.Ratings}}<dl><dt>{{.Label}}</dt><dd>{{template "status_badge" .Badge}}</dd></dl>{{end}}
+    <dl><dt>Languages</dt><dd>{{$v.Languages}}</dd></dl>
+    <dl><dt>Test time</dt><dd>{{$v.TestDuration}}</dd></dl>
+  </div>
+  {{end}}
 {{template "lotus_card_section_close" .}}
-{{else}}
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-  <span class="lotus-badge {{if .Data.View.QualityGatePass}}lotus-badge-pass{{else}}lotus-badge-fail{{end}}" style="font-size:11px;padding:5px 12px">Quality gate: {{.Data.View.QualityGate}}</span>
-  <span style="font-size:11px;color:#9CA3AF">last scan {{.Data.View.LastScanAt}} · snapshot captured {{.Data.View.CapturedAt}}</span>
-</div>
-
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">
-  {{template "stat_card" dict "Label" "COVERAGE" "Value" .Data.View.Coverage "Tone" (ternary .Data.View.CoverageFailed "fail" "pass")}}
-  {{template "stat_card" dict "Label" "BUGS" "Value" .Data.View.Bugs "Tone" (ternary .Data.View.BugsFailed "fail" "pass")}}
-  {{template "stat_card" dict "Label" "VULNERABILITIES" "Value" .Data.View.Vulnerabilities "Tone" (ternary .Data.View.VulnerabilitiesFailed "fail" "pass")}}
-  {{template "stat_card" dict "Label" "CODE SMELLS" "Value" .Data.View.CodeSmells "Tone" (ternary .Data.View.CodeSmellsFailed "fail" "pass")}}
-</div>
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
-  {{template "stat_card" dict "Label" "SECURITY HOTSPOTS" "Value" .Data.View.SecurityHotspots "Tone" "none"}}
-  {{template "stat_card" dict "Label" "DUPLICATIONS" "Value" .Data.View.Duplications "Tone" (ternary .Data.View.DuplicationsFailed "fail" "pass")}}
-  {{template "stat_card" dict "Label" "LINES OF CODE" "Value" .Data.View.NCLOC "Tone" "none"}}
-  {{template "stat_card" dict "Label" "COMPLEXITY" "Value" .Data.View.Complexity "Tone" "none"}}
-</div>
-
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-  {{template "lotus_card_open" (dict "Padding" "16px")}}
-    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:10px">RATINGS</div>
-    <div style="display:flex;gap:18px">
-      <div><div style="font-size:9.5px;color:#9CA3AF">Reliability</div><div style="font-size:18px;font-weight:700;color:#111827">{{.Data.View.Reliability}}</div></div>
-      <div><div style="font-size:9.5px;color:#9CA3AF">Security</div><div style="font-size:18px;font-weight:700;color:#111827">{{.Data.View.Security}}</div></div>
-      <div><div style="font-size:9.5px;color:#9CA3AF">Maintainability</div><div style="font-size:18px;font-weight:700;color:#111827">{{.Data.View.Maintainability}}</div></div>
-    </div>
-  {{template "lotus_card_close" .}}
-  {{template "lotus_card_open" (dict "Padding" "16px")}}
-    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:10px">OTHER</div>
-    <div style="font-size:11.5px;color:#111827">languages: {{.Data.View.Languages}}</div>
-    <div style="margin-top:6px;font-size:11.5px;color:#111827">unit-test execution time: {{.Data.View.TestDuration}}</div>
-  {{template "lotus_card_close" .}}
-</div>
-{{end}}
 
 {{/* Charts read from metric_facts/metric_keys directly (task 3.7), a
      different source than the "current snapshot" view above (sonar_
@@ -65,4 +55,15 @@
 {{template "metric_charts" .Data.Charts}}
 
 {{template "shell_close" .}}
+{{end}}
+
+{{/* sonar_figure is one number of the snapshot panel, in the type the
+     metric strip's panel uses; a figure with no verdict (lines of code)
+     reads as a plain number, grey being for "–". Takes (dict "Label"
+     "Value" "Tone"). */}}
+{{define "sonar_figure"}}
+<div class="lotus-mt-stat">
+  <div class="lotus-mt-stat-label" title="{{.Label}}">{{.Label}}</div>
+  <div class="lotus-mt-stat-value {{if eq .Value "–"}}lotus-text-none{{else if eq .Tone "none"}}lotus-mt-stat-neutral{{else}}lotus-text-{{.Tone}}{{end}}">{{.Value}}</div>
+</div>
 {{end}}

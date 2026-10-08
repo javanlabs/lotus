@@ -38,11 +38,16 @@ func componentPathOf(t *testing.T, db *sqlx.DB, orgID, id uuid.UUID) string {
 	return componentURL(p, comp)
 }
 
-// metricPathOf is a binding's metric page URL, by slugs. The ids may be
-// uuids or their strings, as the fixtures hand them out.
+// metricPathOf is a binding's metric page URL as the app links it: by
+// slugs and the binding's kind. The ids may be uuids or their strings, as
+// the fixtures hand them out.
 func metricPathOf(t *testing.T, db *sqlx.DB, orgID uuid.UUID, componentID, bindingID any) string {
 	t.Helper()
-	return componentPathOf(t, db, orgID, uuid.MustParse(fmt.Sprint(componentID))) + "/metrics/" + fmt.Sprint(bindingID)
+	b, err := repo.BindingByID(context.Background(), tenant.FromRun(db, orgID), uuid.MustParse(fmt.Sprint(bindingID)))
+	if err != nil {
+		t.Fatalf("binding %v: %v", bindingID, err)
+	}
+	return componentPathOf(t, db, orgID, uuid.MustParse(fmt.Sprint(componentID))) + "/metrics/" + b.Kind
 }
 
 // projectPath is projectPathOf in this environment's organization.

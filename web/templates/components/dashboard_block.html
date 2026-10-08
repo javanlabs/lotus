@@ -16,7 +16,7 @@
      object does not. */}}
 {{define "dashboard_block"}}
   {{if .ShowSummary}}
-  {{template "metric_tabs" (dict "Active" "score" "Score" .Score "KPIs" .KPIs)}}
+  {{template "metric_tabs" (dict "Active" "score" "Tabs" .MetricTabs)}}
   {{end}}
 
   {{template "lotus_card_section_open" (dict "Padding" "4px"

@@ -179,7 +179,8 @@ func (h bindWizardHandlers) post(c *fiber.Ctx) error {
 	}
 	_ = scheduler.EnqueueImmediate(c.Context(), h.d.DB, s.OrgID(), binding.ConnectionID, binding.ID, binding.Kind)
 
-	return c.Redirect(componentURL(project, comp), fiber.StatusFound)
+	// Onto the tab just bound, not wherever the component opens.
+	return c.Redirect(metricURL(project, comp, kind), fiber.StatusFound)
 }
 
 // existingBinding is componentID's live binding of kind, or nil.
