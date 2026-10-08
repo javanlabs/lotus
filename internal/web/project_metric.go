@@ -370,9 +370,7 @@ func projectMetricPage(d Deps) fiber.Handler {
 			page = buildGitlabKindPage(base, snaps)
 		}
 
-		trail := append(projectFolderPath(folders, project),
-			httpx.NavCrumb{Label: project.Name, Href: projectURL(project)},
-			httpx.NavCrumb{Label: kindLabels[kind]})
+		trail := projectKindTrail(folders, project, kind)
 		c.Type("html")
 		return renderPage(c, d, "pages/project_metric.html", httpx.ViewData{
 			Title: kindLabels[kind] + " · " + project.Name, Org: org, User: user,

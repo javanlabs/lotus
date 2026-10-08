@@ -107,7 +107,9 @@ func TestProjectRef_ComponentAndMetricURLs(t *testing.T) {
 	if status != http.StatusOK || !strings.Contains(body, `href="/projects/p/components/c/metrics/gitlab/runs"`) {
 		t.Fatalf("metric page by slugs and kind = %d", status)
 	}
-	for _, want := range []string{`href="/projects/p"`, `href="/projects/p/components/c/bind"`} {
+	// The breadcrumb passes through the project's GitLab page: a
+	// component's page for a kind sits under the project's.
+	for _, want := range []string{`href="/projects/p"`, `href="/projects/p/components/c/bind"`, `href="/projects/p/metrics/gitlab"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("metric page missing %s", want)
 		}

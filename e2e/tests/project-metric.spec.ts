@@ -120,6 +120,14 @@ test('a metric tab opens its integration across the project, and a row opens its
   await page.locator('.lotus-pm-row', { hasText: 'billing-api' }).getByRole('link', { name: 'billing-api', exact: true }).click();
   await expect(page).toHaveURL(`${origin}/projects/payments/components/billing/metrics/sonarqube`);
   await expect(page.getByRole('heading', { name: /SonarQube/ })).toBeVisible();
+
+  // The project's SonarQube page stays in the trail, above the component
+  // — going down only added the component — and leads back.
+  const crumbs = page.getByRole('navigation', { name: 'Breadcrumb' });
+  await expect(crumbs).toHaveText(/Payments\s*\/\s*SonarQube\s*\/\s*billing-api\s*$/);
+  await expect(crumbs.locator('[aria-current="page"]')).toHaveText('billing-api');
+  await crumbs.getByRole('link', { name: 'SonarQube', exact: true }).click();
+  await expect(page).toHaveURL(`${origin}/projects/payments/metrics/sonarqube`);
 });
 
 test('the metric tabs stay put while switching between the project and its integrations', async ({ page, context }) => {

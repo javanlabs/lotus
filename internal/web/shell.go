@@ -101,20 +101,45 @@ func projectTrail(folders []repo.Folder, project *repo.Project) []httpx.NavCrumb
 	return append(projectFolderPath(folders, project), httpx.NavCrumb{Label: project.Name})
 }
 
-// componentTrail is the path for anything at or below a component —
-// the project's folder path, then project → component → whatever the
-// caller adds. Callers pass the deeper segments rather than each
-// rebuilding the first ones, so a change to how projects are linked lands
-// in one place.
-func componentTrail(folders []repo.Folder, project *repo.Project, component *repo.Component, deeper ...httpx.NavCrumb) []httpx.NavCrumb {
-	trail := append(projectFolderPath(folders, project),
-		httpx.NavCrumb{Label: project.Name, Href: projectURL(project)})
+// componentTrail is the path for a component's own page — the project's
+// folder path, then project → component. It is drawn only for a component
+// with nothing bound; one with a binding opens on a metric page, whose
+// path is metricTrail.
+func componentTrail(folders []repo.Folder, project *repo.Project, component *repo.Component) []httpx.NavCrumb {
+	return append(projectFolderPath(folders, project),
+		httpx.NavCrumb{Label: project.Name, Href: projectURL(project)},
+		httpx.NavCrumb{Label: component.Name})
+}
+
+// metricTrail is the path for a component's page for one kind, and
+// anything below it: project → the project's page for the kind → the
+// component → whatever the caller adds (Syncs).
+//
+// Kind before component, so the path is the same whichever way the page
+// was reached. From the project's SonarQube page a row opens the
+// component's SonarQube tab, and the trail only grows by the component;
+// the SonarQube crumb before it leads back to every component's
+// SonarQube, side by side. A component-first path (project → component →
+// SonarQube) dropped that page from the trail and named a different page
+// "SonarQube" at its end.
+func metricTrail(folders []repo.Folder, project *repo.Project, component *repo.Component, kind string, deeper ...httpx.NavCrumb) []httpx.NavCrumb {
+	trail := projectKindTrail(folders, project, kind)
+	trail[len(trail)-1].Href = projectMetricURL(project, kind)
 	if len(deeper) == 0 {
-		trail = append(trail, httpx.NavCrumb{Label: component.Name})
-		return trail
+		return append(trail, httpx.NavCrumb{Label: component.Name})
 	}
-	trail = append(trail, httpx.NavCrumb{Label: component.Name, Href: componentURL(project, component)})
+	trail = append(trail, httpx.NavCrumb{Label: component.Name, Href: metricURL(project, component, kind)})
 	return append(trail, deeper...)
+}
+
+// projectKindTrail is the path for a project's page for one kind: the
+// project's folder path, the project, then the kind as the current page.
+// metricTrail starts with it, so a component's page for a kind always
+// sits under the project's.
+func projectKindTrail(folders []repo.Folder, project *repo.Project, kind string) []httpx.NavCrumb {
+	return append(projectFolderPath(folders, project),
+		httpx.NavCrumb{Label: project.Name, Href: projectURL(project)},
+		httpx.NavCrumb{Label: kindLabels[kind]})
 }
 
 // projectFolderPath is every folder the project sits in, outermost first,
