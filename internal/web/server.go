@@ -101,9 +101,19 @@ func New(d Deps) *fiber.App {
 		// on: / is the app. Redirecting rather than rendering the dashboard
 		// here keeps a single canonical URL for it.
 		app.Get("/", authz.Public("redirect only; the dashboard behind it enforces its own session"),
-			func(c *fiber.Ctx) error { return c.Redirect("/projects", fiber.StatusFound) })
+			func(c *fiber.Ctx) error { return c.Redirect("/dashboard", fiber.StatusFound) })
 	} else {
-		app.Get("/", authz.Public("apex placeholder; a real marketing page is not yet scoped"), home(d.Renderer))
+		// An organization's own host is the app, as in single mode; sign-in
+		// returns to / and lands on the dashboard. The apex (and the auth
+		// host) keep the placeholder.
+		landing := home(d.Renderer)
+		app.Get("/", authz.Public("apex placeholder, or a redirect to the dashboard, which enforces its own session"),
+			func(c *fiber.Ctx) error {
+				if _, ok := tenant.OrgFromContext(c); ok {
+					return c.Redirect("/dashboard", fiber.StatusFound)
+				}
+				return landing(c)
+			})
 	}
 
 	authDeps := authn.Deps{

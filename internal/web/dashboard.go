@@ -98,19 +98,16 @@ func plural(n int, singular, plural string) string {
 }
 
 func registerDashboardRoutes(app *fiber.App, d Deps, requireSession, loadPrincipal fiber.Handler) {
-	// /projects, not /dashboard: the list of projects IS the landing page
-	// for now. Registered here — before registerProjectRoutes' JSON
-	// handler for the same path — so the browser gets HTML. See AGENTS.md
-	// on the shadowed JSON endpoints.
+	// The project list. Registered here — before registerProjectRoutes'
+	// JSON handler for the same path — so the browser gets HTML. See
+	// AGENTS.md on the shadowed JSON endpoints.
 	app.Get("/projects", tenant.RequireTenant(), requireSession, loadPrincipal,
 		guestHome, authz.Require("dashboard.read"), dashboardPage(d))
 
-	// Kept so links and bookmarks made while this lived at /dashboard keep
-	// working. Public: it only forwards, and the page it forwards to
-	// enforces its own session.
-	app.Get("/dashboard", tenant.RequireTenant(),
-		authz.Public("permanent forward to /projects; the target enforces the session"),
-		func(c *fiber.Ctx) error { return c.Redirect("/projects", fiber.StatusMovedPermanently) })
+	// The landing page (home_dashboard.go). A guest is sent on to its own
+	// work, as it is from the project list.
+	app.Get("/dashboard", tenant.RequireTenant(), requireSession, loadPrincipal,
+		guestHome, authz.Require("dashboard.read"), homeDashboardPage(d))
 }
 
 func hasFolder(folders []repo.Folder, id uuid.UUID) bool {

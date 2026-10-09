@@ -73,8 +73,9 @@ func guestCrawlCheck(t *testing.T, route string, listed, byID bool, status int) 
 		if status != http.StatusOK && status != http.StatusNotFound && status != http.StatusForbidden {
 			t.Errorf("guest GET %s = %d, want 200, 403 or 404", route, status)
 		}
-	case route == "/projects":
-		// The landing page sends a guest home (TestGuestShell_HomeIsMyWork).
+	case route == "/projects" || route == "/dashboard":
+		// The landing pages send a guest home (TestGuestShell_HomeIsMyWork,
+		// TestHomeDashboard_LandingAndGuests).
 	case strings.HasPrefix(route, "/api/qa/"):
 		// The QA API takes API tokens only; a browser session is
 		// no credential there (TestQAAPI_TokensOnlyAndJSONErrors).

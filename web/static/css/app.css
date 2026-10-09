@@ -359,6 +359,7 @@ body {
 .lotus-status-dot-pass { background: var(--status-pass); }
 .lotus-status-dot-fail { background: var(--status-fail); }
 .lotus-status-dot-none { background: var(--status-none); }
+.lotus-status-dot-warn { background: var(--status-warn); }
 
 .lotus-text-pass { color: var(--status-pass); }
 .lotus-text-fail { color: var(--status-fail); }
@@ -835,6 +836,50 @@ body {
   box-shadow: 1px 0 0 var(--border-hairline), 0 1px 0 var(--border-hairline);
 }
 .lotus-panel-chart.is-inactive { opacity: .6; }
+
+/* The dashboard (pages/dashboard.html): figures that open where they are
+   explained, and the rows of its alert, ranking and activity lists. */
+a.lotus-dash-figure { color: inherit; text-decoration: none; border-radius: var(--radius-segment); }
+a.lotus-dash-figure:hover .lotus-mt-stat-label { color: var(--text-brand); }
+a.lotus-dash-figure:focus-visible { outline: none; box-shadow: var(--shadow-focus-ring); }
+.lotus-dash-list { margin: 0; padding: 0; list-style: none; }
+.lotus-dash-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--row-height);
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+.lotus-dash-row:last-child { border-bottom: 0; }
+.lotus-dash-main { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.lotus-dash-title { font-size: 12.5px; font-weight: 600; color: var(--text-primary); text-decoration: none; overflow-wrap: anywhere; }
+.lotus-dash-title:hover { color: var(--text-brand); text-decoration: underline; }
+.lotus-dash-text { font-size: 12.5px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.lotus-dash-text strong { font-weight: 600; color: var(--text-primary); }
+.lotus-dash-detail { font-size: 11px; color: var(--text-muted); overflow-wrap: anywhere; }
+.lotus-dash-when { flex: none; font: 400 11px var(--font-mono); color: var(--text-faint); white-space: nowrap; }
+.lotus-dash-more { padding: 9px 14px; font-size: 11px; color: var(--text-muted); border-top: 1px solid var(--border-hairline); }
+.lotus-dash-link { font-size: 11.5px; font-weight: 500; color: var(--text-brand); }
+/* Ranked lists side by side, divided by a hairline; one under another on
+   a narrow screen. Each cell closes itself right and below; the grid
+   clips the edge ones, as the chart grid does. */
+.lotus-dash-tops {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  overflow: hidden;
+}
+.lotus-dash-top {
+  min-width: 0;
+  padding: 12px 14px 14px;
+  box-shadow: 1px 0 0 var(--border-hairline), 0 1px 0 var(--border-hairline);
+}
+.lotus-dash-top h3 { margin: 0; }
+.lotus-dash-top ol { margin: 8px 0 0; padding: 0; list-style: none; }
+.lotus-dash-top li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border-hairline); }
+.lotus-dash-top li:last-child { border-bottom: 0; }
+.lotus-dash-rank { flex: none; width: 14px; font: 500 10.5px var(--font-mono); color: var(--text-faint); }
+.lotus-dash-value { flex: none; font: 600 13px var(--font-mono); color: var(--text-primary); }
 
 /* A project's page per integration (pages/project_metric.html). */
 /* Its rows hold two-line cells (a value and a muted note under it), so

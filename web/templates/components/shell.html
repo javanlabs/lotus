@@ -88,7 +88,7 @@
   <main style="flex:1;min-width:0;padding:var(--pad-main)">
 
     <nav aria-label="Breadcrumb" style="display:flex;flex-wrap:wrap;align-items:center;gap:2px 7px;margin-bottom:14px;font-size:11.5px;color:#6B7280;overflow-wrap:anywhere;min-width:0">
-      <a href="{{if .Nav.Guest}}/qa/my{{else}}/projects{{end}}" aria-label="Lotus" style="display:inline-flex;align-items:center;padding:3px 5px;border-radius:5px">{{template "lotus_logo" (dict "ID" "bc" "Width" 20 "Height" 13)}}</a>
+      <a href="{{if .Nav.Guest}}/qa/my{{else}}/dashboard{{end}}" aria-label="Lotus" style="display:inline-flex;align-items:center;padding:3px 5px;border-radius:5px">{{template "lotus_logo" (dict "ID" "bc" "Width" 20 "Height" 13)}}</a>
       <span style="color:#D1D5DB">/</span>
       {{if and .Org .Nav.Trail}}<a href="{{if .Nav.Guest}}/qa/my{{else}}/projects{{end}}" style="color:#6B7280"{{if .Nav.OrgDrop}} class="lotus-crumb-drop" data-drop-folder=""{{end}}>{{.Org.Name}}</a>
       {{else}}<span style="color:#6B7280">{{if .Org}}{{.Org.Name}}{{end}}</span>{{end}}

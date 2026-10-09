@@ -9,12 +9,12 @@ import (
 	"github.com/uyab/lotus/internal/repo"
 )
 
-func TestNav_ProjectsQAIntegrationsMembersActivityOnly(t *testing.T) {
+func TestNav_DashboardProjectsQAIntegrationsMembersActivityOnly(t *testing.T) {
 	var keys []string
 	for _, it := range buildNav("projects", 3).Items {
 		keys = append(keys, it.Key+"="+it.Href)
 	}
-	want := "projects=/projects qa_tools=/qa integrations=/settings/connections members=/settings/members activity=/activity"
+	want := "dashboard=/dashboard projects=/projects qa_tools=/qa integrations=/settings/connections members=/settings/members activity=/activity"
 	if got := strings.Join(keys, " "); got != want {
 		t.Fatalf("nav = %s\nwant  %s", got, want)
 	}

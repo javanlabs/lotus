@@ -204,11 +204,9 @@ func TestNewProject_SubmitCreatesAndRedirects(t *testing.T) {
 	}
 }
 
-// TestDashboardPathStillForwards guards the compatibility redirect left
-// behind when the landing page moved from /dashboard to /projects: links
-// and bookmarks made before the move must keep working, and a silent 404
-// there would look like the app losing a page.
-func TestDashboardPathStillForwards(t *testing.T) {
+// TestDashboardPathIsTheLandingPage: /dashboard, once a forward to the
+// project list, is the page sign-in lands on (home_dashboard.go).
+func TestDashboardPathIsTheLandingPage(t *testing.T) {
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-fwd", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -218,10 +216,7 @@ func TestDashboardPathStillForwards(t *testing.T) {
 		t.Fatalf("request: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusMovedPermanently {
-		t.Fatalf("status = %d, want 301", resp.StatusCode)
-	}
-	if got := resp.Header.Get("Location"); got != "/projects" {
-		t.Fatalf("Location = %q, want /projects", got)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 }

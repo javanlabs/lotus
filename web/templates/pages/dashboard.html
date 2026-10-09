@@ -1,0 +1,108 @@
+{{/* dashboard is where a member lands after signing in
+     (internal/web/home_dashboard.go): the numbers that matter, what needs
+     attention, this month's QA activity per project and person, and the
+     latest issue activity — one column of panels, the metric pages'
+     panel style. .Data is a homeDashboard. */}}
+{{define "content"}}
+{{template "shell_open" .}}
+{{$d := .Data}}
+
+<header style="margin-bottom:18px">
+  <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">Dashboard</h1>
+  <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{$d.Subtitle}}</p>
+</header>
+
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel")}}
+  <div class="lotus-panel-head"><span class="lotus-panel-title">Summary</span></div>
+  <div class="lotus-panel-figures" data-testid="summary">
+    {{range $d.Figures}}
+    {{if .Href}}<a href="{{.Href}}" class="lotus-mt-stat lotus-dash-figure">{{else}}<div class="lotus-mt-stat">{{end}}
+      <div class="lotus-mt-stat-label" title="{{.Label}}">{{.Label}}</div>
+      <div class="lotus-mt-stat-value {{if eq .Tone "neutral"}}lotus-mt-stat-neutral{{else}}lotus-text-{{.Tone}}{{end}}">{{.Value}}</div>
+    {{if .Href}}</a>{{else}}</div>{{end}}
+    {{end}}
+  </div>
+  <div class="lotus-panel-foot">
+    {{range $d.Rates}}<dl title="{{.Info}}"><dt>{{.Label}}</dt><dd><span class="lotus-text-{{.Tone}}" style="font-weight:600">{{.Value}}{{.Unit}}</span></dd></dl>{{end}}
+  </div>
+{{template "lotus_card_section_close" .}}
+
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel" "Attrs" `data-testid="attention"`)}}
+  <div class="lotus-panel-head">
+    <span class="lotus-panel-title">Needs attention</span>
+    {{if $d.Alerts}}<span class="lotus-panel-note">{{len $d.Alerts}}{{if $d.MoreAlerts}}+{{end}} item{{if or (gt (len $d.Alerts) 1) $d.MoreAlerts}}s{{end}}</span>{{end}}
+  </div>
+  {{if not $d.Alerts}}
+  <div class="lotus-panel-empty">Nothing needs attention.</div>
+  {{else}}
+  <ul class="lotus-dash-list">
+    {{range $d.Alerts}}
+    <li class="lotus-dash-row">
+      {{template "status_dot" .Tone}}
+      <div class="lotus-dash-main">
+        <a href="{{.Href}}" class="lotus-dash-title">{{.Title}}</a>
+        <span class="lotus-dash-detail">{{.Detail}}</span>
+      </div>
+      {{if .When}}<span class="lotus-dash-when">{{.When}}</span>{{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{if $d.MoreAlerts}}<div class="lotus-dash-more">and {{$d.MoreAlerts}} more</div>{{end}}
+  {{end}}
+{{template "lotus_card_section_close" .}}
+
+{{if $d.ShowQA}}
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel" "Attrs" `data-testid="project-activity"`)}}
+  <div class="lotus-panel-head">
+    <span class="lotus-panel-title">Project activity</span>
+    <span class="lotus-panel-note">{{$d.TopsMonth}}</span>
+    <div class="lotus-panel-tools"><a href="/qa/workload" class="lotus-dash-link">Workload</a></div>
+  </div>
+  <div class="lotus-dash-tops">
+    {{range $d.Tops}}
+    <section class="lotus-dash-top">
+      <h3 class="lotus-mt-stat-label">{{.Title}}</h3>
+      {{if not .Rows}}
+      <p class="lotus-dash-detail" style="margin:8px 0 0">{{.Empty}}</p>
+      {{else}}
+      <ol>
+        {{range $i, $r := .Rows}}
+        <li>
+          <span class="lotus-dash-rank">{{inc $i}}</span>
+          <div class="lotus-dash-main">
+            <a href="{{$r.Href}}" class="lotus-dash-title">{{$r.Name}}</a>
+            {{if $r.Note}}<span class="lotus-dash-detail">{{$r.Note}}</span>{{end}}
+          </div>
+          <span class="lotus-dash-value">{{$r.Value}}</span>
+        </li>
+        {{end}}
+      </ol>
+      {{end}}
+    </section>
+    {{end}}
+  </div>
+{{template "lotus_card_section_close" .}}
+
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel" "Attrs" `data-testid="recent-activity"`)}}
+  <div class="lotus-panel-head"><span class="lotus-panel-title">Recent activity</span></div>
+  {{if not $d.Activity}}
+  <div class="lotus-panel-empty">No issue activity yet.</div>
+  {{else}}
+  <ul class="lotus-dash-list">
+    {{range $d.Activity}}
+    <li class="lotus-dash-row">
+      {{template "status_dot" .Tone}}
+      <div class="lotus-dash-main">
+        <span class="lotus-dash-text"><strong>{{.Actor}}</strong> {{.Verb}} <a href="{{.Href}}" class="lotus-dash-title">{{.Issue}}</a></span>
+        <span class="lotus-dash-detail">{{.Project}}</span>
+      </div>
+      <span class="lotus-dash-when">{{.When}}</span>
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
+{{template "lotus_card_section_close" .}}
+{{end}}
+
+{{template "shell_close" .}}
+{{end}}

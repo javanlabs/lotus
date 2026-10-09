@@ -19,16 +19,18 @@ test('dashboard shows the app shell and an empty state for a fresh org', async (
   const origin = tenantOrigin(subdomain);
 
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
-  // /dashboard is kept as a permanent forward to /projects, the landing
-  // page — following it here is also what proves the forward still works.
-  await page.goto(`${origin}/dashboard`);
-  await expect(page).toHaveURL(`${origin}/projects`);
+  // The organization's root lands on the dashboard, as sign-in does.
+  await page.goto(`${origin}/`);
+  await expect(page).toHaveURL(`${origin}/dashboard`);
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expect(page.getByText('Nothing needs attention.')).toBeVisible();
 
   // The app shell (task 4.1): sidebar with the signed-in user, the
-  // Projects entry, the Lotus wordmark — proves the design-system layout
-  // rendered, not just raw content.
+  // Dashboard and Projects entries, the Lotus wordmark — proves the
+  // design-system layout rendered, not just raw content.
   await expect(page.getByText('E2E Owner')).toBeVisible();
-  await expect(page.getByRole('link', { name: /^Projects/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Dashboard', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: /^Projects/ }).click();
   await expect(page.getByRole('heading', { name: 'Software health' })).toBeVisible();
   await expect(page.getByText('No projects yet')).toBeVisible();
 
@@ -59,7 +61,7 @@ test('creating a project through the real form lands on the new project\'s own p
   // Final review, item 4: a componentless project must still get a row in
   // the tree (deviation 4), not the "No repositories yet" empty state —
   // that state only makes sense with no way to see the project at all.
-  await page.goto(`${origin}/dashboard`);
+  await page.goto(`${origin}/projects`);
   await expect(page.getByText('E2E Payments', { exact: true })).toBeVisible();
   await expect(page.getByText('No repositories yet')).not.toBeVisible();
   await expect(page.getByText('No projects yet')).not.toBeVisible();
