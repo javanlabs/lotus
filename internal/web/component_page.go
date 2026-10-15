@@ -52,7 +52,7 @@ func componentPage(d Deps) fiber.Handler {
 
 		c.Type("html")
 		return renderPage(c, d, "pages/component.html", httpx.ViewData{
-			Title: comp.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), componentTrail(folders, project, comp)),
+			Title: projectTitle(project, comp.Name), Org: org, User: user, Nav: navWithTrail("projects", len(projects), componentTrail(folders, project, comp)),
 			Data: struct {
 				Component  repo.Component
 				Project    repo.Project

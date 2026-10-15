@@ -325,7 +325,7 @@ func runHistoryPage(d Deps) fiber.Handler {
 			httpx.NavCrumb{Label: "Syncs"})
 		c.Type("html")
 		return renderPage(c, d, "pages/metric_runs.html", httpx.ViewData{
-			Title: chrome.Component.Name + " · " + kindLabels[chrome.Binding.Kind] + " syncs", Org: org, User: user, Nav: nav,
+			Title: projectTitle(&chrome.Project, chrome.Component.Name, kindLabels[chrome.Binding.Kind], "Syncs"), Org: org, User: user, Nav: nav,
 			Data: struct {
 				Chrome    metricChrome
 				KindLabel string

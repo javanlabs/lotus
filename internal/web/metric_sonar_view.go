@@ -196,7 +196,7 @@ func renderSonarDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 
 	c.Type("html")
 	return renderPage(c, d, "pages/metric_sonar.html", httpx.ViewData{
-		Title: chrome.Component.Name + " · SonarQube", Org: org, User: user, Nav: nav,
+		Title: projectTitle(&chrome.Project, chrome.Component.Name, kindLabels["sonarqube"]), Org: org, User: user, Nav: nav,
 		Data: struct {
 			Chrome       metricChrome
 			View         sonarDetailView

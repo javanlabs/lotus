@@ -179,7 +179,7 @@ func renderQACase(c *fiber.Ctx, d Deps, s tenant.Scope, f qaCaseForm, status int
 	c.Type("html")
 	c.Status(status)
 	return renderPage(c, d, "pages/qa_case.html", httpx.ViewData{
-		Title: label + " · " + f.Project.Name, Org: org, User: user, Nav: nav, Data: f,
+		Title: projectTitle(&f.Project, label), Org: org, User: user, Nav: nav, Data: f,
 	})
 }
 

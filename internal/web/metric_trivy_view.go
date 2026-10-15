@@ -190,7 +190,7 @@ func renderTrivyDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 
 	c.Type("html")
 	return renderPage(c, d, "pages/metric_trivy.html", httpx.ViewData{
-		Title: chrome.Component.Name + " · Trivy", Org: org, User: user, Nav: nav,
+		Title: projectTitle(&chrome.Project, chrome.Component.Name, kindLabels["trivy"]), Org: org, User: user, Nav: nav,
 		Data: struct {
 			Chrome           metricChrome
 			Header           trivyDetailHeader

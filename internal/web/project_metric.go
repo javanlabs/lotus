@@ -373,7 +373,7 @@ func projectMetricPage(d Deps) fiber.Handler {
 		trail := projectKindTrail(folders, project, kind)
 		c.Type("html")
 		return renderPage(c, d, "pages/project_metric.html", httpx.ViewData{
-			Title: kindLabels[kind] + " · " + project.Name, Org: org, User: user,
+			Title: projectTitle(project, kindLabels[kind]), Org: org, User: user,
 			Nav:  navWithTrail("projects", len(projects), trail),
 			Data: page,
 		})

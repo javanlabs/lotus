@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/uyab/lotus/internal/repo"
 	"html/template"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jmoiron/sqlx"
@@ -87,6 +88,13 @@ func navWithTrail(active string, projectCount int, trail []httpx.NavCrumb) *http
 	nav := buildNav(active, projectCount)
 	nav.Trail = trail
 	return nav
+}
+
+// projectTitle is the <title> of a page inside a project: the project's
+// name first, then what the page is under it, in the breadcrumb's order —
+// "AlurKerja › SonarQube", never "SonarQube · AlurKerja".
+func projectTitle(project *repo.Project, under ...string) string {
+	return strings.Join(append([]string{project.Name}, under...), " › ")
 }
 
 // projectTrail is the breadcrumb path for a project page — the same path

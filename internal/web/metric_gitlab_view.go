@@ -167,7 +167,7 @@ func renderGitlabDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 
 	c.Type("html")
 	return renderPage(c, d, "pages/metric_gitlab.html", httpx.ViewData{
-		Title: chrome.Component.Name + " · GitLab", Org: org, User: user, Nav: nav,
+		Title: projectTitle(&chrome.Project, chrome.Component.Name, kindLabels["gitlab"]), Org: org, User: user, Nav: nav,
 		Data: struct {
 			Chrome metricChrome
 			View   gitlabDetailView

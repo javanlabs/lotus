@@ -173,7 +173,9 @@ func TestProjectMetricPage_Sonar(t *testing.T) {
 	body := f.checkKindPage(t, "sonarqube",
 		"SONAR GATE", "AVG COVERAGE", "77.8%", "20,000", // summary: average coverage, total LOC
 		"94.5%", "61.0%", "passed", "failed",
-		`href="https://tool.example/dashboard?id=grp%2Fbilling-api"`, `rel="noopener"`)
+		`href="https://tool.example/dashboard?id=grp%2Fbilling-api"`, `rel="noopener"`,
+		// The project is named first, heading and tab title alike.
+		`Payments <span style="color:#C4B5CC;font-weight:400">›</span> SonarQube</h1>`, "<title>Payments › SonarQube · Lotus</title>")
 	if n := strings.Count(body, "lotus-badge-stale"); n != 1 || !strings.Contains(body, "SonarQube has not synced in more than 24 hours") {
 		t.Errorf("%d stale cells, want ledger's gate alone", n)
 	}
