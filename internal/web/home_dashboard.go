@@ -365,7 +365,11 @@ func homeDashboardPage(d Deps) fiber.Handler {
 		p := mustPrincipal(c)
 		ctx := c.Context()
 		now := dashboardNow()
-		in := homeInputs{Now: now, OrgName: org.Name, CanQA: p.Can("qa.read"), CanWorkload: p.Can("qa.workload.read")}
+		// QA panels need both the module switched on and the permission; with
+		// LOTUS_FEATURE_QA off they would link into routes that do not exist.
+		qaOn := d.Cfg.Features.QA
+		in := homeInputs{Now: now, OrgName: org.Name,
+			CanQA: qaOn && p.Can("qa.read"), CanWorkload: qaOn && p.Can("qa.workload.read")}
 
 		projects, err := repo.ListProjects(ctx, s, false)
 		if err != nil {

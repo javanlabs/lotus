@@ -137,3 +137,29 @@ func TestTenantURLInSingleMode(t *testing.T) {
 		t.Fatalf("TenantURL() = %q, want %q", got, want)
 	}
 }
+
+// LOTUS_FEATURE_QA is off unless set to exactly "1" or "true" — the same
+// rule COOKIE_SECURE uses. An unrecognised value must not switch a module
+// on, so a typo leaves it hidden rather than exposing it.
+func TestFeatureQAIsOffUnlessExplicitlyEnabled(t *testing.T) {
+	cases := map[string]bool{
+		"":      false,
+		"0":     false,
+		"false": false,
+		"yes":   false,
+		"on":    false,
+		"1":     true,
+		"true":  true,
+	}
+	for value, want := range cases {
+		t.Run("value="+value, func(t *testing.T) {
+			// LOTUS_DEV=0 stops Load reading a developer's .env, which
+			// could set the flag and make this test depend on the machine.
+			t.Setenv("LOTUS_DEV", "0")
+			t.Setenv("LOTUS_FEATURE_QA", value)
+			if got := config.Load().Features.QA; got != want {
+				t.Errorf("LOTUS_FEATURE_QA=%q: Features.QA = %v, want %v", value, got, want)
+			}
+		})
+	}
+}

@@ -19,7 +19,10 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: `cd .. && make css && ADDR=:${PORT} LOTUS_DEV=1 go run ./cmd/lotus serve`,
+    // LOTUS_FEATURE_QA=1: the QA specs drive QA Tools, which is off by
+    // default. Its off state is covered by internal/web/feature_qa_test.go;
+    // one server cannot run both ways.
+    command: `cd .. && make css && ADDR=:${PORT} LOTUS_DEV=1 LOTUS_FEATURE_QA=1 go run ./cmd/lotus serve`,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

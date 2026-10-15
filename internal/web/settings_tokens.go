@@ -156,8 +156,9 @@ func renderTokensPage(c *fiber.Ctx, d Deps, plain, label, errMsg string, status 
 			NewTokenLabel string
 			Error         string
 			QAOrigin      string
+			ShowQA        bool
 		}{SettingsNav: buildSettingsNav("tokens"), PATs: patRows, ServiceTokens: serviceRows, CanManageOrg: canManageOrg,
-			NewTokenPlain: plain, NewTokenLabel: label, Error: errMsg, QAOrigin: qaOrigin},
+			NewTokenPlain: plain, NewTokenLabel: label, Error: errMsg, QAOrigin: qaOrigin, ShowQA: d.Cfg.Features.QA},
 	})
 }
 

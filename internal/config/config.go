@@ -72,6 +72,10 @@ type Config struct {
 
 	WorkerCount int
 
+	// Features switches whole modules that ship in the binary but are not
+	// offered on every instance; see Features.
+	Features Features
+
 	// OAuth (task 1.1). A provider with an empty ClientSecret is simply not
 	// registered — see cmd/lotus — so local dev works with zero or either
 	// provider configured.
@@ -242,6 +246,7 @@ func Load() Config {
 		URL:                strings.TrimSuffix(os.Getenv("LOTUS_URL"), "/"),
 		KEK:                envOr("LOTUS_KEK", devOnlyKEK),
 		WorkerCount:        envInt("LOTUS_WORKER_COUNT", 4),
+		Features:           Features{QA: envFlag("LOTUS_FEATURE_QA")},
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
@@ -271,6 +276,25 @@ func Load() Config {
 		c.CookieSecure = v == "1" || v == "true"
 	}
 	return c
+}
+
+// Features gates modules that are built and tested but not yet offered.
+// Every one is off unless its LOTUS_FEATURE_* variable is set, so a module
+// reaches users through a deliberate decision on each instance rather than
+// by being merged. Off means absent, not disabled: its routes are never
+// registered, so its pages, API and MCP server all answer 404, and nothing
+// else in the app links to it.
+type Features struct {
+	// QA is QA Tools — test cases, scenarios, plans, runs, issues, project
+	// guests, the QA JSON API and its MCP server. LOTUS_FEATURE_QA.
+	QA bool
+}
+
+// envFlag reads a boolean switch the way COOKIE_SECURE is read: "1" or
+// "true" turns it on, anything else (including unset) leaves it off.
+func envFlag(k string) bool {
+	v := os.Getenv(k)
+	return v == "1" || v == "true"
 }
 
 func envOr(k, def string) string {

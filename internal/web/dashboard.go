@@ -102,12 +102,12 @@ func registerDashboardRoutes(app *fiber.App, d Deps, requireSession, loadPrincip
 	// JSON handler for the same path — so the browser gets HTML. See
 	// AGENTS.md on the shadowed JSON endpoints.
 	app.Get("/projects", tenant.RequireTenant(), requireSession, loadPrincipal,
-		guestHome, authz.Require("dashboard.read"), dashboardPage(d))
+		guestHome(d), authz.Require("dashboard.read"), dashboardPage(d))
 
 	// The landing page (home_dashboard.go). A guest is sent on to its own
 	// work, as it is from the project list.
 	app.Get("/dashboard", tenant.RequireTenant(), requireSession, loadPrincipal,
-		guestHome, authz.Require("dashboard.read"), homeDashboardPage(d))
+		guestHome(d), authz.Require("dashboard.read"), homeDashboardPage(d))
 }
 
 func hasFolder(folders []repo.Folder, id uuid.UUID) bool {

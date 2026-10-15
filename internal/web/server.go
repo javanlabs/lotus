@@ -160,8 +160,14 @@ func New(d Deps) *fiber.App {
 	registerFolderRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
 	// Tenant host only (QA module, docs/superpowers/plans/2026-09-27-qa-phase-4.md):
-	// the QA overview and each project's QA area.
-	registerQARoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+	// the QA overview and each project's QA area. Behind LOTUS_FEATURE_QA,
+	// along with its API and MCP server below: not registered at all when
+	// off, so every QA URL — including a share link already handed out —
+	// answers 404 rather than reaching a handler that has to remember to
+	// refuse.
+	if d.Cfg.Features.QA {
+		registerQARoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+	}
 	registerComponentPageRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerBindWizardRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
@@ -205,8 +211,10 @@ func New(d Deps) *fiber.App {
 	registerScoringDocsRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
 	registerIngestRoutes(app, d, authDeps)
-	registerQAAPIRoutes(app, authDeps)
-	registerQAMCPRoutes(app, authDeps)
+	if d.Cfg.Features.QA {
+		registerQAAPIRoutes(app, authDeps)
+		registerQAMCPRoutes(app, authDeps)
+	}
 
 	return app
 }

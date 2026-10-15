@@ -42,6 +42,10 @@
   </div>
 {{template "lotus_card_section_close" .}}
 
+{{/* Only with LOTUS_FEATURE_QA on: these endpoints are not registered
+     otherwise, and a copy-paste MCP config pointing at a 404 is worse
+     than no section at all. */}}
+{{if .Data.ShowQA}}
 {{template "lotus_card_section_open" (dict "Padding" "12px 14px" "Style" "margin-bottom:16px;display:flex;flex-direction:column;gap:8px")}}
   <div style="font-size:13px;font-weight:600;color:#43284E">QA API and AI assistants (MCP)</div>
   <p style="margin:0;font-size:12px;color:#6B7280">A token reaches QA with what both its scopes and your role allow. Send it as <code>Authorization: Bearer &lt;token&gt;</code>; the browser session does not work here.</p>
@@ -52,6 +56,7 @@
   <pre style="margin:0;padding:9px 11px;background:#F9FAFB;border-radius:6px;font:400 11.5px 'IBM Plex Mono',monospace;color:#374151;overflow-x:auto">{"mcpServers": {"lotus-qa": {"type": "http", "url": "{{.Data.QAOrigin}}/mcp/qa",
   "headers": {"Authorization": "Bearer &lt;token&gt;"}}}}</pre>
 {{template "lotus_card_section_close" .}}
+{{end}}
 
 {{if .Data.CanManageOrg}}
 {{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}

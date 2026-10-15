@@ -11,7 +11,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/uyab/lotus/internal/config"
 	"github.com/uyab/lotus/internal/mailer"
 	"github.com/uyab/lotus/internal/repo"
 )
@@ -40,7 +39,10 @@ func sentMail(t *testing.T) func() []mailer.Message {
 // links in notification emails are absolute.
 func newQARunMailEnv(t *testing.T, sub string) qaRunEnv {
 	t.Helper()
-	return newQARunEnvWith(t, sub, func(d *Deps) { d.Cfg = config.Config{BaseDomain: dashboardTestDomain} })
+	// Sets the one field it needs rather than replacing Cfg: a whole new
+	// Config would also switch LOTUS_FEATURE_QA back off and unregister the
+	// very routes this test drives.
+	return newQARunEnvWith(t, sub, func(d *Deps) { d.Cfg.BaseDomain = dashboardTestDomain })
 }
 
 func TestQARun_ResultCommentLimit(t *testing.T) {

@@ -166,8 +166,26 @@ func redirectAfterMutation(c *fiber.Ctx, to string) error {
 func renderPage(c *fiber.Ctx, d Deps, page string, vd httpx.ViewData) error {
 	vd.Flash = takeFlash(c)
 	if vd.Nav != nil {
-		guestNav(c, vd.Nav)
-		qaNavCount(c, vd.Nav)
+		if d.Cfg.Features.QA {
+			guestNav(c, vd.Nav)
+			qaNavCount(c, vd.Nav)
+		} else {
+			withoutQANav(vd.Nav)
+		}
 	}
 	return d.Renderer.Render(c, page, vd)
+}
+
+// withoutQANav drops the QA Tools entry when LOTUS_FEATURE_QA is off.
+// Here rather than in buildNav because every page builds its own nav and
+// none of them has the config to hand; renderPage is the one place every
+// full page passes through, the same reason guestNav lives here.
+func withoutQANav(nav *httpx.Nav) {
+	items := nav.Items[:0]
+	for _, item := range nav.Items {
+		if item.Key != "qa_tools" {
+			items = append(items, item)
+		}
+	}
+	nav.Items = items
 }

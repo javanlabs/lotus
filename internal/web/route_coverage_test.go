@@ -119,7 +119,11 @@ func buildFullAppForCoverage(t *testing.T, mode string) *fiber.App {
 	t.Helper()
 	db := dbtest.Open(t)
 	renderer := httpx.NewRenderer(os.DirFS("../../web/templates"), true)
-	cfg := config.Config{Mode: mode, BaseDomain: "lotus.test", URL: "http://localhost:8008", Dev: true}
+	// Every feature on. A module behind a flag is still code that ships,
+	// and a route this test never sees is a route nothing checks for an
+	// authz declaration — the off state is what would let one slip.
+	cfg := config.Config{Mode: mode, BaseDomain: "lotus.test", URL: "http://localhost:8008", Dev: true,
+		Features: config.Features{QA: true}}
 	resolver := tenant.NewResolver(cfg, db)
 	return New(Deps{
 		Renderer:       renderer,

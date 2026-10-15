@@ -17,11 +17,22 @@ import (
 
 // guestHome sends a guest from the landing page (/projects, where / and
 // every login lead) to its own work.
-func guestHome(c *fiber.Ctx) error {
-	if p, ok := authz.CurrentPrincipal(c); ok && authz.IsProjectScoped(p) {
-		return c.Redirect("/qa/my", fiber.StatusFound)
+//
+// Only while LOTUS_FEATURE_QA is on. A guest exists only for QA, so with
+// the module off it has nowhere to go; it falls through to the landing
+// page's own permission check and gets the same not-found as any other
+// page it may not read, rather than a redirect to a route that is not
+// registered.
+func guestHome(d Deps) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		if !d.Cfg.Features.QA {
+			return c.Next()
+		}
+		if p, ok := authz.CurrentPrincipal(c); ok && authz.IsProjectScoped(p) {
+			return c.Redirect("/qa/my", fiber.StatusFound)
+		}
+		return c.Next()
 	}
-	return c.Next()
 }
 
 // guestNav replaces the sidebar for a guest. Pages build the one everybody

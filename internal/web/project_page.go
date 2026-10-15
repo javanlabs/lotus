@@ -81,7 +81,7 @@ func projectPage(d Deps) fiber.Handler {
 			}{
 				Project: *project, URL: projectURL(project), Dashboard: vm,
 				CanMove:      mustPrincipal(c).Can("project.update"),
-				CanQA:        mustPrincipal(c).Can("qa.read"),
+				CanQA:        d.Cfg.Features.QA && mustPrincipal(c).Can("qa.read"),
 				FolderSelect: folderSelect(folderOptionsFor(folders), nil),
 				FolderValue:  folderValue,
 			},

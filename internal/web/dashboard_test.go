@@ -76,6 +76,10 @@ func newDashboardTestAppWith(t *testing.T, change func(*Deps)) (*fiber.App, *sql
 		OAuthProviders:   authn.Registry{},
 		KEK:              dashboardTestKEK(t),
 		NetguardResolver: dashboardFakeDNS,
+		// QA on: this builder backs the whole QA suite, which predates
+		// LOTUS_FEATURE_QA. Tests of the off state switch it back through
+		// change.
+		Cfg: config.Config{Features: config.Features{QA: true}},
 	}
 	if change != nil {
 		change(&deps)
