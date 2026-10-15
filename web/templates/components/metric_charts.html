@@ -29,11 +29,12 @@
     <div class="lotus-panel-chart{{if not .Active}} is-inactive{{end}}">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
         <span style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.Label}}</span>
-        {{if .Chart.HasData}}<span class="lotus-text-{{.Chart.Tone}}" style="font-size:15px;font-weight:700;white-space:nowrap">{{.Chart.Latest}}</span>{{end}}
+        {{/* Only the label is muted: a flat trend is still a number, drawn in ink; pass/fail colour it. */}}
+        {{if .Chart.HasData}}<span class="{{if eq .Chart.Tone "none"}}lotus-mt-stat-neutral{{else}}lotus-text-{{.Chart.Tone}}{{end}}" style="font-size:15px;font-weight:700;white-space:nowrap">{{.Chart.Latest}}</span>{{end}}
       </div>
       {{if .Chart.HasData}}
       <div style="height:70px">{{.Chart.SVG}}</div>
-      <div style="display:flex;justify-content:space-between;font:400 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF">
+      <div style="display:flex;justify-content:space-between;font:400 9.5px 'IBM Plex Mono',monospace;color:var(--text-secondary)">
         <span>{{.Chart.MinLabel}}</span><span>{{.Chart.MaxLabel}}</span>
       </div>
       {{else}}

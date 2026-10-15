@@ -200,10 +200,15 @@ func TestFormatMetricValue(t *testing.T) {
 		want string
 	}{
 		{92.345, "%", "92.3%"},
-		{4200, "ms", "4200ms"},
+		{4200, "ms", "4.2s"},
 		{15, "minutes", "15m"},
+		{90, "minutes", "1h 30m"},
+		{480, "minutes", "1d"},
+		{59253, "minutes", "123d 3h"},
 		{87, "score", "87"},
 		{42, "count", "42"},
+		{46264, "count", "46,264"},
+		{270213, "count", "270,213"},
 	}
 	for _, c := range cases {
 		if got := formatMetricValue(c.v, c.unit); got != c.want {

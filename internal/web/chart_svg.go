@@ -316,18 +316,43 @@ func buildChartSVG(points []repo.Point, direction, unit string, from, to time.Ti
 // formatMetricValue renders a raw metric_keys value using its catalog
 // unit — the same "–"-for-absent convention every other detail page in
 // this app already uses is the caller's job (this only ever sees real
-// numbers), this just picks the right suffix/precision per unit.
+// numbers), this just picks the right suffix/precision per unit. Counts
+// get thousands separators and durations read as durations, the way the
+// sonar detail page writes the same numbers: "46,264", not "46264";
+// "123d 3h", not "59253m".
 func formatMetricValue(v float64, unit string) string {
 	switch unit {
 	case "%":
 		return fmt.Sprintf("%.1f%%", v)
 	case "ms":
-		return fmt.Sprintf("%.0fms", v)
+		return humanDuration(int64(math.Round(v)))
 	case "minutes":
-		return fmt.Sprintf("%.0fm", v)
-	case "score":
-		return fmt.Sprintf("%.0f", v)
+		return humanMinutes(int64(math.Round(v)))
 	default:
-		return fmt.Sprintf("%.0f", v)
+		return thousands(int64(math.Round(v)))
+	}
+}
+
+// humanMinutes writes an effort in minutes (SonarQube's technical debt)
+// the way SonarQube itself does: a day is 8 working hours, and only the
+// two largest units are kept.
+func humanMinutes(m int64) string {
+	const hour, day = 60, 8 * 60
+	switch {
+	case m < 0:
+		return "-" + humanMinutes(-m)
+	case m < hour:
+		return fmt.Sprintf("%dm", m)
+	case m < day:
+		if m%hour == 0 {
+			return fmt.Sprintf("%dh", m/hour)
+		}
+		return fmt.Sprintf("%dh %dm", m/hour, m%hour)
+	default:
+		d, h := m/day, (m%day)/hour
+		if h == 0 {
+			return thousands(d) + "d"
+		}
+		return fmt.Sprintf("%sd %dh", thousands(d), h)
 	}
 }
