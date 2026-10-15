@@ -45,7 +45,7 @@
       <div @click="sortBy(1,'text','{{.RowHeading}}')" :title="hint(1)" style="cursor:pointer;user-select:none">{{.RowHeading}}<span x-text="arrow(1)" style="opacity:.75"></span></div>
       <div @click="sortBy(2,'num','score')" :title="hint(2)" style="cursor:pointer;user-select:none">SCORE<span x-text="arrow(2)" style="opacity:.75"></span></div>
       {{if .ShowTrend}}<div>TREND · 14D</div>{{end}}
-      {{range $i, $c := .Columns}}<div @click="sortBy({{$.FirstMetricCol}}+{{$i}},'num','{{$c.Label}}')" :title="hint({{$.FirstMetricCol}}+{{$i}})" style="display:flex;align-items:center;justify-content:center;gap:2px;cursor:pointer;user-select:none">{{template "kind_icon" (dict "Kind" $c.Key "Label" $c.Label "Size" 14)}}<span x-text="arrow({{$.FirstMetricCol}}+{{$i}})" style="opacity:.75"></span></div>{{end}}
+      {{range $i, $c := .Columns}}<div @click="sortBy({{$.FirstMetricCol}}+{{$i}},'num','{{$c.Label}}')" :title="hint({{$.FirstMetricCol}}+{{$i}})" style="text-align:center;cursor:pointer;user-select:none">{{$c.Label}}<span x-text="arrow({{$.FirstMetricCol}}+{{$i}})" style="opacity:.75"></span></div>{{end}}
       {{if .ShowUpdated}}<div @click="sortBy({{.FirstMetricCol}}+{{len .Columns}},'num','last updated')" :title="hint({{.FirstMetricCol}}+{{len .Columns}})" style="cursor:pointer;user-select:none;white-space:nowrap">LAST UPDATED<span x-text="arrow({{.FirstMetricCol}}+{{len .Columns}})" style="opacity:.75"></span></div>{{end}}
     </div>
 

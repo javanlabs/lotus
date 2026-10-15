@@ -98,7 +98,7 @@ test('a metric tab opens its integration across the project, and a row opens its
   // Anywhere else on the tab opens the project's SonarQube page.
   await tab.click();
   await expect(page).toHaveURL(`${origin}/projects/payments/metrics/sonarqube`);
-  await expect(page.getByRole('heading', { name: 'Payments › SonarQube' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Payments · SonarQube' })).toBeVisible();
   await expect(page.locator('[data-headline]')).toHaveText('50');
   // Its other numbers sit directly under the open tab.
   await expect(page.locator('.lotus-mt-stats')).toContainText('AVG COVERAGE');
