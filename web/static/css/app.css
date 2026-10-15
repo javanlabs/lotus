@@ -697,7 +697,7 @@ body {
 .lotus-mt-info:focus-visible { outline: none; opacity: 1; box-shadow: var(--shadow-focus-ring); }
 
 /* The open tab's other numbers: stat_card's typography, in the same card
-   under the track, separated from it by a row hairline. */
+   under the track; the gap alone sets them apart, no hairline. */
 .lotus-mt-stats {
   display: grid;
   /* min(): a column never asks for more than the card has, or a phone's
@@ -706,7 +706,6 @@ body {
   gap: 10px 14px;
   margin: 6px 3px 0;
   padding: 10px 6px 6px;
-  border-top: 1px solid var(--border-subtle);
 }
 .lotus-mt-stat { min-width: 0; }
 .lotus-mt-stat-label {
