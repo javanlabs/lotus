@@ -37,7 +37,9 @@ func TestProjectPage_ShowsComponentsViaTheSameDashboardBlock(t *testing.T) {
 		t.Fatalf("status = %d:\n%s", resp.StatusCode, body)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	for _, want := range []string{"Payments", "billing-api", "Add component", `href="/projects/p/components/c"`, `href="/projects/p/components/new"`} {
+	for _, want := range []string{"Payments", "billing-api", "Add component", `href="/projects/p/components/c"`, `href="/projects/p/components/new"`,
+		// Each integration column is headed by its logo, not its name.
+		`<svg role="img" aria-label="SONAR"`, `<svg role="img" aria-label="TRIVY"`, `<svg role="img" aria-label="SENTRY"`, `<svg role="img" aria-label="GIT"`} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
 		}
