@@ -115,3 +115,38 @@ func TestImportServices_RerunAfterAddingAConnectionFillsInBindingsOnce(t *testin
 		t.Errorf("bindings = %d, want 2", n)
 	}
 }
+
+// sentry: false keeps an AlurKerja service out of the shared Sentry
+// project, even with a Sentry connection there to bind to.
+func TestImportServices_SentryFalseSkipsTheSharedSentryBinding(t *testing.T) {
+	conn, orgID := seedImportOrg(t)
+	ctx := context.Background()
+
+	dek, err := crypto.NewDEK()
+	if err != nil {
+		t.Fatalf("dek: %v", err)
+	}
+	if _, err := repo.CreateConnection(ctx, tenant.FromRun(conn, orgID), dek, repo.NewConnection{
+		Provider: "sentry", Name: "Sentry", BaseURL: "https://sentry.example.test",
+		Config: json.RawMessage(`{"organization":"javan"}`), Secret: "dummy-test-token",
+	}); err != nil {
+		t.Fatalf("create connection: %v", err)
+	}
+
+	off := false
+	reg := legacyRegistry{Services: []legacyService{
+		{Name: "authentication-service", Kind: "backend"},
+		{Name: "camunda-bpm-platform", Label: "Camunda", Kind: "backend", Sentry: &off},
+	}}
+	sum, err := importServices(ctx, conn, orgID, reg, nil)
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if sum.BindingsCreated != 1 {
+		t.Fatalf("summary = %+v, want the one sentry binding for authentication-service", sum)
+	}
+	if n := scopedCount(t, conn, orgID, `SELECT count(*) FROM metric_bindings b JOIN components c ON c.id = b.component_id
+		WHERE c.slug = 'camunda-bpm-platform'`); n != 0 {
+		t.Errorf("camunda-bpm-platform has %d bindings, want none", n)
+	}
+}

@@ -34,6 +34,10 @@ type legacyService struct {
 	Language  string `yaml:"language"`
 	GitlabPat string `yaml:"gitlab_path"`
 	SonarKey  string `yaml:"sonar_key"`
+	// Sentry: false opts an AlurKerja service out of the shared Sentry
+	// binding every other one gets — for a service that does not report
+	// to Sentry yet, where the binding would only ever show no issues.
+	Sentry *bool `yaml:"sentry"`
 }
 
 type legacyRegistry struct {
@@ -253,7 +257,7 @@ func importServices(ctx context.Context, conn *sqlx.DB, orgID uuid.UUID, reg leg
 				// entry sets sentry_project for the others, and inventing a
 				// slug would only produce 404s that look like a broken
 				// integration.
-				if product == defaultProduct {
+				if product == defaultProduct && (s.Sentry == nil || *s.Sentry) {
 					project := sentryProjectBackend
 					if s.Kind == "frontend" {
 						project = sentryProjectFrontend
