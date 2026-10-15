@@ -1,16 +1,19 @@
 package web
 
 import (
+	"context"
 	"fmt"
-	"github.com/uyab/lotus/internal/repo"
 	"html/template"
+	"sort"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/uyab/lotus/internal/authz"
 	"github.com/uyab/lotus/internal/httpx"
+	"github.com/uyab/lotus/internal/repo"
 	"github.com/uyab/lotus/internal/repo/global"
 	"github.com/uyab/lotus/internal/tenant"
 )
@@ -97,52 +100,129 @@ func projectTitle(project *repo.Project, under ...string) string {
 	return strings.Join(append([]string{project.Name}, under...), " · ")
 }
 
+// trailMenus are the dropdowns a project's breadcrumb carries: the
+// organization's projects on the project crumb, the project's components
+// on the component crumb. loadTrailMenus builds them; the trail
+// functions only place them, so they stay pure.
+type trailMenus struct {
+	Projects, Components []httpx.NavMenuItem
+}
+
 // projectTrail is the breadcrumb path for a project page — the same path
 // the folder view shows: every folder down to the project, then the
 // project itself as the current page.
-func projectTrail(folders []repo.Folder, project *repo.Project) []httpx.NavCrumb {
-	return append(projectFolderPath(folders, project), httpx.NavCrumb{Label: project.Name})
+func projectTrail(folders []repo.Folder, project *repo.Project, menus trailMenus) []httpx.NavCrumb {
+	return append(projectFolderPath(folders, project), httpx.NavCrumb{Label: project.Name, Menu: menus.Projects})
 }
 
 // componentTrail is the path for a component's own page — the project's
 // folder path, then project → component. It is drawn only for a component
 // with nothing bound; one with a binding opens on a metric page, whose
 // path is metricTrail.
-func componentTrail(folders []repo.Folder, project *repo.Project, component *repo.Component) []httpx.NavCrumb {
+func componentTrail(folders []repo.Folder, project *repo.Project, component *repo.Component, menus trailMenus) []httpx.NavCrumb {
 	return append(projectFolderPath(folders, project),
-		httpx.NavCrumb{Label: project.Name, Href: projectURL(project)},
-		httpx.NavCrumb{Label: component.Name})
+		httpx.NavCrumb{Label: project.Name, Href: projectURL(project), Menu: menus.Projects},
+		httpx.NavCrumb{Label: component.Name, Menu: menus.Components})
 }
 
 // metricTrail is the path for a component's page for one kind, and
-// anything below it: project → the project's page for the kind → the
-// component → whatever the caller adds (Syncs).
-//
-// Kind before component, so the path is the same whichever way the page
-// was reached. From the project's SonarQube page a row opens the
-// component's SonarQube tab, and the trail only grows by the component;
-// the SonarQube crumb before it leads back to every component's
-// SonarQube, side by side. A component-first path (project → component →
-// SonarQube) dropped that page from the trail and named a different page
-// "SonarQube" at its end.
-func metricTrail(folders []repo.Folder, project *repo.Project, component *repo.Component, kind string, deeper ...httpx.NavCrumb) []httpx.NavCrumb {
-	trail := projectKindTrail(folders, project, kind)
-	trail[len(trail)-1].Href = projectMetricURL(project, kind)
+// anything below it: project → component → the kind → whatever the
+// caller adds (Syncs). It reads the way the page is built — the
+// component's header, then its tab for the kind — and the project and
+// component crumbs are dropdowns, so switching to another component's
+// SonarQube is one pick, and the component menu's "All components" leads
+// back to the project's page for the kind.
+func metricTrail(folders []repo.Folder, project *repo.Project, component *repo.Component, kind string, menus trailMenus, deeper ...httpx.NavCrumb) []httpx.NavCrumb {
+	trail := append(projectFolderPath(folders, project),
+		httpx.NavCrumb{Label: project.Name, Href: projectURL(project), Menu: menus.Projects},
+		httpx.NavCrumb{Label: component.Name, Href: componentURL(project, component), Menu: menus.Components},
+		httpx.NavCrumb{Label: kindLabels[kind]})
 	if len(deeper) == 0 {
-		return append(trail, httpx.NavCrumb{Label: component.Name})
+		return trail
 	}
-	trail = append(trail, httpx.NavCrumb{Label: component.Name, Href: metricURL(project, component, kind)})
+	trail[len(trail)-1].Href = metricURL(project, component, kind)
 	return append(trail, deeper...)
 }
 
 // projectKindTrail is the path for a project's page for one kind: the
 // project's folder path, the project, then the kind as the current page.
-// metricTrail starts with it, so a component's page for a kind always
-// sits under the project's.
-func projectKindTrail(folders []repo.Folder, project *repo.Project, kind string) []httpx.NavCrumb {
+// Picking a component from the project's page for a kind puts the
+// component between them (metricTrail).
+func projectKindTrail(folders []repo.Folder, project *repo.Project, kind string, menus trailMenus) []httpx.NavCrumb {
 	return append(projectFolderPath(folders, project),
-		httpx.NavCrumb{Label: project.Name, Href: projectURL(project)},
+		httpx.NavCrumb{Label: project.Name, Href: projectURL(project), Menu: menus.Projects},
 		httpx.NavCrumb{Label: kindLabels[kind]})
+}
+
+// projectMenu lists the organization's projects for the project crumb.
+// On a page for a kind, each opens that project's page for the same kind,
+// so switching project keeps the reader on SonarQube; elsewhere, the
+// project's page.
+func projectMenu(projects []repo.Project, current *repo.Project, kind string) []httpx.NavMenuItem {
+	out := make([]httpx.NavMenuItem, 0, len(projects))
+	for i := range projects {
+		p := &projects[i]
+		href := projectURL(p)
+		if kind != "" {
+			href = projectMetricURL(p, kind)
+		}
+		out = append(out, httpx.NavMenuItem{Label: p.Name, Href: href, Current: p.ID == current.ID})
+	}
+	return out
+}
+
+// componentMenu lists the project's components, by name, for the
+// component crumb. On a page for a kind, it leads with "All components"
+// (the project's page for the kind), and each component opens its page
+// for the same kind — or its own page, marked, when it has no binding of
+// that kind to open. bound is the components that do.
+func componentMenu(project *repo.Project, comps []repo.Component, current *repo.Component, kind string, bound map[uuid.UUID]bool) []httpx.NavMenuItem {
+	sorted := append([]repo.Component(nil), comps...)
+	sort.SliceStable(sorted, func(i, j int) bool { return strings.ToLower(sorted[i].Name) < strings.ToLower(sorted[j].Name) })
+	out := make([]httpx.NavMenuItem, 0, len(sorted)+1)
+	if kind != "" {
+		out = append(out, httpx.NavMenuItem{Label: "All components", Href: projectMetricURL(project, kind), Sep: true})
+	}
+	for i := range sorted {
+		c := &sorted[i]
+		item := httpx.NavMenuItem{Label: c.Name, Href: componentURL(project, c), Current: current != nil && c.ID == current.ID}
+		if kind != "" {
+			if bound[c.ID] {
+				item.Href = metricURL(project, c, kind)
+			} else {
+				item.Hint = "no " + kindLabels[kind]
+			}
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+// loadTrailMenus reads what a project's breadcrumb dropdowns list. With
+// no component it skips the components (a project page shows them
+// already); kind is "" outside a page for a kind.
+func loadTrailMenus(ctx context.Context, s tenant.Scope, projects []repo.Project, project *repo.Project, component *repo.Component, kind string) (trailMenus, error) {
+	menus := trailMenus{Projects: projectMenu(projects, project, kind)}
+	if component == nil {
+		return menus, nil
+	}
+	comps, err := repo.ListComponents(ctx, s, project.ID, false)
+	if err != nil {
+		return menus, err
+	}
+	var bound map[uuid.UUID]bool
+	if kind != "" {
+		bindings, err := repo.ListProjectBindingsByKind(ctx, s, project.ID, kind)
+		if err != nil {
+			return menus, err
+		}
+		bound = make(map[uuid.UUID]bool, len(bindings))
+		for _, b := range bindings {
+			bound[b.ComponentID] = true
+		}
+	}
+	menus.Components = componentMenu(project, comps, component, kind, bound)
+	return menus, nil
 }
 
 // projectFolderPath is every folder the project sits in, outermost first,

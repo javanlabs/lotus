@@ -1,6 +1,7 @@
 package web
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -512,11 +513,11 @@ func TestProjectTrail_IncludesTheFolderPath(t *testing.T) {
 		{Label: "Tribe lead A", Href: "/projects?folder=" + tribeA.ID.String()},
 		{Label: "Linknet"},
 	}
-	assertTrail(t, "filed project", projectTrail(f.folders, filed), want)
-	assertTrail(t, "top-level project", projectTrail(f.folders, loose), []httpx.NavCrumb{{Label: "SyarQ"}})
+	assertTrail(t, "filed project", projectTrail(f.folders, filed, trailMenus{}), want)
+	assertTrail(t, "top-level project", projectTrail(f.folders, loose, trailMenus{}), []httpx.NavCrumb{{Label: "SyarQ"}})
 
 	want[2] = httpx.NavCrumb{Label: "Linknet", Href: "/projects/linknet"}
-	assertTrail(t, "component", componentTrail(f.folders, filed, comp),
+	assertTrail(t, "component", componentTrail(f.folders, filed, comp, trailMenus{}),
 		append(want, httpx.NavCrumb{Label: "linknet-api"}))
 }
 
@@ -526,7 +527,7 @@ func assertTrail(t *testing.T, name string, got, want []httpx.NavCrumb) {
 		t.Fatalf("%s trail = %+v, want %+v", name, got, want)
 	}
 	for i := range want {
-		if got[i] != want[i] {
+		if !reflect.DeepEqual(got[i], want[i]) {
 			t.Fatalf("%s crumb %d = %+v, want %+v", name, i, got[i], want[i])
 		}
 	}

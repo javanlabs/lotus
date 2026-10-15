@@ -75,6 +75,23 @@ type NavCrumb struct {
 	// id, or "" for the top level).
 	Drop       bool
 	DropFolder string
+	// Menu, when set, puts a chevron beside the crumb that opens a list
+	// of its siblings — the other projects, the project's other
+	// components — so the reader can switch without going back up.
+	Menu []NavMenuItem
+}
+
+// NavMenuItem is one entry of a crumb's Menu.
+type NavMenuItem struct {
+	Label string
+	Href  string
+	// Current marks the entry the crumb itself names.
+	Current bool
+	// Hint is a short, muted note after the label ("not bound").
+	Hint string
+	// Sep draws a divider after the entry, setting it apart from the
+	// list that follows (an "All components" entry above them).
+	Sep bool
 }
 
 type Nav struct {

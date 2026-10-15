@@ -1230,3 +1230,62 @@ a.lotus-dash-figure:focus-visible { outline: none; box-shadow: var(--shadow-focu
 .toaster .toast[data-category="success"] .toast-content::before { background: var(--status-pass); }
 .toaster .toast[data-category="warning"] .toast-content::before { background: var(--status-warn); }
 .toaster .toast[data-category="error"] .toast-content::before { background: var(--status-fail); }
+
+/* A breadcrumb crumb with siblings (components/shell.html): the name,
+   then a chevron that opens the other projects or components to switch
+   to. The menu hangs from the crumb, over the page. */
+.lotus-crumb { position: relative; display: inline-flex; align-items: center; gap: 1px; }
+.lotus-crumb-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+.lotus-crumb-toggle svg { transition: transform .2s cubic-bezier(.4,0,.2,1); }
+.lotus-crumb-toggle:hover,
+.lotus-crumb-toggle.is-open { background: var(--plum-a06); color: var(--text-brand); }
+.lotus-crumb-toggle.is-open svg { transform: rotate(180deg); }
+.lotus-crumb-toggle:focus-visible { outline: none; box-shadow: var(--shadow-focus-ring); }
+.lotus-crumb-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 200px;
+  max-width: min(320px, calc(100vw - 32px));
+  max-height: min(360px, 60vh);
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-petal-sm);
+  background: #FFFFFF;
+  box-shadow: 0 10px 28px -12px rgba(67,40,78,.45);
+}
+.lotus-crumb-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 9px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.lotus-crumb-item:hover,
+.lotus-crumb-item:focus-visible { outline: none; background: var(--plum-a06); }
+.lotus-crumb-item.is-current { color: var(--text-brand); font-weight: 600; }
+.lotus-crumb-item-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lotus-crumb-item-hint { margin-left: auto; font: 400 10px var(--font-mono); color: var(--text-faint); }
+.lotus-crumb-sep { height: 1px; margin: 4px 6px; background: var(--border-subtle); }

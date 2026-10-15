@@ -121,13 +121,22 @@ test('a metric tab opens its integration across the project, and a row opens its
   await expect(page).toHaveURL(`${origin}/projects/payments/components/billing/metrics/sonarqube`);
   await expect(page.getByRole('heading', { name: /SonarQube/ })).toBeVisible();
 
-  // The project's SonarQube page stays in the trail, above the component
-  // — going down only added the component — and leads back.
+  // The trail reads project → component → kind. The component crumb is a
+  // dropdown: another component opens on the same kind, and "All
+  // components" leads back to the project's SonarQube page.
   const crumbs = page.getByRole('navigation', { name: 'Breadcrumb' });
-  await expect(crumbs).toHaveText(/Payments\s*\/\s*SonarQube\s*\/\s*billing-api\s*$/);
-  await expect(crumbs.locator('[aria-current="page"]')).toHaveText('billing-api');
-  await crumbs.getByRole('link', { name: 'SonarQube', exact: true }).click();
+  await expect(crumbs).toHaveText(/Payments\s*\/\s*billing-api\s*\/\s*SonarQube\s*$/, { useInnerText: true });
+  await expect(crumbs.locator('[aria-current="page"]')).toHaveText('SonarQube');
+  await crumbs.getByRole('button', { name: 'Switch from billing-api' }).click();
+  await expect(crumbs.getByRole('menuitem', { name: 'ledger-api' })).toBeVisible();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'test-results/project-metric-crumb-menu.png' });
+  await crumbs.getByRole('menuitem', { name: 'ledger-api' }).click();
+  await expect(page).toHaveURL(`${origin}/projects/payments/components/ledger/metrics/sonarqube`);
+  await crumbs.getByRole('button', { name: 'Switch from ledger-api' }).click();
+  await crumbs.getByRole('menuitem', { name: 'All components' }).click();
   await expect(page).toHaveURL(`${origin}/projects/payments/metrics/sonarqube`);
+  await expect(crumbs).toHaveText(/Payments\s*\/\s*SonarQube\s*$/, { useInnerText: true });
 });
 
 test('the metric tabs stay put while switching between the project and its integrations', async ({ page, context }) => {

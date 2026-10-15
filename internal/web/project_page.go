@@ -69,7 +69,7 @@ func projectPage(d Deps) fiber.Handler {
 
 		c.Type("html")
 		return renderPage(c, d, "pages/project.html", httpx.ViewData{
-			Title: project.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), projectTrail(folders, project)),
+			Title: project.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), projectTrail(folders, project, trailMenus{Projects: projectMenu(projects, project, "")})),
 			Data: struct {
 				Project      repo.Project
 				URL          string // the project's own page; its links hang off it
