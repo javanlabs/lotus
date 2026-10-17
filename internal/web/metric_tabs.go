@@ -29,7 +29,7 @@ type metricTab struct {
 	// Grade is a letter shown as a badge beside the number (Sentry's A–E),
 	// "" for none.
 	Grade string
-	Sub       string
+	Sub   string
 	// Verdict is the chip under the number: the tab's verdict as a glyph
 	// and a word, so pass and fail never rest on colour alone. Nil draws
 	// an empty slot of the same height (nothing to judge yet), so the
