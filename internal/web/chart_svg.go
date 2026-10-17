@@ -6,6 +6,7 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"math"
@@ -25,6 +26,10 @@ type chartSVG struct {
 	MinLabel string
 	MaxLabel string
 	Latest   string
+	// Hover is the chart's readings as JSON for its hover readout
+	// (lotusChart in web/static/js/lotus.js): each point's position as a
+	// percentage of the plot, its formatted value and its time.
+	Hover string
 
 	// SparkPoints and SparkColor feed the client-side sparkline
 	// (web/static/vendor/sparklines.js), which takes a flat list of
@@ -121,13 +126,21 @@ func buildChartSVG(points []repo.Point, direction, unit string, from, to time.Ti
 	if !haveAny {
 		return chartSVG{HasData: false}
 	}
-	valRange := maxV - minV
-	if valRange == 0 {
-		// A perfectly flat series: center the line rather than divide by
-		// zero — still a real, meaningful chart (e.g. coverage steady at
-		// 90% for the whole window), not an empty state.
-		valRange = 1
+	// The y axis spans the readings, but never less than minSpanFrac of
+	// their size: zoomed all the way in, coverage moving from 93.0% to
+	// 94.6% filled the chart top to bottom and read as a collapse. A
+	// perfectly flat series centres its line (still a real chart —
+	// coverage steady at 90% all week — not an empty state).
+	const minSpanFrac = 0.05
+	lo, hi := minV, maxV
+	if span := math.Max(math.Abs(lo+hi)/2*minSpanFrac, 1e-9); hi-lo < span {
+		mid := (lo + hi) / 2
+		lo, hi = mid-span/2, mid+span/2
+		if minV >= 0 && lo < 0 { // a count or a percentage never dips below zero
+			lo, hi = 0, span
+		}
 	}
+	valRange := hi - lo
 
 	if from.IsZero() || to.IsZero() {
 		from, to = points[0].At, points[len(points)-1].At
@@ -139,7 +152,7 @@ func buildChartSVG(points []repo.Point, direction, unit string, from, to time.Ti
 	// A small vertical margin keeps the line off the very top/bottom edge
 	// so a flat-at-the-max or flat-at-the-min series doesn't clip its own
 	// stroke width.
-	const marginFrac = 0.08
+	const marginFrac = 0.1
 	plotTop, plotHeight := height*marginFrac, height*(1-2*marginFrac)
 
 	// Clamped: a rollup bucket starts on the hour, so the first can sit
@@ -147,7 +160,7 @@ func buildChartSVG(points []repo.Point, direction, unit string, from, to time.Ti
 	x := func(t time.Time) float64 {
 		return math.Min(width, math.Max(0, t.Sub(from).Seconds()/span*width))
 	}
-	y := func(v float64) float64 { return plotTop + plotHeight - (v-minV)/valRange*plotHeight }
+	y := func(v float64) float64 { return plotTop + plotHeight - (v-lo)/valRange*plotHeight }
 
 	// Pass 1: first/last real value, purely to pick a tone — done before
 	// building any markup so the path/dot-building pass below can write
@@ -183,15 +196,8 @@ func buildChartSVG(points []repo.Point, direction, unit string, from, to time.Ti
 	color := chartToneColor[tone]
 
 	// Pass 2: split the readings into runs — broken by an empty bucket
-	// or by a stretch longer than gapThreshold — and draw each as one
-	// "M x,y H.. V.." step subpath.
-	//
-	// Dots mark what a line cannot: a run of a single reading (a binding
-	// collected once a week produces exactly that between two gaps, and a
-	// lone "M x,y" with no following segment draws nothing at all —
-	// without a dot, that week's real reading would be invisible) and the
-	// latest reading, the value the panel's number repeats. A dot on every
-	// reading of a dense series only buried the line under them.
+	// or by a stretch longer than gapThreshold — so a stretch with no
+	// readings is drawn as nothing, never bridged.
 	maxGap := gapThreshold(points)
 	var runs [][]repo.Point
 	var run []repo.Point
@@ -213,40 +219,90 @@ func buildChartSVG(points []repo.Point, direction, unit string, from, to time.Ti
 		runs = append(runs, run)
 	}
 
+	// Pass 3: draw each run as a smooth curve through the readings where
+	// the value changed. A collect every 15 minutes repeats the same value
+	// a hundred times a day; only the reading before a change and the one
+	// after it carry information, so the curve holds flat until then and
+	// turns over that one sync interval — the change shows when it
+	// happened, without a vertical cliff. The curve is monotone (it never
+	// overshoots past either neighbouring reading), so a smooth line never
+	// draws a value that was not measured.
+	//
+	// Dots mark what a line cannot: a run of a single reading (a binding
+	// collected weekly has exactly that between two gaps) and the latest
+	// reading, the value the panel's number repeats.
+	type hoverPoint struct {
+		X float64 `json:"x"`
+		Y float64 `json:"y"`
+		V string  `json:"v"`
+		T string  `json:"t"`
+	}
+	var hover []hoverPoint
 	dot := func(b *strings.Builder, p repo.Point) {
 		fmt.Fprintf(b, `<circle cx="%.2f" cy="%.2f" r="2.5" fill="%s" vector-effect="non-scaling-stroke"/>`, x(p.At), y(p.Value), color)
 	}
-	var path, dots strings.Builder
+	var line, area, dots strings.Builder
 	for i, r := range runs {
-		fmt.Fprintf(&path, "M%.2f,%.2f ", x(r[0].At), y(r[0].Value))
-		for _, p := range r[1:] {
-			fmt.Fprintf(&path, "H%.2f V%.2f ", x(p.At), y(p.Value))
-		}
+		kept := changePoints(r)
 		last := r[len(r)-1]
 		latest := i == len(runs)-1
 		// The current value holds to the window's end — but only while it
 		// is still current: a series whose last reading is old stops
 		// where its readings do.
 		if latest && maxGap > 0 && to.Sub(last.At) <= maxGap {
-			fmt.Fprintf(&path, "H%.2f ", x(to))
+			kept = append(kept, repo.Point{At: to, Value: last.Value, HasValue: true})
 		}
-		if len(r) == 1 || latest {
+		xs, ys := make([]float64, 0, len(kept)), make([]float64, 0, len(kept))
+		at := make([]repo.Point, 0, len(kept)) // the reading behind each (xs, ys)
+		for _, p := range kept {
+			px, py := x(p.At), y(p.Value)
+			if n := len(xs); n > 0 && px <= xs[n-1] {
+				ys[n-1], at[n-1] = py, p // two readings on one x: the later one stands
+				continue
+			}
+			xs, ys, at = append(xs, px), append(ys, py), append(at, p)
+		}
+		easeChanges(xs, ys, width*easeFrac)
+		// Hover reads the curve as drawn — after easing — so the ring sits
+		// on the line; the hold-to-end point is not a reading of its own.
+		for j := range xs {
+			if at[j].At.Equal(to) && j == len(xs)-1 && j > 0 && !last.At.Equal(to) {
+				continue
+			}
+			hover = append(hover, hoverPoint{
+				X: math.Round(xs[j]/width*1000) / 10, Y: math.Round(ys[j]/height*1000) / 10,
+				V: formatMetricValue(at[j].Value, unit), T: at[j].At.Local().Format("02 Jan 15:04"),
+			})
+		}
+		if len(xs) > 1 {
+			d := monotonePath(xs, ys)
+			fmt.Fprintf(&line, "%s ", d)
+			fmt.Fprintf(&area, "%s L%.2f,%.2f L%.2f,%.2f Z ", d, xs[len(xs)-1], height, xs[0], height)
+		} else {
+			// A lone reading paints nothing as a path; its dot below is
+			// what shows it. The moveto still marks it as its own run.
+			fmt.Fprintf(&line, "M%.2f,%.2f ", xs[0], ys[0])
+		}
+		if len(xs) == 1 || len(r) == 1 || latest {
 			dot(&dots, last)
 		}
 	}
+	hoverJSON, _ := json.Marshal(hover)
 
 	// vector-effect="non-scaling-stroke": the <svg> is stretched to its
 	// container via CSS (width/height:100%) rather than kept at its
 	// viewBox's native aspect ratio, so a plain stroke-width would get
 	// visually distorted (thicker on whichever axis is compressed more)
 	// — this keeps the line and dots a uniform size regardless of that
-	// stretch.
+	// stretch. The area under the line is a faint wash of the same
+	// colour, so the shape reads at a glance without competing with it.
 	svg := fmt.Sprintf(
 		`<svg viewBox="0 0 %.0f %.0f" preserveAspectRatio="none" style="width:100%%;height:100%%;display:block;overflow:visible">`+
-			`<path d="%s" fill="none" stroke="%s" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`+
+			`<path data-area d="%s" fill="%s" fill-opacity=".08" stroke="none"/>`+
+			`<path data-line d="%s" fill="none" stroke="%s" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`+
 			`%s`+
 			`</svg>`,
-		width, height, path.String(), color, dots.String(),
+		width, height, strings.TrimSpace(area.String()), color, strings.TrimSpace(line.String()), color, dots.String(),
 	)
 
 	// Rescaled into a 20-100 window rather than passed raw. sparklines.js
@@ -308,6 +364,7 @@ func buildChartSVG(points []repo.Point, direction, unit string, from, to time.Ti
 		HasData: true, SVG: template.HTML(svg), Tone: tone, //nolint:gosec // built entirely from numeric formatting above, no user input
 		MinLabel: formatMetricValue(minV, unit), MaxLabel: formatMetricValue(maxV, unit),
 		Latest:      formatMetricValue(lastVal, unit),
+		Hover:       string(hoverJSON),
 		SparkPoints: strings.Join(spark, ","),
 		SparkColor:  color,
 	}
@@ -354,5 +411,101 @@ func humanMinutes(m int64) string {
 			return thousands(d) + "d"
 		}
 		return fmt.Sprintf("%sd %dh", thousands(d), h)
+	}
+}
+
+// changePoints keeps the readings of a run that say something: the
+// first, the last, and on each side of every change the reading before it
+// (the old value's last) and the one at it (the new value's first). A run
+// that never changes keeps two readings, not a hundred.
+func changePoints(r []repo.Point) []repo.Point {
+	out := []repo.Point{r[0]}
+	for i := 1; i < len(r); i++ {
+		if r[i].Value == r[i-1].Value {
+			continue
+		}
+		if !out[len(out)-1].At.Equal(r[i-1].At) {
+			out = append(out, r[i-1])
+		}
+		out = append(out, r[i])
+	}
+	if last := r[len(r)-1]; !out[len(out)-1].At.Equal(last.At) {
+		out = append(out, last)
+	}
+	return out
+}
+
+// monotonePath is an SVG path through (xs, ys) as a monotone cubic curve
+// (Fritsch–Carlson, the shape d3's curveMonotoneX draws): smooth, but it
+// never rises above or dips below the two readings either side of a
+// segment, so between a flat stretch and a change it turns without the
+// overshoot an ordinary spline would invent. xs must strictly increase.
+func monotonePath(xs, ys []float64) string {
+	n := len(xs)
+	sign := func(v float64) float64 {
+		switch {
+		case v > 0:
+			return 1
+		case v < 0:
+			return -1
+		}
+		return 0
+	}
+	slope := make([]float64, n-1)
+	for i := range slope {
+		slope[i] = (ys[i+1] - ys[i]) / (xs[i+1] - xs[i])
+	}
+	tangent := make([]float64, n)
+	for i := 1; i < n-1; i++ {
+		h0, h1 := xs[i]-xs[i-1], xs[i+1]-xs[i]
+		s0, s1 := slope[i-1], slope[i]
+		p := (s0*h1 + s1*h0) / (h0 + h1)
+		tangent[i] = (sign(s0) + sign(s1)) * math.Min(math.Min(math.Abs(s0), math.Abs(s1)), 0.5*math.Abs(p))
+	}
+	// Ends: d3's slope2 — the one-sided estimate, bent toward the inner
+	// tangent.
+	tangent[0] = slope[0]
+	tangent[n-1] = slope[n-2]
+	if n > 2 {
+		tangent[0] = (3*slope[0] - tangent[1]) / 2
+		tangent[n-1] = (3*slope[n-2] - tangent[n-2]) / 2
+		if sign(tangent[0]) != sign(slope[0]) {
+			tangent[0] = 0
+		}
+		if sign(tangent[n-1]) != sign(slope[n-2]) {
+			tangent[n-1] = 0
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "M%.2f,%.2f", xs[0], ys[0])
+	for i := 0; i < n-1; i++ {
+		dx := (xs[i+1] - xs[i]) / 3
+		fmt.Fprintf(&b, " C%.2f,%.2f %.2f,%.2f %.2f,%.2f",
+			xs[i]+dx, ys[i]+tangent[i]*dx, xs[i+1]-dx, ys[i+1]-tangent[i+1]*dx, xs[i+1], ys[i+1])
+	}
+	return b.String()
+}
+
+// easeFrac is the narrowest a change's turn is drawn, as a share of the
+// chart's width. A value that moved between two hourly syncs turns over
+// one hour — on a week-wide chart, a vertical cliff. Widening only the
+// turn keeps the change where it happened and lets the curve read as a
+// curve.
+const easeFrac = 0.04
+
+// easeChanges moves the last reading before each change back, to at
+// least minW before the change, but never past the reading before it:
+// the old value then curves into the new one over that stretch instead of
+// in a single sync interval. Only a held reading moves (one whose value
+// matches the reading before it), so no measured change shifts in time.
+func easeChanges(xs, ys []float64, minW float64) {
+	for i := 1; i < len(xs)-1; i++ {
+		if ys[i] == ys[i+1] || ys[i] != ys[i-1] {
+			continue
+		}
+		want := xs[i+1] - minW
+		if want < xs[i] {
+			xs[i] = math.Max(want, xs[i-1]+(xs[i]-xs[i-1])/2)
+		}
 	}
 }

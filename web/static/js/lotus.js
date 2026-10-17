@@ -903,3 +903,28 @@ function qaWorkload(sourceId) {
     },
   };
 }
+
+// lotusChart is a Trends chart's hover readout (components/metric_charts
+// .html): the pointer snaps to the nearest reading where the value
+// changed — the only readings the curve is drawn through — and the card's
+// number shows that reading's value and time. data-points is
+// chartSVG.Hover: x and y as percentages of the plot.
+function lotusChart() {
+  return {
+    pts: [],
+    p: null,
+    init() {
+      try { this.pts = JSON.parse(this.$el.dataset.points || '[]') || []; } catch (e) { this.pts = []; }
+    },
+    move(e) {
+      if (!this.pts.length) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      const at = (e.clientX - r.left) / r.width * 100;
+      let best = this.pts[0];
+      for (const pt of this.pts) {
+        if (Math.abs(pt.x - at) < Math.abs(best.x - at)) best = pt;
+      }
+      this.p = best;
+    },
+  };
+}

@@ -26,14 +26,29 @@
   {{else}}
   <div class="lotus-panel-charts">
     {{range .Cards}}
-    <div class="lotus-panel-chart{{if not .Active}} is-inactive{{end}}">
+    <div class="lotus-panel-chart{{if not .Active}} is-inactive{{end}}" x-data="lotusChart()" data-points="{{.Chart.Hover}}">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
         <span style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.Label}}</span>
-        {{/* Only the label is muted: a flat trend is still a number, drawn in ink; pass/fail colour it. */}}
-        {{if .Chart.HasData}}<span class="{{if eq .Chart.Tone "none"}}lotus-mt-stat-neutral{{else}}lotus-text-{{.Chart.Tone}}{{end}}" style="font-size:15px;font-weight:700;white-space:nowrap">{{.Chart.Latest}}</span>{{end}}
+        {{/* Only the label is muted: a flat trend is still a number, drawn in ink; pass/fail colour it.
+             While the chart is hovered, the number is the hovered reading's, with its time. */}}
+        {{if .Chart.HasData}}<span style="display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap">
+          <span class="lotus-chart-at" x-show="p" x-cloak x-text="p && p.t"></span>
+          <span class="{{if eq .Chart.Tone "none"}}lotus-mt-stat-neutral{{else}}lotus-text-{{.Chart.Tone}}{{end}}" style="font-size:15px;font-weight:700" data-latest="{{.Chart.Latest}}" x-text="p ? p.v : $el.dataset.latest">{{.Chart.Latest}}</span>
+        </span>{{end}}
       </div>
       {{if .Chart.HasData}}
-      <div style="height:70px">{{.Chart.SVG}}</div>
+      {{/* Hovering snaps to the nearest change: a cursor line and a ring on
+           the curve. Positions come from data-points (chartSVG.Hover);
+           styles that move are object-form :style (AGENTS.md). */}}
+      <div class="lotus-chart" @mousemove="move($event)" @mouseleave="p = null">
+        {{.Chart.SVG}}
+        <template x-if="p">
+          <div>
+            <div class="lotus-chart-cursor" :style="{ left: p.x + '%' }"></div>
+            <div class="lotus-chart-ring" :style="{ left: p.x + '%', top: p.y + '%' }"></div>
+          </div>
+        </template>
+      </div>
       <div style="display:flex;justify-content:space-between;font:400 9.5px 'IBM Plex Mono',monospace;color:var(--text-secondary)">
         <span>{{.Chart.MinLabel}}</span><span>{{.Chart.MaxLabel}}</span>
       </div>

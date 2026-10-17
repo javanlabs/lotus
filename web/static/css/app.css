@@ -1350,3 +1350,27 @@ a.lotus-dash-figure:focus-visible { outline: none; box-shadow: var(--shadow-focu
   color: var(--status-fail);
 }
 .lotus-scan .btn-lotus { flex: none; }
+
+/* A Trends chart (components/metric_charts.html): the SVG curve, and on
+   hover a cursor line and a ring on the nearest reading; the card's
+   number above turns into that reading's, with its time beside it. */
+.lotus-chart { position: relative; height: 70px; cursor: crosshair; }
+.lotus-chart-cursor {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 1px;
+  background: var(--plum-a16);
+  pointer-events: none;
+}
+.lotus-chart-ring {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border: 2px solid var(--text-brand);
+  border-radius: 50%;
+  background: #FFFFFF;
+  pointer-events: none;
+}
+.lotus-chart-at { font: 400 10px var(--font-mono); color: var(--text-muted); }

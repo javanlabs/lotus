@@ -1,6 +1,9 @@
 package web
 
 import (
+	"encoding/json"
+	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +13,18 @@ import (
 
 func pt(daysAgo int, value float64, hasValue bool) repo.Point {
 	return repo.Point{At: time.Now().AddDate(0, 0, -daysAgo), Value: value, HasValue: hasValue}
+}
+
+// linePath is the d of a chart's line (the area under it is a second
+// path, closed down to the axis).
+func linePath(t *testing.T, svg string) string {
+	t.Helper()
+	i := strings.Index(svg, `<path data-line d="`)
+	if i < 0 {
+		t.Fatalf("no line path in:\n%s", svg)
+	}
+	rest := svg[i+len(`<path data-line d="`):]
+	return rest[:strings.IndexByte(rest, '"')]
 }
 
 func TestBuildChartSVG_NoDataReturnsHasDataFalse(t *testing.T) {
@@ -43,7 +58,7 @@ func TestBuildChartSVG_GapBreaksThePathInsteadOfDroppingToZero(t *testing.T) {
 	if !got.HasData {
 		t.Fatal("HasData = false, want true (two real points exist)")
 	}
-	svg := string(got.SVG)
+	svg := linePath(t, string(got.SVG))
 	moveCount := strings.Count(svg, "M")
 	if moveCount != 2 {
 		t.Fatalf("path has %d \"M\" (moveto) commands, want 2 — the 5-day gap between the two real points must start a new subpath, not one continuous line through the missing days:\n%s", moveCount, svg)
@@ -53,7 +68,7 @@ func TestBuildChartSVG_GapBreaksThePathInsteadOfDroppingToZero(t *testing.T) {
 func TestBuildChartSVG_ContinuousDataIsOnePathRun(t *testing.T) {
 	points := []repo.Point{pt(2, 10, true), pt(1, 20, true), pt(0, 30, true)}
 	got := buildChartSVG(points, "higher_better", "count", time.Time{}, time.Time{}, 300, 80)
-	if strings.Count(string(got.SVG), "M") != 1 {
+	if strings.Count(linePath(t, string(got.SVG)), "M") != 1 {
 		t.Fatalf("path = %s, want exactly one \"M\" for an unbroken run", got.SVG)
 	}
 }
@@ -127,13 +142,67 @@ func readings(start time.Time, step time.Duration, n int, v float64) []repo.Poin
 	return out
 }
 
-// A value holds until the next reading: the path steps (H then V) between
-// readings instead of sloping across them.
-func TestBuildChartSVG_StepsBetweenReadings(t *testing.T) {
-	points := []repo.Point{pt(2, 10, true), pt(1, 20, true), pt(0, 30, true)}
-	svg := string(buildChartSVG(points, "higher_better", "count", time.Time{}, time.Time{}, 300, 80).SVG)
-	if strings.Contains(svg, "L") || strings.Count(svg, "H") < 2 || strings.Count(svg, "V") != 2 {
-		t.Fatalf("want a step path (M, then H/V per reading, no L):\n%s", svg)
+// The line is a smooth curve (cubic segments, no steps or straight
+// lines), drawn through the readings where the value changed: a hundred
+// identical readings hold one flat segment, and the curve turns over the
+// one sync interval in which the value actually moved.
+func TestBuildChartSVG_SmoothCurveThroughTheChanges(t *testing.T) {
+	start := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	points := append(readings(start, 15*time.Minute, 100, 10), readings(start.Add(100*15*time.Minute), 15*time.Minute, 100, 20)...)
+	got := buildChartSVG(points, "higher_better", "count", time.Time{}, time.Time{}, 400, 80)
+	d := linePath(t, string(got.SVG))
+	if strings.ContainsAny(d, "HVL") || !strings.Contains(d, "C") {
+		t.Fatalf("want a curve of C segments only:\n%s", d)
+	}
+	// first, last-of-old, first-of-new, last: three segments.
+	if n := strings.Count(d, "C"); n != 3 {
+		t.Errorf("%d segments for one change in 200 readings, want 3:\n%s", n, d)
+	}
+	var hover []struct{ V, T string }
+	if err := json.Unmarshal([]byte(got.Hover), &hover); err != nil || len(hover) != 4 || hover[1].V != "10" || hover[2].V != "20" {
+		t.Errorf("hover points = %s (%v), want the four change points", got.Hover, err)
+	}
+}
+
+// A monotone curve never draws a value that was not measured: every
+// control point of a segment stays between that segment's two readings.
+func TestMonotonePath_NeverOvershoots(t *testing.T) {
+	xs := []float64{0, 10, 11, 50, 51, 100}
+	ys := []float64{50, 50, 10, 10, 90, 90}
+	d := monotonePath(xs, ys)
+	var segs [][6]float64
+	for _, part := range strings.Split(d, " C")[1:] {
+		var c [6]float64
+		if _, err := fmt.Sscanf(part, "%f,%f %f,%f %f,%f", &c[0], &c[1], &c[2], &c[3], &c[4], &c[5]); err != nil {
+			t.Fatalf("parse %q: %v", part, err)
+		}
+		segs = append(segs, c)
+	}
+	for i, c := range segs {
+		lo, hi := math.Min(ys[i], ys[i+1]), math.Max(ys[i], ys[i+1])
+		for _, y := range []float64{c[1], c[3]} {
+			if y < lo-1e-6 || y > hi+1e-6 {
+				t.Errorf("segment %d control y %.2f outside [%.0f, %.0f]: %s", i, y, lo, hi, d)
+			}
+		}
+	}
+}
+
+// A small move on a large value does not fill the chart: coverage from
+// 93.0% to 94.6% spans less than half the plot, not top to bottom.
+func TestBuildChartSVG_SmallChangeIsNotACliff(t *testing.T) {
+	start := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	points := append(readings(start, time.Hour, 5, 93.0), readings(start.Add(5*time.Hour), time.Hour, 5, 94.6)...)
+	got := buildChartSVG(points, "higher_better", "%", time.Time{}, time.Time{}, 400, 100)
+	var hover []struct{ Y float64 }
+	if err := json.Unmarshal([]byte(got.Hover), &hover); err != nil || len(hover) < 2 {
+		t.Fatalf("hover = %s (%v)", got.Hover, err)
+	}
+	if rise := hover[0].Y - hover[len(hover)-1].Y; rise <= 0 || rise > 50 {
+		t.Errorf("a 1.6-point move rose %.1f%% of the plot, want under half", rise)
+	}
+	if got.MinLabel != "93.0%" || got.MaxLabel != "94.6%" {
+		t.Errorf("labels = %s / %s, still the readings' own range", got.MinLabel, got.MaxLabel)
 	}
 }
 
@@ -149,18 +218,19 @@ func TestBuildChartSVG_LongStretchWithoutReadingsBreaksTheLine(t *testing.T) {
 	mid := from.Add(7 * 24 * time.Hour / 2)
 	points := append(readings(mid, 15*time.Minute, 8, 2066), readings(to.Add(-75*time.Minute), 15*time.Minute, 6, 2097)...)
 
-	svg := string(buildChartSVG(points, "neutral", "count", from, to, 700, 100).SVG)
+	full := string(buildChartSVG(points, "neutral", "count", from, to, 700, 100).SVG)
+	svg := linePath(t, full)
 	if n := strings.Count(svg, "M"); n != 2 {
 		t.Fatalf("%d runs, want 2 — the stretch with no readings must break the line:\n%s", n, svg)
 	}
-	if !strings.HasPrefix(svg[strings.Index(svg, `d="`)+3:], "M350.00,") {
+	if !strings.HasPrefix(svg, "M350.00,") {
 		t.Errorf("first reading is not at the middle of the window:\n%s", svg)
 	}
-	if !strings.Contains(svg, "H700.00 ") {
+	if !strings.HasSuffix(strings.TrimSpace(svg[:strings.LastIndex(svg, ",")]), "700.00") {
 		t.Errorf("the latest value does not hold to the window's end:\n%s", svg)
 	}
 	// One dot: the latest reading. Neither run is a lone reading.
-	if n := strings.Count(svg, "<circle"); n != 1 {
+	if n := strings.Count(full, "<circle"); n != 1 {
 		t.Errorf("%d dots, want 1 (the latest reading)", n)
 	}
 }
@@ -171,8 +241,8 @@ func TestBuildChartSVG_StaleLastReadingDoesNotHoldToTheEnd(t *testing.T) {
 	to := time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC)
 	from := to.Add(-7 * 24 * time.Hour)
 	points := readings(from.Add(time.Hour), time.Hour, 6, 5)
-	svg := string(buildChartSVG(points, "neutral", "count", from, to, 700, 100).SVG)
-	if strings.Contains(svg, "H700.00") {
+	svg := linePath(t, string(buildChartSVG(points, "neutral", "count", from, to, 700, 100).SVG))
+	if strings.Contains(svg, "700.00,") {
 		t.Fatalf("a stale series holds to the window's end:\n%s", svg)
 	}
 }
@@ -281,5 +351,29 @@ func TestPrimaryChartKey(t *testing.T) {
 		if got := primaryChartKey(kind); got != want {
 			t.Errorf("primaryChartKey(%q) = %q, want %q", kind, got, want)
 		}
+	}
+}
+
+// A change between two hourly syncs turns over at least easeFrac of the
+// chart, not one hour of a week; the reading at the change stays put, and
+// a held reading never moves behind the one before it.
+func TestEaseChanges(t *testing.T) {
+	xs := []float64{0, 99, 100, 200}
+	ys := []float64{10, 10, 20, 20}
+	easeChanges(xs, ys, 20)
+	if xs[1] != 80 || xs[2] != 100 {
+		t.Errorf("xs = %v, want the held reading at 80 and the change still at 100", xs)
+	}
+	// Room for less than minW: it stops halfway to the reading before.
+	xs = []float64{0, 95, 96, 100, 200}
+	ys = []float64{10, 10, 20, 20, 20}
+	easeChanges(xs, ys, 20)
+	if xs[1] != 76 {
+		t.Errorf("xs = %v, want the held reading at 76", xs)
+	}
+	xs2, ys2 := []float64{0, 90, 91}, []float64{10, 10, 20}
+	easeChanges(xs2, ys2, 200)
+	if xs2[1] != 45 {
+		t.Errorf("xs = %v, want the held reading halfway back to the one before, 45", xs2)
 	}
 }
