@@ -19,6 +19,7 @@ import (
 // A service token pinned to a component (an ingest credential) is not a QA
 // credential for the whole organization: it reaches no project.
 func TestQAAPI_ComponentPinnedTokenReachesNoProject(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-api-component-pin")
 	comp, err := repo.CreateComponent(context.Background(), e.s, repo.NewComponent{ProjectID: e.projectID, Slug: "web", Name: "Web", Kind: "service"})
 	if err != nil {
@@ -43,6 +44,7 @@ func TestQAAPI_ComponentPinnedTokenReachesNoProject(t *testing.T) {
 // An error the API does not expect is a 500 to the caller and a line in the
 // log with what went wrong; the caller never sees the internals.
 func TestQAAPI_UnexpectedErrorsAreLogged(t *testing.T) {
+	t.Parallel()
 	var logged []string
 	prev := qaAPILogf
 	qaAPILogf = func(format string, a ...any) { logged = append(logged, fmt.Sprintf(format, a...)) }
@@ -50,7 +52,7 @@ func TestQAAPI_UnexpectedErrorsAreLogged(t *testing.T) {
 
 	app := fiber.New()
 	app.Get("/boom", apiJSONErrors, func(c *fiber.Ctx) error { return errors.New("pq: connection reset") })
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/boom", nil))
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/boom", nil), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +62,7 @@ func TestQAAPI_UnexpectedErrorsAreLogged(t *testing.T) {
 	logged = nil
 	app = fiber.New()
 	app.Get("/tool", func(c *fiber.Ctx) error { return c.JSON(mcpToolError(c, errors.New("pq: connection reset"))) })
-	resp, _ = app.Test(httptest.NewRequest(http.MethodGet, "/tool", nil))
+	resp, _ = app.Test(httptest.NewRequest(http.MethodGet, "/tool", nil), -1)
 	buf := make([]byte, 512)
 	n, _ := resp.Body.Read(buf)
 	if len(logged) != 1 || strings.Contains(string(buf[:n]), "connection reset") {
@@ -70,6 +72,7 @@ func TestQAAPI_UnexpectedErrorsAreLogged(t *testing.T) {
 
 // NUL cannot be stored as text; it is refused as input, never a 500.
 func TestQAAPI_NULInInputIsRefused(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-api-nul")
 	base := "/api/qa/projects/" + e.projectID.String()
 	rows := apiCaseRows(2, "Auth")
@@ -96,6 +99,7 @@ func TestQAAPI_NULInInputIsRefused(t *testing.T) {
 // The API reads bodies as strictly as MCP reads arguments: a misspelled
 // field is an error, not 500 cases created without it.
 func TestQAAPI_UnknownFieldsAreRefused(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-api-strict")
 	base := "/api/qa/projects/" + e.projectID.String()
 	rows := apiCaseRows(1, "Auth")
@@ -113,6 +117,7 @@ func TestQAAPI_UnknownFieldsAreRefused(t *testing.T) {
 
 // A run is read in pages, and its case refs come from its own cases.
 func TestQAAPI_GetRunIsPaged(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-api-run-page")
 	run, _ := e.firstRun(t)
 	path := "/api/qa/projects/" + e.projectID.String() + "/runs/" + run.ID.String()
@@ -139,6 +144,7 @@ func TestQAAPI_GetRunIsPaged(t *testing.T) {
 // A token is revoked only by its owner, or (a service token) by an admin of
 // its organization.
 func TestTokens_RevokeOnlyYourOwn(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-token-revoke")
 	other := newQAEnvOnApp(t, e.qaEnv, "other-token-revoke")
 	var ids []string

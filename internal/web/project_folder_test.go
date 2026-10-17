@@ -13,6 +13,7 @@ import (
 )
 
 func TestProjectPage_MoveToFolderIsOfferedToMembersOnly(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		role string
 		want bool
@@ -31,7 +32,7 @@ func TestProjectPage_MoveToFolderIsOfferedToMembersOnly(t *testing.T) {
 					t.Fatalf("insert project: %v", err)
 				}
 			})
-			resp, err := app.Test(reqWithSession(http.MethodGet, sub+"."+dashboardTestDomain, projectPathOf(t, db, orgID, projectID), raw))
+			resp, err := app.Test(reqWithSession(http.MethodGet, sub+"."+dashboardTestDomain, projectPathOf(t, db, orgID, projectID), raw), -1)
 			if err != nil || resp.StatusCode != http.StatusOK {
 				t.Fatalf("GET project = %v, %v", resp, err)
 			}
@@ -47,6 +48,7 @@ func TestProjectPage_MoveToFolderIsOfferedToMembersOnly(t *testing.T) {
 }
 
 func TestNewProject_CanBeFiledInAFolder(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-np", "member")
 	raw := seedSession(t, db, orgID, userID)
@@ -58,7 +60,7 @@ func TestNewProject_CanBeFiledInAFolder(t *testing.T) {
 		}
 	})
 
-	getResp, _ := app.Test(reqWithSession(http.MethodGet, host, "/projects/new", raw))
+	getResp, _ := app.Test(reqWithSession(http.MethodGet, host, "/projects/new", raw), -1)
 	page, _ := io.ReadAll(getResp.Body)
 	if !strings.Contains(string(page), `name="folder_id"`) {
 		t.Fatal("new project form has no folder picker")
@@ -69,7 +71,7 @@ func TestNewProject_CanBeFiledInAFolder(t *testing.T) {
 	req.Host = host
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil || resp.StatusCode != http.StatusFound {
 		t.Fatalf("create = %v, %v; want 302", resp, err)
 	}
@@ -85,11 +87,12 @@ func TestNewProject_CanBeFiledInAFolder(t *testing.T) {
 }
 
 func TestProjectPage_MoveToFolderIsANormalButton(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-pf-btn", "member")
 	raw := seedSession(t, db, orgID, userID)
 	ids := seedProjectsNamed(t, db, orgID, "aos")
-	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-pf-btn."+dashboardTestDomain, projectPathOf(t, db, orgID, ids[0]), raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-pf-btn."+dashboardTestDomain, projectPathOf(t, db, orgID, ids[0]), raw), -1)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET project = %v, %v", resp, err)
 	}
@@ -106,6 +109,7 @@ func TestProjectPage_MoveToFolderIsANormalButton(t *testing.T) {
 }
 
 func TestProjectPage_BreadcrumbShowsTheFolderPath(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-pf-crumb", "viewer")
 	raw := seedSession(t, db, orgID, userID)
@@ -116,7 +120,7 @@ func TestProjectPage_BreadcrumbShowsTheFolderPath(t *testing.T) {
 			t.Fatalf("find project: %v", err)
 		}
 	})
-	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-pf-crumb."+dashboardTestDomain, projectPathOf(t, db, orgID, projectID), raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-pf-crumb."+dashboardTestDomain, projectPathOf(t, db, orgID, projectID), raw), -1)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET project = %v, %v", resp, err)
 	}

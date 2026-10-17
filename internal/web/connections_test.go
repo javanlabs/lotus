@@ -60,6 +60,7 @@ func newConnectionsTestApp(t *testing.T) (*fiber.App, *sqlx.DB, config.Config) {
 }
 
 func TestConnections_CreateThenGet_SecretNeverInResponse(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newConnectionsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -67,7 +68,7 @@ func TestConnections_CreateThenGet_SecretNeverInResponse(t *testing.T) {
 
 	const secret = "glpat-supersecrettoken12345"
 	body := `{"provider":"gitlab","name":"main","base_url":"https://gitlab.example.com","secret":"` + secret + `"}`
-	resp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/connections", raw, body))
+	resp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/connections", raw, body), -1)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -86,7 +87,7 @@ func TestConnections_CreateThenGet_SecretNeverInResponse(t *testing.T) {
 		t.Fatalf("secret_last4 = %v, want 2345", created.SecretLast4)
 	}
 
-	getResp, err := app.Test(reqWithSession(http.MethodGet, host, "/connections/"+created.ID.String(), raw))
+	getResp, err := app.Test(reqWithSession(http.MethodGet, host, "/connections/"+created.ID.String(), raw), -1)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -95,7 +96,7 @@ func TestConnections_CreateThenGet_SecretNeverInResponse(t *testing.T) {
 		t.Fatalf("secret leaked in get response: %s", getBody)
 	}
 
-	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/connections", raw))
+	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/connections", raw), -1)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -106,6 +107,7 @@ func TestConnections_CreateThenGet_SecretNeverInResponse(t *testing.T) {
 }
 
 func TestConnections_CiphertextNotDecryptableAcrossOrgs(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newConnectionsTestApp(t)
 	orgA, userA := seedMember(t, db, "acme", "owner")
 	orgB, userB := seedMember(t, db, "beta", "owner")
@@ -113,7 +115,7 @@ func TestConnections_CiphertextNotDecryptableAcrossOrgs(t *testing.T) {
 	rawB := seedSession(t, db, orgB, userB)
 
 	body := `{"provider":"gitlab","name":"main","base_url":"https://gitlab.example.com","secret":"glpat-secret"}`
-	resp, err := app.Test(jsonReqWithSession(http.MethodPost, "acme."+cfg.BaseDomain, "/connections", rawA, body))
+	resp, err := app.Test(jsonReqWithSession(http.MethodPost, "acme."+cfg.BaseDomain, "/connections", rawA, body), -1)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -155,7 +157,7 @@ func TestConnections_CiphertextNotDecryptableAcrossOrgs(t *testing.T) {
 	// handler's decrypt step fails before it ever reaches a live upstream
 	// call or SetConnectionTestResult, surfacing as a non-2xx response
 	// rather than a 200 body with status="error".
-	testResp, err := app.Test(jsonReqWithSession(http.MethodPost, "beta."+cfg.BaseDomain, "/connections/"+newID.String()+"/test", rawB, `{}`))
+	testResp, err := app.Test(jsonReqWithSession(http.MethodPost, "beta."+cfg.BaseDomain, "/connections/"+newID.String()+"/test", rawB, `{}`), -1)
 	if err != nil {
 		t.Fatalf("test: %v", err)
 	}
@@ -165,19 +167,21 @@ func TestConnections_CiphertextNotDecryptableAcrossOrgs(t *testing.T) {
 }
 
 func TestConnections_BaseURLChangeRequiresSecretAndRecordsAudit(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newConnectionsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme." + cfg.BaseDomain
 
 	body := `{"provider":"gitlab","name":"main","base_url":"https://gitlab.example.com","secret":"glpat-secret"}`
-	resp, _ := app.Test(jsonReqWithSession(http.MethodPost, host, "/connections", raw, body))
+	resp, _ := app.Test(jsonReqWithSession(http.MethodPost, host, "/connections", raw, body), -1)
 	var created repo.Connection
 	json.NewDecoder(resp.Body).Decode(&created)
 
 	// Missing secret is rejected.
 	noSecretResp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/connections/"+created.ID.String()+"/base-url", raw,
-		`{"base_url":"https://gitlab2.example.com"}`))
+		`{"base_url":"https://gitlab2.example.com"}`), -1)
+
 	if err != nil {
 		t.Fatalf("base-url without secret: %v", err)
 	}
@@ -186,7 +190,8 @@ func TestConnections_BaseURLChangeRequiresSecretAndRecordsAudit(t *testing.T) {
 	}
 
 	okResp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/connections/"+created.ID.String()+"/base-url", raw,
-		`{"base_url":"https://gitlab2.example.com","secret":"glpat-new-secret"}`))
+		`{"base_url":"https://gitlab2.example.com","secret":"glpat-new-secret"}`), -1)
+
 	if err != nil {
 		t.Fatalf("base-url with secret: %v", err)
 	}
@@ -206,6 +211,7 @@ func TestConnections_BaseURLChangeRequiresSecretAndRecordsAudit(t *testing.T) {
 }
 
 func TestConnections_SSRFAddressesRejectedAtCreate(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newConnectionsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -216,7 +222,7 @@ func TestConnections_SSRFAddressesRejectedAtCreate(t *testing.T) {
 		"http://localhost:8080",
 	} {
 		body := `{"provider":"gitlab","name":"n` + baseURL + `","base_url":"` + baseURL + `","secret":"s"}`
-		resp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/connections", raw, body))
+		resp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/connections", raw, body), -1)
 		if err != nil {
 			t.Fatalf("create %s: %v", baseURL, err)
 		}

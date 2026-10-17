@@ -27,6 +27,7 @@ func otherProject(t *testing.T, f runFixture) (sectionID, planID uuid.UUID) {
 }
 
 func TestQAIssues_PlanAndSectionMustBeInTheProject(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-iss-scope")
 	ctx := context.Background()
 	otherSection, otherPlan := otherProject(t, f)
@@ -59,6 +60,7 @@ func TestQAIssues_PlanAndSectionMustBeInTheProject(t *testing.T) {
 }
 
 func TestQAMyWork_GuestWithoutProjectsSeesNothing(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-mywork-guest")
 	ctx := context.Background()
 	guest := mustUser(t, f.db, "client@bank.example")
@@ -80,6 +82,7 @@ func TestQAMyWork_GuestWithoutProjectsSeesNothing(t *testing.T) {
 }
 
 func TestQAProjectOf_ResolvesEveryKindToItsProject(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-project-of")
 	ctx := context.Background()
 	qa := mustUser(t, f.db, "qa@acme.example")

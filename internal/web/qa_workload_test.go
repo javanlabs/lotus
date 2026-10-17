@@ -13,6 +13,7 @@ import (
 )
 
 func TestQAWorkload_OwnersAndAdminsOnly(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-workload-web")
 	admin, _ := e.session(t, "admin@wl.example", "admin")
 	member, _ := e.session(t, "member@wl.example", "member")
@@ -42,6 +43,7 @@ func TestQAWorkload_OwnersAndAdminsOnly(t *testing.T) {
 }
 
 func TestQAWorkload_ShowsTheMonthsPeopleAndProjects(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-workload-month")
 	ctx := context.Background()
 	_, adminID := e.session(t, "adi@wl.example", "admin")

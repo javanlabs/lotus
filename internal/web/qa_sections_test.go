@@ -25,6 +25,7 @@ func qaSectionNamed(t *testing.T, e qaEnv, projectID uuid.UUID, name string) rep
 }
 
 func TestQASections_CreateRenameMoveArchive(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qasec")
 	member, _ := e.session(t, "qa@acme.example", "member")
 	p := e.project(t, "Portal")
@@ -78,6 +79,7 @@ func TestQASections_CreateRenameMoveArchive(t *testing.T) {
 }
 
 func TestQASections_PermissionsAndOwnership(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qasec-perm")
 	ctx := context.Background()
 	viewer, _ := e.session(t, "viewer@acme.example", "viewer")
@@ -105,6 +107,7 @@ func TestQASections_PermissionsAndOwnership(t *testing.T) {
 }
 
 func TestQACases_BulkMoveIgnoresOtherProjects(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qamove")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -142,6 +145,7 @@ func TestQACases_BulkMoveIgnoresOtherProjects(t *testing.T) {
 }
 
 func TestQACases_WriteControlsOnlyForWriters(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qasec-ui")
 	ctx := context.Background()
 	viewer, _ := e.session(t, "viewer@acme.example", "viewer")

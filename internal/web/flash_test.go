@@ -26,7 +26,7 @@ func flashRoundTrip(t *testing.T, set func(c *fiber.Ctx)) *httpx.Flash {
 		return c.SendStatus(fiber.StatusNoContent)
 	})
 
-	setResp, err := app.Test(httptest.NewRequest("GET", "/set", nil))
+	setResp, err := app.Test(httptest.NewRequest("GET", "/set", nil), -1)
 	if err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -36,7 +36,7 @@ func flashRoundTrip(t *testing.T, set func(c *fiber.Ctx)) *httpx.Flash {
 	}
 	req := httptest.NewRequest("GET", "/read", nil)
 	req.Header.Set("Cookie", strings.SplitN(cookie, ";", 2)[0])
-	readResp, err := app.Test(req)
+	readResp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -52,6 +52,7 @@ func flashRoundTrip(t *testing.T, set func(c *fiber.Ctx)) *httpx.Flash {
 }
 
 func TestFlash_ResolvesCodeToCopy(t *testing.T) {
+	t.Parallel()
 	got := flashRoundTrip(t, func(c *fiber.Ctx) { setFlash(c, "connection.created") })
 	if got == nil {
 		t.Fatal("no flash came back")
@@ -62,6 +63,7 @@ func TestFlash_ResolvesCodeToCopy(t *testing.T) {
 }
 
 func TestFlash_FillsTheFormatArgument(t *testing.T) {
+	t.Parallel()
 	got := flashRoundTrip(t, func(c *fiber.Ctx) { setFlash(c, "member.invited", "rizky@alurkerja.id") })
 	if got == nil {
 		t.Fatal("no flash came back")
@@ -75,6 +77,7 @@ func TestFlash_FillsTheFormatArgument(t *testing.T) {
 // message: the value is escaped into the cookie, and the format string
 // comes from our own table rather than from the cookie.
 func TestFlash_ArgumentCannotBreakTheEncoding(t *testing.T) {
+	t.Parallel()
 	got := flashRoundTrip(t, func(c *fiber.Ctx) { setFlash(c, "member.invited", "a|b%sc@d.io") })
 	if got == nil {
 		t.Fatal("no flash came back")
@@ -88,12 +91,13 @@ func TestFlash_ArgumentCannotBreakTheEncoding(t *testing.T) {
 // this build does not ship resolves to nothing rather than rendering
 // whatever the cookie says.
 func TestFlash_UnknownCodeIsDropped(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	var got *httpx.Flash
 	app.Get("/read", func(c *fiber.Ctx) error { got = takeFlash(c); return c.SendStatus(204) })
 	req := httptest.NewRequest("GET", "/read", nil)
 	req.Header.Set("Cookie", flashCookie+"=totally.made.up|<script>")
-	if _, err := app.Test(req); err != nil {
+	if _, err := app.Test(req, -1); err != nil {
 		t.Fatalf("read: %v", err)
 	}
 	if got != nil {
@@ -105,6 +109,7 @@ func TestFlash_UnknownCodeIsDropped(t *testing.T) {
 // argument (or an argument with no verb) is a copy bug that would only
 // show up as "%!s(MISSING)" in front of a user.
 func TestFlash_EveryCodeRendersWithItsOwnArity(t *testing.T) {
+	t.Parallel()
 	for code, msg := range flashMessages {
 		var got *httpx.Flash
 		if strings.Contains(msg.Format, "%s") {
@@ -129,11 +134,12 @@ func TestFlash_EveryCodeRendersWithItsOwnArity(t *testing.T) {
 // post: a redirect inside an htmx swap would be followed by htmx and
 // swapped into the modal, not navigated to.
 func TestRedirectAfterMutation_HtmxGetsRefreshNotRedirect(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Post("/go", func(c *fiber.Ctx) error { return redirectAfterMutation(c, "/settings/members") })
 
 	plain := httptest.NewRequest("POST", "/go", nil)
-	resp, err := app.Test(plain)
+	resp, err := app.Test(plain, -1)
 	if err != nil {
 		t.Fatalf("plain: %v", err)
 	}
@@ -143,7 +149,7 @@ func TestRedirectAfterMutation_HtmxGetsRefreshNotRedirect(t *testing.T) {
 
 	hx := httptest.NewRequest("POST", "/go", nil)
 	hx.Header.Set("HX-Request", "true")
-	resp, err = app.Test(hx)
+	resp, err = app.Test(hx, -1)
 	if err != nil {
 		t.Fatalf("htmx: %v", err)
 	}
@@ -163,6 +169,7 @@ func TestRedirectAfterMutation_HtmxGetsRefreshNotRedirect(t *testing.T) {
 // them on their own — a missing component definition or a renamed field
 // only shows up here.
 func TestModalForms_RenderStandaloneWithTheirViews(t *testing.T) {
+	t.Parallel()
 	r := httpx.NewRenderer(os.DirFS("../../web/templates"), true)
 
 	t.Run("connection_form preserves input and shows the error", func(t *testing.T) {
@@ -211,6 +218,7 @@ func TestModalForms_RenderStandaloneWithTheirViews(t *testing.T) {
 // buildInviteForm defaults an unknown role rather than emitting a select
 // with nothing chosen, which is what a native select would have done.
 func TestBuildInviteForm_DefaultsUnknownRole(t *testing.T) {
+	t.Parallel()
 	if got := buildInviteForm("a@b.io", "wizard", "").Role; got != "member" {
 		t.Errorf("Role = %q, want member", got)
 	}

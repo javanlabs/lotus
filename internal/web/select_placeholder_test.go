@@ -13,6 +13,7 @@ import (
 // empty ("Everyone", "Any status"), so the box would show nothing at all.
 // Without an explicit Placeholder, lotus_select shows that option's label.
 func TestLotusSelect_EmptyChoiceShowsItsLabel(t *testing.T) {
+	t.Parallel()
 	r := httpx.NewRenderer(os.DirFS("../../web/templates"), true)
 	render := func(data map[string]any) string {
 		var out bytes.Buffer

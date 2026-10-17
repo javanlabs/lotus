@@ -56,10 +56,11 @@ func newGitHubTestApp(t *testing.T) (*fiber.App, *sqlx.DB) {
 }
 
 func TestOAuthFlow_HappyPath(t *testing.T) {
+	t.Parallel()
 	app, db := newGitHubTestApp(t)
 
 	loginReq := httptest.NewRequest(http.MethodGet, "/login/github", nil)
-	loginResp, err := app.Test(loginReq)
+	loginResp, err := app.Test(loginReq, -1)
 	if err != nil {
 		t.Fatalf("login request: %v", err)
 	}
@@ -72,7 +73,7 @@ func TestOAuthFlow_HappyPath(t *testing.T) {
 	for _, c := range cookies {
 		callbackReq.AddCookie(c)
 	}
-	callbackResp, err := app.Test(callbackReq)
+	callbackResp, err := app.Test(callbackReq, -1)
 	if err != nil {
 		t.Fatalf("callback request: %v", err)
 	}
@@ -101,16 +102,17 @@ func TestOAuthFlow_HappyPath(t *testing.T) {
 }
 
 func TestOAuthFlow_StateReplayRejected(t *testing.T) {
+	t.Parallel()
 	app, _ := newGitHubTestApp(t)
 
-	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github", nil))
+	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github", nil), -1)
 	state, cookies := extractStateAndCookies(t, loginResp)
 
 	req1 := httptest.NewRequest(http.MethodGet, "/login/github/callback?code=abc&state="+state, nil)
 	for _, c := range cookies {
 		req1.AddCookie(c)
 	}
-	resp1, _ := app.Test(req1)
+	resp1, _ := app.Test(req1, -1)
 	if resp1.StatusCode != http.StatusFound {
 		t.Fatalf("first use status = %d, want 302", resp1.StatusCode)
 	}
@@ -119,27 +121,29 @@ func TestOAuthFlow_StateReplayRejected(t *testing.T) {
 	for _, c := range cookies {
 		req2.AddCookie(c)
 	}
-	resp2, _ := app.Test(req2)
+	resp2, _ := app.Test(req2, -1)
 	assertSentBackToLogin(t, resp2, "/", authn.NoticeLoginExpired)
 }
 
 func TestOAuthFlow_StateWithoutMatchingCookieRejected(t *testing.T) {
+	t.Parallel()
 	app, _ := newGitHubTestApp(t)
 
-	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github", nil))
+	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github", nil), -1)
 	state, _ := extractStateAndCookies(t, loginResp)
 
 	// No cookie attached at all — simulates a leaked `state` param (e.g.
 	// via Referer) used from a different browser/session.
 	req := httptest.NewRequest(http.MethodGet, "/login/github/callback?code=abc&state="+state, nil)
-	resp, _ := app.Test(req)
+	resp, _ := app.Test(req, -1)
 	assertSentBackToLogin(t, resp, "/", authn.NoticeLoginExpired)
 }
 
 func TestOAuthFlow_MismatchedCookieRejected(t *testing.T) {
+	t.Parallel()
 	app, _ := newGitHubTestApp(t)
 
-	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github", nil))
+	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github", nil), -1)
 	state, cookies := extractStateAndCookies(t, loginResp)
 	_ = state
 
@@ -147,7 +151,7 @@ func TestOAuthFlow_MismatchedCookieRejected(t *testing.T) {
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}
-	resp, _ := app.Test(req)
+	resp, _ := app.Test(req, -1)
 	assertSentBackToLogin(t, resp, "/", authn.NoticeLoginExpired)
 }
 
@@ -191,14 +195,15 @@ func assertSentBackToLogin(t *testing.T, resp *http.Response, landing, notice st
 // cookie's ten minutes comes back without the cookie. It used to render
 // "invalid or missing oauth state" as the whole page.
 func TestOAuthFlow_ExpiredStateCookieSendsBackToSignInWithAReason(t *testing.T) {
+	t.Parallel()
 	app, db := newGitHubTestApp(t)
 
-	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github", nil))
+	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github", nil), -1)
 	state, _ := extractStateAndCookies(t, loginResp)
 
 	// The browser has dropped the expired cookie; only the IdP's redirect
 	// with its state parameter arrives.
-	resp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github/callback?code=abc&state="+state, nil))
+	resp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github/callback?code=abc&state="+state, nil), -1)
 	assertSentBackToLogin(t, resp, "/", authn.NoticeLoginExpired)
 
 	var users int
@@ -211,27 +216,30 @@ func TestOAuthFlow_ExpiredStateCookieSendsBackToSignInWithAReason(t *testing.T) 
 }
 
 func TestOAuthFlow_CancelAtTheProviderSendsBackToSignIn(t *testing.T) {
+	t.Parallel()
 	app, _ := newGitHubTestApp(t)
 
-	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github", nil))
+	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github", nil), -1)
 	state, cookies := extractStateAndCookies(t, loginResp)
 
 	req := httptest.NewRequest(http.MethodGet, "/login/github/callback?error=access_denied&state="+state, nil)
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}
-	resp, _ := app.Test(req)
+	resp, _ := app.Test(req, -1)
 	assertSentBackToLogin(t, resp, "/", authn.NoticeLoginCancelled)
 }
 
 func TestOAuthFlow_ProviderErrorOtherThanCancelIsAFailure(t *testing.T) {
+	t.Parallel()
 	app, _ := newGitHubTestApp(t)
 
-	resp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github/callback?error=invalid_client", nil))
+	resp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github/callback?error=invalid_client", nil), -1)
 	assertSentBackToLogin(t, resp, "/", authn.NoticeLoginFailed)
 }
 
 func TestOAuthFlow_FailedTokenExchangeSendsBackToSignInAndKeepsTheReturnPath(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid_client"}`, http.StatusUnauthorized)
@@ -248,13 +256,13 @@ func TestOAuthFlow_FailedTokenExchangeSendsBackToSignInAndKeepsTheReturnPath(t *
 	app.Get("/login/:provider", authn.Login(deps))
 	app.Get("/login/:provider/callback", authn.Callback(deps))
 
-	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github?return=/projects/abc", nil))
+	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github?return=/projects/abc", nil), -1)
 	state, cookies := extractStateAndCookies(t, loginResp)
 	req := httptest.NewRequest(http.MethodGet, "/login/github/callback?code=abc&state="+state, nil)
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}
-	resp, _ := app.Test(req)
+	resp, _ := app.Test(req, -1)
 	assertSentBackToLogin(t, resp, "/", authn.NoticeLoginFailed)
 
 	loc, _ := resp.Location()
@@ -264,6 +272,7 @@ func TestOAuthFlow_FailedTokenExchangeSendsBackToSignInAndKeepsTheReturnPath(t *
 }
 
 func TestLoginNoticeIgnoresUnknownCodes(t *testing.T) {
+	t.Parallel()
 	// The code is looked up, never echoed, so a crafted link cannot put
 	// arbitrary text on the login page.
 	for _, code := range []string{"", "nope", "<script>alert(1)</script>"} {
@@ -282,6 +291,7 @@ func TestLoginNoticeIgnoresUnknownCodes(t *testing.T) {
 // verified login that is not the nominated Owner goes back to /login and
 // is told why.
 func TestOAuthFlow_NotTheNominatedOwnerSendsBackToLoginInSingleMode(t *testing.T) {
+	t.Parallel()
 	db, _ := seedBootstrap(t, "someone-else@javan.co.id")
 	gh := fakeGitHub(t) // signs in as octocat@example.com, verified
 	t.Cleanup(gh.Close)
@@ -300,12 +310,12 @@ func TestOAuthFlow_NotTheNominatedOwnerSendsBackToLoginInSingleMode(t *testing.T
 	app.Get("/login/:provider", authn.Login(deps))
 	app.Get("/login/:provider/callback", authn.Callback(deps))
 
-	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github", nil))
+	loginResp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/login/github", nil), -1)
 	state, cookies := extractStateAndCookies(t, loginResp)
 	req := httptest.NewRequest(http.MethodGet, "/login/github/callback?code=abc&state="+state, nil)
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}
-	resp, _ := app.Test(req)
+	resp, _ := app.Test(req, -1)
 	assertSentBackToLogin(t, resp, "/login", authn.NoticeOwnerPending)
 }

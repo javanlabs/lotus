@@ -27,6 +27,7 @@ func bearerReq(method, url, rawToken string) *http.Request {
 }
 
 func TestParseAPIToken_RoundTrip(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"pat", "service"} {
 		raw, hash, err := authn.GenerateAPIToken(kind)
 		if err != nil {
@@ -46,6 +47,7 @@ func TestParseAPIToken_RoundTrip(t *testing.T) {
 }
 
 func TestParseAPIToken_BadChecksumRejectedWithoutDB(t *testing.T) {
+	t.Parallel()
 	raw, _, err := authn.GenerateAPIToken("pat")
 	if err != nil {
 		t.Fatalf("generate: %v", err)
@@ -58,6 +60,7 @@ func TestParseAPIToken_BadChecksumRejectedWithoutDB(t *testing.T) {
 }
 
 func TestParseAPIToken_UnknownPrefixRejected(t *testing.T) {
+	t.Parallel()
 	if _, _, err := authn.ParseAPIToken("not_a_lotus_token_at_all"); err != authn.ErrBadTokenChecksum {
 		t.Fatalf("err = %v, want ErrBadTokenChecksum", err)
 	}
@@ -100,6 +103,7 @@ func newTokenTestApp(t *testing.T) (*fiber.App, *sqlx.DB, config.Config, authn.D
 }
 
 func TestPAT_DemotedOwnerLosesWriteAccessNextRequest(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, deps := newTokenTestApp(t)
 	orgID, userID := seedActiveMember(t, db, "acme") // seeded as owner
 
@@ -112,7 +116,7 @@ func TestPAT_DemotedOwnerLosesWriteAccessNextRequest(t *testing.T) {
 
 	req1 := bearerReq(http.MethodGet, "http://acme."+cfg.BaseDomain+"/sync", raw)
 	req1.Host = "acme." + cfg.BaseDomain
-	resp1, err := app.Test(req1)
+	resp1, err := app.Test(req1, -1)
 	if err != nil {
 		t.Fatalf("request 1: %v", err)
 	}
@@ -128,7 +132,7 @@ func TestPAT_DemotedOwnerLosesWriteAccessNextRequest(t *testing.T) {
 
 	req2 := bearerReq(http.MethodGet, "http://acme."+cfg.BaseDomain+"/sync", raw)
 	req2.Host = "acme." + cfg.BaseDomain
-	resp2, err := app.Test(req2)
+	resp2, err := app.Test(req2, -1)
 	if err != nil {
 		t.Fatalf("request 2: %v", err)
 	}
@@ -138,6 +142,7 @@ func TestPAT_DemotedOwnerLosesWriteAccessNextRequest(t *testing.T) {
 }
 
 func TestServiceToken_CrossOrgHostRejected(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, deps := newTokenTestApp(t)
 	orgA, ownerID := seedActiveMember(t, db, "acme")
 	orgB, _ := seedActiveMember(t, db, "beta")
@@ -152,7 +157,7 @@ func TestServiceToken_CrossOrgHostRejected(t *testing.T) {
 
 	req := bearerReq(http.MethodPost, "http://beta."+cfg.BaseDomain+"/components/"+uuid.New().String()+"/metrics", raw)
 	req.Host = "beta." + cfg.BaseDomain
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -162,6 +167,7 @@ func TestServiceToken_CrossOrgHostRejected(t *testing.T) {
 }
 
 func TestServiceToken_ComponentPinEnforced(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, deps := newTokenTestApp(t)
 	orgID, ownerID := seedActiveMember(t, db, "acme")
 
@@ -189,7 +195,7 @@ func TestServiceToken_ComponentPinEnforced(t *testing.T) {
 	// Writing to the pinned component succeeds.
 	reqA := bearerReq(http.MethodPost, "http://acme."+cfg.BaseDomain+"/components/"+componentA.String()+"/metrics", raw)
 	reqA.Host = "acme." + cfg.BaseDomain
-	respA, err := app.Test(reqA)
+	respA, err := app.Test(reqA, -1)
 	if err != nil {
 		t.Fatalf("request A: %v", err)
 	}
@@ -200,7 +206,7 @@ func TestServiceToken_ComponentPinEnforced(t *testing.T) {
 	// Writing to a different component is rejected.
 	reqB := bearerReq(http.MethodPost, "http://acme."+cfg.BaseDomain+"/components/"+componentB.String()+"/metrics", raw)
 	reqB.Host = "acme." + cfg.BaseDomain
-	respB, err := app.Test(reqB)
+	respB, err := app.Test(reqB, -1)
 	if err != nil {
 		t.Fatalf("request B: %v", err)
 	}
@@ -210,6 +216,7 @@ func TestServiceToken_ComponentPinEnforced(t *testing.T) {
 }
 
 func TestServiceToken_SurvivesCreatorDeletion(t *testing.T) {
+	t.Parallel()
 	_, db, _, deps := newTokenTestApp(t)
 	orgID, ownerID := seedActiveMember(t, db, "acme")
 
@@ -239,6 +246,7 @@ func TestServiceToken_SurvivesCreatorDeletion(t *testing.T) {
 }
 
 func TestRequireTokenOrSession_BothCookieAndBearerRejected(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, deps := newTokenTestApp(t)
 	orgID, userID := seedActiveMember(t, db, "acme")
 
@@ -253,7 +261,7 @@ func TestRequireTokenOrSession_BothCookieAndBearerRejected(t *testing.T) {
 	req := bearerReq(http.MethodGet, "http://acme."+cfg.BaseDomain+"/sync", raw)
 	req.Host = "acme." + cfg.BaseDomain
 	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: sessionRaw})
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -263,6 +271,7 @@ func TestRequireTokenOrSession_BothCookieAndBearerRejected(t *testing.T) {
 }
 
 func TestQueryParamTokenNeverAccepted(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, _ := newTokenTestApp(t)
 	_, userID := seedActiveMember(t, db, "acme")
 	// A raw PAT-shaped value in the query string must not authenticate —
@@ -270,7 +279,7 @@ func TestQueryParamTokenNeverAccepted(t *testing.T) {
 	// in this codebase, and this test is here so it's never reintroduced
 	// by accident.
 	req := hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/sync?token=lotus_pat_notarealtoken")
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}

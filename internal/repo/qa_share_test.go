@@ -11,6 +11,7 @@ import (
 )
 
 func TestQAShareLinks_ActiveUntilRevokedOrExpired(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-share")
 	ctx := context.Background()
 	link, err := repo.CreateQAShareLink(ctx, f.s, f.plan.ID, "hash-a", nil)
@@ -54,6 +55,7 @@ func TestQAShareLinks_ActiveUntilRevokedOrExpired(t *testing.T) {
 }
 
 func TestQAPlanScenarioProgress_LatestStatusPerCase(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-scenario-progress")
 	ctx := context.Background()
 	run, err := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "Cycle 1", Distribution: repo.DistributeNone}, nil)

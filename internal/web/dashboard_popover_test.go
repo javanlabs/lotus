@@ -17,6 +17,7 @@ import (
 // throwing on every page with the strip and dropping the popover's
 // position, width and z-index.
 func TestDashboardBlock_InfoPopoverStyles(t *testing.T) {
+	t.Parallel()
 	r := httpx.NewRenderer(os.DirFS("../../web/templates"), true)
 	var out bytes.Buffer
 	if err := r.RenderNamed(&out, "dashboard_block", dashboardViewModel{ShowSummary: true}); err != nil {

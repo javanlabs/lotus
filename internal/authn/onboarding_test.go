@@ -50,6 +50,7 @@ func seedOnboardingUser(t *testing.T, db *sqlx.DB) (uuid.UUID, string) {
 }
 
 func TestOnboarding_FullFlowLandsOnTenant(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newOnboardingTestApp(t)
 	_, sessionRaw := seedOnboardingUser(t, db)
 	authCookie := &http.Cookie{Name: "lotus_auth", Value: sessionRaw}
@@ -57,7 +58,7 @@ func TestOnboarding_FullFlowLandsOnTenant(t *testing.T) {
 	// /welcome
 	welcomeReq := hostFormReq("auth."+cfg.BaseDomain, "/welcome", "name=Alice")
 	welcomeReq.AddCookie(authCookie)
-	welcomeResp, err := app.Test(welcomeReq)
+	welcomeResp, err := app.Test(welcomeReq, -1)
 	if err != nil {
 		t.Fatalf("welcome: %v", err)
 	}
@@ -68,7 +69,7 @@ func TestOnboarding_FullFlowLandsOnTenant(t *testing.T) {
 	// POST /onboarding/org
 	orgReq := hostFormReq("auth."+cfg.BaseDomain, "/onboarding/org", "name=Acme&slug=acme-onboard")
 	orgReq.AddCookie(authCookie)
-	orgResp, err := app.Test(orgReq)
+	orgResp, err := app.Test(orgReq, -1)
 	if err != nil {
 		t.Fatalf("create org: %v", err)
 	}
@@ -94,7 +95,7 @@ func TestOnboarding_FullFlowLandsOnTenant(t *testing.T) {
 	// POST /onboarding/invite — skip.
 	inviteReq := hostFormReq("auth."+cfg.BaseDomain, "/onboarding/invite?org=acme-onboard", "action=skip")
 	inviteReq.AddCookie(authCookie)
-	inviteResp, err := app.Test(inviteReq)
+	inviteResp, err := app.Test(inviteReq, -1)
 	if err != nil {
 		t.Fatalf("skip invite: %v", err)
 	}
@@ -112,7 +113,7 @@ func TestOnboarding_FullFlowLandsOnTenant(t *testing.T) {
 	// Follow the handoff: start -> authorize (reuses the global session,
 	// now a member) -> finish.
 	startReq := hostReq(http.MethodGet, handoffStartURL.Host, handoffStartURL.RequestURI())
-	startResp, err := app.Test(startReq)
+	startResp, err := app.Test(startReq, -1)
 	if err != nil {
 		t.Fatalf("handoff start: %v", err)
 	}
@@ -129,7 +130,7 @@ func TestOnboarding_FullFlowLandsOnTenant(t *testing.T) {
 
 	authorizeReq := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, authorizeURL.RequestURI())
 	authorizeReq.AddCookie(authCookie)
-	authorizeResp, err := app.Test(authorizeReq)
+	authorizeResp, err := app.Test(authorizeReq, -1)
 	if err != nil {
 		t.Fatalf("handoff authorize: %v", err)
 	}
@@ -141,7 +142,7 @@ func TestOnboarding_FullFlowLandsOnTenant(t *testing.T) {
 
 	finishReq := hostReq(http.MethodGet, handoffStartURL.Host, finishURL.RequestURI())
 	finishReq.AddCookie(hsCookie)
-	finishResp, err := app.Test(finishReq)
+	finishResp, err := app.Test(finishReq, -1)
 	if err != nil {
 		t.Fatalf("handoff finish: %v", err)
 	}
@@ -151,6 +152,7 @@ func TestOnboarding_FullFlowLandsOnTenant(t *testing.T) {
 }
 
 func TestOnboarding_ConcurrentSameSlugOnlyOneWins(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newOnboardingTestApp(t)
 	_, sessionA := seedOnboardingUser(t, db)
 	_, sessionB := seedOnboardingUser(t, db)
@@ -195,6 +197,7 @@ func TestOnboarding_ConcurrentSameSlugOnlyOneWins(t *testing.T) {
 }
 
 func TestOnboarding_SlugRejectionCases(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newOnboardingTestApp(t)
 	_, sessionRaw := seedOnboardingUser(t, db)
 
@@ -212,7 +215,7 @@ func TestOnboarding_SlugRejectionCases(t *testing.T) {
 		t.Run("check/"+c.name, func(t *testing.T) {
 			req := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, "/onboarding/slug-check?slug="+c.slug)
 			req.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-			resp, err := app.Test(req)
+			resp, err := app.Test(req, -1)
 			if err != nil {
 				t.Fatalf("check: %v", err)
 			}
@@ -224,7 +227,7 @@ func TestOnboarding_SlugRejectionCases(t *testing.T) {
 		t.Run("submit/"+c.name, func(t *testing.T) {
 			req := hostFormReq("auth."+cfg.BaseDomain, "/onboarding/org", "name=Test&slug="+c.slug)
 			req.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-			resp, err := app.Test(req)
+			resp, err := app.Test(req, -1)
 			if err != nil {
 				t.Fatalf("submit: %v", err)
 			}
@@ -244,7 +247,7 @@ func TestOnboarding_SlugRejectionCases(t *testing.T) {
 		}
 		req := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, "/onboarding/slug-check?slug=retired-corp")
 		req.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-		resp, err := app.Test(req)
+		resp, err := app.Test(req, -1)
 		if err != nil {
 			t.Fatalf("check: %v", err)
 		}
@@ -256,11 +259,12 @@ func TestOnboarding_SlugRejectionCases(t *testing.T) {
 }
 
 func TestOnboarding_SlugCheckAcceptsAvailable(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newOnboardingTestApp(t)
 	_, sessionRaw := seedOnboardingUser(t, db)
 	req := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, "/onboarding/slug-check?slug=brand-new-org")
 	req.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}

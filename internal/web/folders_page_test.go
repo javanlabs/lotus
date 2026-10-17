@@ -40,7 +40,7 @@ func getProjectsPage(t *testing.T, subdomain, role string) (string, *sqlx.DB, uu
 	seedFiledProject(t, db, orgID, `Ops <b>"R&D"</b>'s`, "Linknet", "pass", 88)
 	seedTopLevelProject(t, db, orgID, "Unfiled")
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, subdomain+"."+dashboardTestDomain, "/projects", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, subdomain+"."+dashboardTestDomain, "/projects", raw), -1)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /projects = %v, %v", resp, err)
 	}
@@ -58,6 +58,7 @@ func seedTopLevelProject(t *testing.T, db *sqlx.DB, orgID uuid.UUID, name string
 }
 
 func TestProjectsPage_RendersTheFolderView(t *testing.T) {
+	t.Parallel()
 	body, _, _ := getProjectsPage(t, "acme-tree", "owner")
 	for _, want := range []string{`x-data="lotusTree()"`, `data-folder="1"`, "1 / 1 passing", `href="/projects?folder=`, "Unfiled", "New folder", "folder-edit-", "failing of"} {
 		if !strings.Contains(body, want) {
@@ -70,6 +71,7 @@ func TestProjectsPage_RendersTheFolderView(t *testing.T) {
 // with a breadcrumb back up. A folder id that is malformed, unknown, or
 // another organization's is a 404.
 func TestProjectsPage_OpensAFolderFromTheQuery(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-open", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -90,7 +92,7 @@ func TestProjectsPage_OpensAFolderFromTheQuery(t *testing.T) {
 		}
 	})
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects?folder="+folderID.String(), raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects?folder="+folderID.String(), raw), -1)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("open folder = %v, %v; want 200", resp, err)
 	}
@@ -105,7 +107,7 @@ func TestProjectsPage_OpensAFolderFromTheQuery(t *testing.T) {
 	}
 
 	for name, q := range map[string]string{"malformed": "nope", "unknown": uuid.NewString(), "another org's": otherFolder.String()} {
-		resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects?folder="+q, raw))
+		resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects?folder="+q, raw), -1)
 		if err != nil || resp.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s folder = %v, %v; want 404", name, resp, err)
 		}
@@ -114,6 +116,7 @@ func TestProjectsPage_OpensAFolderFromTheQuery(t *testing.T) {
 
 // Rows can be dragged onto a folder only by someone allowed to move them.
 func TestProjectsPage_RowsAreDraggableOnlyForMovers(t *testing.T) {
+	t.Parallel()
 	owner, _, _ := getProjectsPage(t, "acme-drag", "owner")
 	if strings.Contains(owner, `aria-label="Folder path"`) {
 		t.Fatal("a second, in-page folder breadcrumb is still rendered")
@@ -128,6 +131,7 @@ func TestProjectsPage_RowsAreDraggableOnlyForMovers(t *testing.T) {
 }
 
 func TestProjectsPage_ViewerSeesNoFolderControls(t *testing.T) {
+	t.Parallel()
 	body, _, _ := getProjectsPage(t, "acme-tree-v", "viewer")
 	if !strings.Contains(body, `data-folder="1"`) {
 		t.Fatal("viewer does not see the folder rows")
@@ -151,6 +155,7 @@ func TestProjectsPage_ViewerSeesNoFolderControls(t *testing.T) {
 // while the subtext span (flex:1 1 0, min-width:0) is the one that yields
 // space — and truncates itself via its own ellipsis — first.
 func TestProjectsPage_FolderNameSpanIsProtectedFromSubtextSqueeze(t *testing.T) {
+	t.Parallel()
 	body, _, _ := getProjectsPage(t, "acme-tree-flex", "owner")
 	if strings.Contains(body, `color:#9CA3AF;flex:none;overflow:hidden;text-overflow:ellipsis">`) {
 		t.Fatal("a row's subtext span still has flex:none — it will claim its full width and squeeze the name span to zero")
@@ -166,6 +171,7 @@ func TestProjectsPage_FolderNameSpanIsProtectedFromSubtextSqueeze(t *testing.T) 
 // Review focus: a folder name with markup and quotes is escaped everywhere
 // it lands — row, dialog title, data attributes.
 func TestProjectsPage_EscapesFolderNames(t *testing.T) {
+	t.Parallel()
 	body, _, _ := getProjectsPage(t, "acme-tree-x", "owner")
 	if strings.Contains(body, `<b>"R&D"</b>`) || strings.Contains(body, `Ops <b>`) {
 		t.Fatal("folder name rendered unescaped")
@@ -176,6 +182,7 @@ func TestProjectsPage_EscapesFolderNames(t *testing.T) {
 }
 
 func TestProjectsPage_MembersCanSelectProjectsForABulkMove(t *testing.T) {
+	t.Parallel()
 	body, _, _ := getProjectsPage(t, "acme-sel", "owner")
 	for _, want := range []string{
 		`data-project-select`,
@@ -193,6 +200,7 @@ func TestProjectsPage_MembersCanSelectProjectsForABulkMove(t *testing.T) {
 }
 
 func TestProjectsPage_ViewerCannotSelectProjects(t *testing.T) {
+	t.Parallel()
 	body, _, _ := getProjectsPage(t, "acme-sel-v", "viewer")
 	for _, unwanted := range []string{`data-project-select`, `id="move-projects"`, "Select all visible projects", `toggleSelecting()`} {
 		if strings.Contains(body, unwanted) {
@@ -202,6 +210,7 @@ func TestProjectsPage_ViewerCannotSelectProjects(t *testing.T) {
 }
 
 func TestProjectsPage_NewFolderIsANormalButton(t *testing.T) {
+	t.Parallel()
 	body, _, _ := getProjectsPage(t, "acme-btn", "owner")
 	i := strings.Index(body, "New folder\n")
 	if i < 0 {
@@ -217,6 +226,7 @@ func TestProjectsPage_NewFolderIsANormalButton(t *testing.T) {
 // the folder's own name, and carries its full path as the label the box
 // displays once chosen and as the text typing filters on.
 func TestProjectsPage_FolderPickerIsANestedTree(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-nest", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -227,7 +237,7 @@ func TestProjectsPage_FolderPickerIsANestedTree(t *testing.T) {
 		}
 	})
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-nest."+dashboardTestDomain, "/projects", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-nest."+dashboardTestDomain, "/projects", raw), -1)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /projects = %v, %v", resp, err)
 	}
@@ -248,6 +258,7 @@ func TestProjectsPage_FolderPickerIsANestedTree(t *testing.T) {
 // box blank for it, so the picker says so with a placeholder rather than
 // looking like nothing is chosen.
 func TestProjectsPage_FolderPickersShowTopLevelWhenEmpty(t *testing.T) {
+	t.Parallel()
 	body, _, _ := getProjectsPage(t, "acme-ph", "owner")
 	if n := strings.Count(body, `placeholder="Top level"`); n < 3 {
 		t.Fatalf("placeholder=\"Top level\" appears %d times, want every folder picker (new folder, bulk move, the folder's own move)", n)

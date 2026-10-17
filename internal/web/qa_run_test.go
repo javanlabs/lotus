@@ -55,6 +55,7 @@ func (r qaRunEnv) firstRun(t *testing.T) (repo.QARun, []repo.QARunItem) {
 }
 
 func TestQARun_PageShowsGroupsProgressAndFilters(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qarun")
 	ctx := context.Background()
 	run, items := r.firstRun(t)
@@ -86,6 +87,7 @@ func TestQARun_PageShowsGroupsProgressAndFilters(t *testing.T) {
 }
 
 func TestQARun_RecordEachStatusAndRefuseTheRest(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qarun-record")
 	ctx := context.Background()
 	run, items := r.firstRun(t)
@@ -114,6 +116,7 @@ func TestQARun_RecordEachStatusAndRefuseTheRest(t *testing.T) {
 }
 
 func TestQARun_AttachmentsAreCheckedStoredAndServedSafely(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qarun-files")
 	ctx := context.Background()
 	run, items := r.firstRun(t)
@@ -126,7 +129,7 @@ func TestQARun_AttachmentsAreCheckedStoredAndServedSafely(t *testing.T) {
 	hist, _ := repo.ListQAResults(ctx, r.s, items[0].ID)
 	files, _ := repo.ListQAAttachments(ctx, r.s, repo.QAAttachmentOwner{ResultID: &hist[0].ID})
 	for _, f := range files {
-		res, _ := r.app.Test(reqWithSession(http.MethodGet, r.host, r.base+"/files/"+f.ID.String(), r.member))
+		res, _ := r.app.Test(reqWithSession(http.MethodGet, r.host, r.base+"/files/"+f.ID.String(), r.member), -1)
 		disp := res.Header.Get("Content-Disposition")
 		if res.StatusCode != http.StatusOK || res.Header.Get("X-Content-Type-Options") != "nosniff" {
 			t.Fatalf("download %s = %d", f.FileName, res.StatusCode)
@@ -148,12 +151,13 @@ func TestQARun_AttachmentsAreCheckedStoredAndServedSafely(t *testing.T) {
 
 	// Another project's attachment through this project's URL: 404.
 	other := r.project(t, "Billing")
-	if res, _ := r.app.Test(reqWithSession(http.MethodGet, r.host, r.projectPath(t, other)+"/qa/files/"+files[0].ID.String(), r.member)); res.StatusCode != http.StatusNotFound {
+	if res, _ := r.app.Test(reqWithSession(http.MethodGet, r.host, r.projectPath(t, other)+"/qa/files/"+files[0].ID.String(), r.member), -1); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("attachment via another project = %d; want 404", res.StatusCode)
 	}
 }
 
 func TestQARun_WhoMayRecord(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qarun-who")
 	ctx := context.Background()
 	viewer, _ := r.session(t, "viewer@acme.example", "viewer")

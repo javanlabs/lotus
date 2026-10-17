@@ -42,6 +42,7 @@ func seedMetricChromeFixture(t *testing.T, db *sqlx.DB, orgID uuid.UUID, kind, e
 }
 
 func TestMetricDetailPage_CrossOrgBindingIs404NotAnotherOrgsData(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgA, userA := seedMember(t, db, "acme-metric-a", "owner")
 	orgB, _ := seedMember(t, db, "acme-metric-b", "owner")
@@ -51,7 +52,7 @@ func TestMetricDetailPage_CrossOrgBindingIs404NotAnotherOrgsData(t *testing.T) {
 
 	host := "acme-metric-a." + dashboardTestDomain
 	path := fmt.Sprintf("/p/%s/c/%s/m/%s", projectID, componentID, bindingID)
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -63,6 +64,7 @@ func TestMetricDetailPage_CrossOrgBindingIs404NotAnotherOrgsData(t *testing.T) {
 }
 
 func TestMetricDetailPage_GitlabRendersFromSeededSnapshot(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-metric-gl", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -79,7 +81,7 @@ func TestMetricDetailPage_GitlabRendersFromSeededSnapshot(t *testing.T) {
 
 	host := "acme-metric-gl." + dashboardTestDomain
 	path := metricPathOf(t, db, orgID, componentID, bindingID)
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -96,6 +98,7 @@ func TestMetricDetailPage_GitlabRendersFromSeededSnapshot(t *testing.T) {
 }
 
 func TestSonarDetail_HistoricalDateShowsThatDatesSnapshotNotLatest(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-metric-sonar", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -120,7 +123,7 @@ func TestSonarDetail_HistoricalDateShowsThatDatesSnapshotNotLatest(t *testing.T)
 	host := "acme-metric-sonar." + dashboardTestDomain
 	base := metricPathOf(t, db, orgID, componentID, bindingID)
 
-	latestResp, err := app.Test(reqWithSession(http.MethodGet, host, base, raw))
+	latestResp, err := app.Test(reqWithSession(http.MethodGet, host, base, raw), -1)
 	if err != nil {
 		t.Fatalf("request (latest): %v", err)
 	}
@@ -131,7 +134,7 @@ func TestSonarDetail_HistoricalDateShowsThatDatesSnapshotNotLatest(t *testing.T)
 	}
 
 	dateParam := oldDate.Local().Format("2006-01-02")
-	historicalResp, err := app.Test(reqWithSession(http.MethodGet, host, base+"?date="+dateParam, raw))
+	historicalResp, err := app.Test(reqWithSession(http.MethodGet, host, base+"?date="+dateParam, raw), -1)
 	if err != nil {
 		t.Fatalf("request (historical): %v", err)
 	}
@@ -149,6 +152,7 @@ func TestSonarDetail_HistoricalDateShowsThatDatesSnapshotNotLatest(t *testing.T)
 }
 
 func TestTrivyDetail_RendersPerCVETableFromStoredBlobOnly(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-metric-trivy", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -168,7 +172,7 @@ func TestTrivyDetail_RendersPerCVETableFromStoredBlobOnly(t *testing.T) {
 
 	host := "acme-metric-trivy." + dashboardTestDomain
 	path := metricPathOf(t, db, orgID, componentID, bindingID)
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -189,6 +193,7 @@ func TestTrivyDetail_RendersPerCVETableFromStoredBlobOnly(t *testing.T) {
 }
 
 func TestTrivyNotes_SaveThenDeleteRoundTrip(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-metric-trivynote", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -214,7 +219,7 @@ func TestTrivyNotes_SaveThenDeleteRoundTrip(t *testing.T) {
 	saveReq.Body = io.NopCloser(strings.NewReader(form.Encode()))
 	saveReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	saveReq.ContentLength = int64(len(form.Encode()))
-	saveResp, err := app.Test(saveReq)
+	saveResp, err := app.Test(saveReq, -1)
 	if err != nil {
 		t.Fatalf("save request: %v", err)
 	}
@@ -224,7 +229,7 @@ func TestTrivyNotes_SaveThenDeleteRoundTrip(t *testing.T) {
 		t.Fatalf("save status = %d, want 302:\n%s", saveResp.StatusCode, b)
 	}
 
-	afterSaveResp, err := app.Test(reqWithSession(http.MethodGet, host, base, raw))
+	afterSaveResp, err := app.Test(reqWithSession(http.MethodGet, host, base, raw), -1)
 	if err != nil {
 		t.Fatalf("follow-up request: %v", err)
 	}
@@ -241,7 +246,7 @@ func TestTrivyNotes_SaveThenDeleteRoundTrip(t *testing.T) {
 		}
 	})
 
-	deleteResp, err := app.Test(reqWithSession(http.MethodPost, host, base+"/trivy-notes/"+noteID+"/delete", raw))
+	deleteResp, err := app.Test(reqWithSession(http.MethodPost, host, base+"/trivy-notes/"+noteID+"/delete", raw), -1)
 	if err != nil {
 		t.Fatalf("delete request: %v", err)
 	}
@@ -251,7 +256,7 @@ func TestTrivyNotes_SaveThenDeleteRoundTrip(t *testing.T) {
 		t.Fatalf("delete status = %d, want 302:\n%s", deleteResp.StatusCode, b)
 	}
 
-	afterDeleteResp, err := app.Test(reqWithSession(http.MethodGet, host, base, raw))
+	afterDeleteResp, err := app.Test(reqWithSession(http.MethodGet, host, base, raw), -1)
 	if err != nil {
 		t.Fatalf("follow-up request: %v", err)
 	}
@@ -263,6 +268,7 @@ func TestTrivyNotes_SaveThenDeleteRoundTrip(t *testing.T) {
 }
 
 func TestRunHistoryPage_ShowsStatusDurationErrorClassAndWarnings(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-metric-runs", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -279,7 +285,7 @@ func TestRunHistoryPage_ShowsStatusDurationErrorClassAndWarnings(t *testing.T) {
 
 	host := "acme-metric-runs." + dashboardTestDomain
 	path := metricPathOf(t, db, orgID, componentID, bindingID) + "/runs"
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}

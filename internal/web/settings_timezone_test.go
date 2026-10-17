@@ -13,12 +13,13 @@ import (
 // The organization's timezone is chosen from a list — UTC and Indonesia's
 // three zones — not typed; anything else is refused and nothing changes.
 func TestSettingsOrganization_TimezoneIsAChoice(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, ownerID := seedMember(t, db, "acme-tz", "owner")
 	raw := seedSession(t, db, orgID, ownerID)
 	host := "acme-tz." + dashboardTestDomain
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/organization", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/organization", raw), -1)
 	if err != nil {
 		t.Fatal(err)
 	}

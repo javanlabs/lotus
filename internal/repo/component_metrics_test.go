@@ -50,6 +50,7 @@ func seedProjectComponent(t *testing.T, db *sqlx.DB, orgID uuid.UUID, slug strin
 }
 
 func TestUpsertComponentMetric_RollsUpWorstStatusAndAverageScore(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	var orgID uuid.UUID
 	if err := db.Get(&orgID, `INSERT INTO organizations (subdomain, name) VALUES ('acme','acme') RETURNING id`); err != nil {
@@ -90,6 +91,7 @@ func TestUpsertComponentMetric_RollsUpWorstStatusAndAverageScore(t *testing.T) {
 // denominator (RollupStatus never returns fail/warn just because one kind
 // is unknown; RollupScore ignores kinds with no score at all).
 func TestUpsertComponentMetric_UnknownDoesNotDragDownRollup(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	var orgID uuid.UUID
 	if err := db.Get(&orgID, `INSERT INTO organizations (subdomain, name) VALUES ('acme','acme') RETURNING id`); err != nil {
@@ -121,6 +123,7 @@ func TestUpsertComponentMetric_UnknownDoesNotDragDownRollup(t *testing.T) {
 }
 
 func TestUpsertComponentMetric_FifthFictionalKindNeedsNoQueryChange(t *testing.T) {
+	t.Parallel()
 	// task 3.6's own acceptance criterion, stated literally: adding a
 	// fictional fifth kind must require no change to the dashboard query.
 	// Since metrics is a plain jsonb map keyed by kind name, this is true
@@ -225,6 +228,7 @@ func openCountingDB(t *testing.T, dsn string) (*sqlx.DB, *int64) {
 // 3.6's own acceptance criterion: a dashboard of 50 components x 4
 // providers renders with one query to component_metrics_current.
 func TestListComponentMetricsForProject_OneQueryForFiftyComponents(t *testing.T) {
+	t.Parallel()
 	dsn := dbtest.DSN(t)
 	setupDB, count := openCountingDB(t, dsn)
 
@@ -306,6 +310,7 @@ func splitKinds(s string) []string {
 // that kind's updated_at, so a kind that stopped syncing stays visibly old
 // while the others advance the row's own updated_at.
 func TestUpsertComponentMetric_StampsEachKindItsOwnUpdatedAt(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	var orgID uuid.UUID
 	if err := db.Get(&orgID, `INSERT INTO organizations (subdomain, name) VALUES ('acme','acme') RETURNING id`); err != nil {

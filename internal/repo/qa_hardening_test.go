@@ -15,6 +15,7 @@ import (
 // plan: the plan row is read under lock, so the create waits and then sees
 // closed_at.
 func TestQARuns_CreateWaitsForAConcurrentPlanClose(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-close-race")
 	ctx := context.Background()
 	done := make(chan error, 1)
@@ -40,6 +41,7 @@ func TestQARuns_CreateWaitsForAConcurrentPlanClose(t *testing.T) {
 
 // Likewise a result recorded while its run is being closed.
 func TestQAItems_ResultWaitsForAConcurrentRunClose(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-result-race")
 	ctx := context.Background()
 	run, _ := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "C1"}, nil)
@@ -66,6 +68,7 @@ func TestQAItems_ResultWaitsForAConcurrentRunClose(t *testing.T) {
 }
 
 func TestQARuns_RetestNameStaysWithinLimitAndDoesNotStack(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-retest-name")
 	ctx := context.Background()
 	long := strings.Repeat("r", 195)

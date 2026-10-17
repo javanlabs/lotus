@@ -159,6 +159,7 @@ func (f kindPageFixture) projectKPI(t *testing.T, kind string) kpiCard {
 }
 
 func TestProjectMetricPage_Sonar(t *testing.T) {
+	t.Parallel()
 	f := seedKindPage(t, "acme-pm-sonar", "sonarqube")
 	ins := `INSERT INTO sonar_snapshots (org_id, binding_id, component_id, quality_gate, coverage, bugs, code_smells, vulnerabilities, ncloc, duplicated_lines_density, reliability_rating)
 	        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'A')`
@@ -194,6 +195,7 @@ func TestProjectMetricPage_Sonar(t *testing.T) {
 // project, not to a Harbor path built on GitLab's address, and its row
 // names the commit it scanned where an image row lists its tags.
 func TestProjectMetricPage_TrivyRepositoryScan(t *testing.T) {
+	t.Parallel()
 	f := seedKindPage(t, "acme-pm-trivy-repo", "trivy")
 	f.exec(t, `UPDATE metric_bindings SET config = '{"source":"repo"}', external_key = 'grp/ledger-api' WHERE id = $1`, f.ledgerBind)
 	ins := `INSERT INTO trivy_snapshots (org_id, binding_id, component_id, source, digest, tags, severity, total, critical, high, medium, low, fixable)
@@ -205,6 +207,7 @@ func TestProjectMetricPage_TrivyRepositoryScan(t *testing.T) {
 }
 
 func TestProjectMetricPage_Trivy(t *testing.T) {
+	t.Parallel()
 	f := seedKindPage(t, "acme-pm-trivy", "trivy")
 	ins := `INSERT INTO trivy_snapshots (org_id, binding_id, component_id, source, tags, severity, total, critical, high, medium, low, fixable, pulls)
 	        VALUES ($1,$2,$3,'registry',$4,$5,$6,$7,$8,$9,$10,$11,$12)`
@@ -216,6 +219,7 @@ func TestProjectMetricPage_Trivy(t *testing.T) {
 }
 
 func TestProjectMetricPage_Sentry(t *testing.T) {
+	t.Parallel()
 	f := seedKindPage(t, "acme-pm-sentry", "sentry")
 	var prod uuid.UUID
 	withOrgTx(t, f.e.db, f.e.orgID, func(tx *sqlx.Tx) {
@@ -240,6 +244,7 @@ func TestProjectMetricPage_Sentry(t *testing.T) {
 }
 
 func TestProjectMetricPage_Gitlab(t *testing.T) {
+	t.Parallel()
 	f := seedKindPage(t, "acme-pm-gitlab", "gitlab")
 	ins := `INSERT INTO gitlab_snapshots (org_id, binding_id, component_id, primary_language, default_branch, branches_total, branches_active, branches_stale,
 	          last_pipeline_status, last_pipeline_web_url, pipeline_success_rate, pipeline_sample_size, commits_30d, commits_30d_capped, default_branch_protected, visibility, web_url)
@@ -254,6 +259,7 @@ func TestProjectMetricPage_Gitlab(t *testing.T) {
 // A guest sees QA only: every other page answers as if it did not exist,
 // listed on the project or not. An unknown kind is no page either.
 func TestProjectMetricPage_GuestAndUnknownKindAre404(t *testing.T) {
+	t.Parallel()
 	f := seedKindPage(t, "acme-pm-guest", "sonarqube")
 	guest, guestID := f.e.session(t, "client@bank.example", "guest")
 	if status, _ := f.e.get(t, guest, "/projects/payments/metrics/sonarqube"); status != http.StatusNotFound {
@@ -269,7 +275,7 @@ func TestProjectMetricPage_GuestAndUnknownKindAre404(t *testing.T) {
 		t.Fatalf("unknown kind = %d, want 404", status)
 	}
 	// Named by id, the page moves to its slug URL like the project page.
-	resp, err := f.e.app.Test(reqWithSession(http.MethodGet, f.e.host, "/projects/"+f.projectID.String()+"/metrics/sonarqube", f.e.owner))
+	resp, err := f.e.app.Test(reqWithSession(http.MethodGet, f.e.host, "/projects/"+f.projectID.String()+"/metrics/sonarqube", f.e.owner), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,6 +288,7 @@ func TestProjectMetricPage_GuestAndUnknownKindAre404(t *testing.T) {
 // No component bound: an empty state pointing at where binding happens,
 // not an empty table.
 func TestProjectMetricPage_NothingBound(t *testing.T) {
+	t.Parallel()
 	f := seedKindPage(t, "acme-pm-empty", "sonarqube")
 	status, body := f.e.get(t, f.e.owner, "/projects/payments/metrics/sentry")
 	if status != http.StatusOK || !strings.Contains(body, "No component has Sentry bound") || strings.Contains(body, "lotus-pm-row") {
@@ -298,6 +305,7 @@ func TestProjectMetricPage_NothingBound(t *testing.T) {
 // the organization dashboard's cards (none are drawn there today) link
 // nowhere, since there is no one project to open.
 func TestProjectPage_MetricTabsOpenTheKindPages(t *testing.T) {
+	t.Parallel()
 	f := seedKindPage(t, "acme-pm-cards", "sonarqube")
 	status, body := f.e.get(t, f.e.owner, "/projects/payments")
 	if status != http.StatusOK {

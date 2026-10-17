@@ -60,6 +60,7 @@ func seedMetricKeyAndFact(t *testing.T, db *sqlx.DB, orgID uuid.UUID, kind, comp
 }
 
 func TestMetricCharts_NewMetricKeyAppearsWithoutTemplateChange(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-chart-newkey", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -71,7 +72,7 @@ func TestMetricCharts_NewMetricKeyAppearsWithoutTemplateChange(t *testing.T) {
 	// per-kind field list: task 4.6's own acceptance criterion.
 	seedMetricKeyAndFact(t, db, orgID, "gitlab", componentID, bindingID, "gitlab.made_up_metric", "Made Up Metric", "count", "higher_better", true, 42)
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, metricPathOf(t, db, orgID, componentID, bindingID), raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, metricPathOf(t, db, orgID, componentID, bindingID), raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -86,6 +87,7 @@ func TestMetricCharts_NewMetricKeyAppearsWithoutTemplateChange(t *testing.T) {
 }
 
 func TestMetricCharts_InactiveMetricStillViewableWithSinceDate(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-chart-inactive", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -94,7 +96,7 @@ func TestMetricCharts_InactiveMetricStillViewableWithSinceDate(t *testing.T) {
 	_, componentID, bindingID := seedChartFixture(t, db, orgID, "sonarqube", "grp/billing-api")
 	seedMetricKeyAndFact(t, db, orgID, "sonarqube", componentID, bindingID, "sonar.coverage", "Coverage", "%", "higher_better", false, 88.5)
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, metricPathOf(t, db, orgID, componentID, bindingID), raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, metricPathOf(t, db, orgID, componentID, bindingID), raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -111,6 +113,7 @@ func TestMetricCharts_InactiveMetricStillViewableWithSinceDate(t *testing.T) {
 }
 
 func TestMetricCharts_RangeSwapReturnsAFragmentNotAFullPage(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-chart-range", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -120,7 +123,7 @@ func TestMetricCharts_RangeSwapReturnsAFragmentNotAFullPage(t *testing.T) {
 	seedMetricKeyAndFact(t, db, orgID, "trivy", componentID, bindingID, "trivy.critical", "Critical", "count", "lower_better", true, 2)
 
 	base := metricPathOf(t, db, orgID, componentID, bindingID)
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, base+"/charts?range=30d", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, base+"/charts?range=30d", raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -142,6 +145,7 @@ func TestMetricCharts_RangeSwapReturnsAFragmentNotAFullPage(t *testing.T) {
 }
 
 func TestMetricCharts_CrossOrgBindingIs404(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgA, userA := seedMember(t, db, "acme-chart-cross-a", "owner")
 	orgB, _ := seedMember(t, db, "acme-chart-cross-b", "owner")
@@ -149,7 +153,7 @@ func TestMetricCharts_CrossOrgBindingIs404(t *testing.T) {
 
 	_, componentID, bindingID := seedChartFixture(t, db, orgB, "gitlab", "grp/other")
 	host := "acme-chart-cross-a." + dashboardTestDomain
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, metricPathOf(t, db, orgB, componentID, bindingID)+"/charts", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, metricPathOf(t, db, orgB, componentID, bindingID)+"/charts", raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -160,6 +164,7 @@ func TestMetricCharts_CrossOrgBindingIs404(t *testing.T) {
 }
 
 func TestSparkline_RendersForBindingsPrimaryMetric(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-sparkline", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -168,7 +173,7 @@ func TestSparkline_RendersForBindingsPrimaryMetric(t *testing.T) {
 	_, componentID, bindingID := seedChartFixture(t, db, orgID, "sentry", "billing-api")
 	seedMetricKeyAndFact(t, db, orgID, "sentry", componentID, bindingID, "sentry.score", "Health score", "score", "higher_better", true, 88)
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/bindings/"+bindingID+"/sparkline", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/bindings/"+bindingID+"/sparkline", raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -192,6 +197,7 @@ func TestSparkline_RendersForBindingsPrimaryMetric(t *testing.T) {
 }
 
 func TestSparkline_NoDataRendersPlaceholderNotError(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-sparkline-empty", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -199,7 +205,7 @@ func TestSparkline_NoDataRendersPlaceholderNotError(t *testing.T) {
 
 	_, _, bindingID := seedChartFixture(t, db, orgID, "sentry", "billing-api")
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/bindings/"+bindingID+"/sparkline", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/bindings/"+bindingID+"/sparkline", raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -219,6 +225,7 @@ func TestSparkline_NoDataRendersPlaceholderNotError(t *testing.T) {
 // <rect> with "attribute width: A negative value is not valid" and the
 // chart renders blank. This pins the cap that prevents it.
 func TestBuildChartSVG_SparkPointsAreCappedForTheBarRenderer(t *testing.T) {
+	t.Parallel()
 	var points []repo.Point
 	base := time.Now().Add(-7 * 24 * time.Hour)
 	for i := 0; i < 300; i++ {

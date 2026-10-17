@@ -11,6 +11,7 @@ import (
 )
 
 func TestResolveUser_SameVerifiedEmailAcrossProviders_LinksOneUser(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 
@@ -42,6 +43,7 @@ func TestResolveUser_SameVerifiedEmailAcrossProviders_LinksOneUser(t *testing.T)
 }
 
 func TestResolveUser_GitHubNoreplyEmail_NewUnlinkedUser(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 
@@ -64,6 +66,7 @@ func TestResolveUser_GitHubNoreplyEmail_NewUnlinkedUser(t *testing.T) {
 }
 
 func TestResolveUser_MatchingEmailButUnverifiedAtProvider_SeparateUser(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 
@@ -95,6 +98,7 @@ func TestResolveUser_MatchingEmailButUnverifiedAtProvider_SeparateUser(t *testin
 }
 
 func TestResolveUser_EmailNormalization(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 
@@ -161,6 +165,7 @@ func assertIdentityCount(t *testing.T, db *sqlx.DB, want int) {
 // vouches for it, the same identity logging in again must pick the
 // address up rather than stay address-less forever.
 func TestResolveUser_ReturningIdentityAdoptsANewlyVerifiedEmail(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 
@@ -191,6 +196,7 @@ func TestResolveUser_ReturningIdentityAdoptsANewlyVerifiedEmail(t *testing.T) {
 
 // Adopting an address must never move it off another account.
 func TestResolveUser_ReturningIdentityDoesNotTakeAnAddressAnotherUserHolds(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 

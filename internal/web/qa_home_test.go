@@ -10,6 +10,7 @@ import (
 )
 
 func TestNav_DashboardProjectsQAIntegrationsMembersActivityOnly(t *testing.T) {
+	t.Parallel()
 	var keys []string
 	for _, it := range buildNav("projects", 3).Items {
 		keys = append(keys, it.Key+"="+it.Href)
@@ -23,6 +24,7 @@ func TestNav_DashboardProjectsQAIntegrationsMembersActivityOnly(t *testing.T) {
 // Members has its own sidebar entry, lit on its page (the settings tab
 // stays too, for anyone arriving through Settings).
 func TestNav_MembersPageLightsTheMembersItem(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-nav-members")
 	status, body := e.get(t, e.owner, "/settings/members")
 	if status != http.StatusOK {
@@ -34,6 +36,7 @@ func TestNav_MembersPageLightsTheMembersItem(t *testing.T) {
 }
 
 func TestQAHome_ListsProjectsWithTheirCounts(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qahome")
 	ctx := context.Background()
 	portal := e.project(t, "Portal <b>v2</b>")
@@ -62,6 +65,7 @@ func TestQAHome_ListsProjectsWithTheirCounts(t *testing.T) {
 }
 
 func TestQAHome_GuestSeesOnlyItsProjects(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qahome-guest")
 	ctx := context.Background()
 	mine := e.project(t, "Client portal")

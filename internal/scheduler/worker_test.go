@@ -64,6 +64,7 @@ func numFact(key string, v float64) collector.Fact {
 }
 
 func TestPool_SuccessfulRunUpdatesBindingSchedule(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, connID, bindingID := seedFixture(t, db, "acme")
 	ctx := context.Background()
@@ -97,6 +98,7 @@ func TestPool_SuccessfulRunUpdatesBindingSchedule(t *testing.T) {
 }
 
 func TestPool_PartialResultStillStoresAndMarksPartial(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, connID, bindingID := seedFixture(t, db, "acme")
 	ctx := context.Background()
@@ -127,6 +129,7 @@ func TestPool_PartialResultStillStoresAndMarksPartial(t *testing.T) {
 }
 
 func TestPool_AuthErrorFreezesEveryBindingOnConnection(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, connID, binding1 := seedFixture(t, db, "acme")
 	ctx := context.Background()
@@ -183,6 +186,7 @@ func TestPool_AuthErrorFreezesEveryBindingOnConnection(t *testing.T) {
 }
 
 func TestPool_RateLimitedSetsConnectionStateAndReschedules(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, connID, bindingID := seedFixture(t, db, "acme")
 	ctx := context.Background()
@@ -218,6 +222,7 @@ func TestPool_RateLimitedSetsConnectionStateAndReschedules(t *testing.T) {
 }
 
 func TestPool_NoClaimableRunReturnsFalseNotError(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	pool := &scheduler.Pool{DB: db, WorkerID: "w1", LeaseDuration: 10 * time.Minute, Execute: func(ctx context.Context, run *global.SyncRun) (collector.Result, error) {
 		t.Fatal("Execute should not be called when nothing is claimable")
@@ -235,6 +240,7 @@ func TestPool_NoClaimableRunReturnsFalseNotError(t *testing.T) {
 // A binding with its own sync_interval_seconds (a daily repository
 // scan) is next due a day out, not at the scheduler's 15-minute default.
 func TestPool_BindingIntervalSetsNextSync(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, connID, bindingID := seedFixture(t, db, "acme-interval")
 	ctx := context.Background()
@@ -265,6 +271,7 @@ func TestPool_BindingIntervalSetsNextSync(t *testing.T) {
 // lease while Execute runs, so the reaper never requeues a run that is
 // still in progress.
 func TestPool_LongCollectKeepsItsLease(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, connID, bindingID := seedFixture(t, db, "acme-lease")
 	ctx := context.Background()
@@ -293,6 +300,7 @@ func TestPool_LongCollectKeepsItsLease(t *testing.T) {
 // is not retried, but the binding comes due again after its interval —
 // not on the enqueuer's next tick, which would rerun it every 30 seconds.
 func TestPool_ConfigErrorWaitsOutTheInterval(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, connID, bindingID := seedFixture(t, db, "acme-config-error")
 	ctx := context.Background()
@@ -354,6 +362,7 @@ func init() { collector.Register(collector.KindSonarQube, floorCollector{}) }
 // sync interval replaces that, but never below the collector's floor
 // (MinInterval, 5 minutes here).
 func TestPool_IntervalFallsBackToTheOrgDefaultThenAnHour(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	near := func(got, want time.Duration) bool { return got > want*85/100 && got < want*115/100 }
 

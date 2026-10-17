@@ -16,6 +16,7 @@ import (
 // component's projection (the old value must not keep counting), and
 // leaves exactly one live binding of the kind.
 func TestReplaceBinding_RetiresTheOldOneAndItsProjectedValue(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, oldID, _ := seedTrivyBindingForNotes(t, db, "acme-replace")
 	s := tenant.FromRun(db, orgID)
@@ -61,6 +62,7 @@ func TestReplaceBinding_RetiresTheOldOneAndItsProjectedValue(t *testing.T) {
 }
 
 func TestSoftDeleteBinding_DropsItsKindFromTheProjection(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, bindingID, _ := seedTrivyBindingForNotes(t, db, "acme-delete")
 	s := tenant.FromRun(db, orgID)

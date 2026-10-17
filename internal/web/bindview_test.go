@@ -15,6 +15,7 @@ import (
 )
 
 func TestProviderForKind(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{"gitlab": "gitlab", "sonarqube": "sonarqube", "trivy": "harbor_trivy", "sentry": "sentry"}
 	for kind, want := range cases {
 		if got := providerForKind(kind); got != want {
@@ -24,6 +25,7 @@ func TestProviderForKind(t *testing.T) {
 }
 
 func TestIsValidKind(t *testing.T) {
+	t.Parallel()
 	for _, k := range bindableKinds {
 		if !isValidKind(k) {
 			t.Errorf("isValidKind(%q) = false, want true", k)
@@ -38,6 +40,7 @@ func TestIsValidKind(t *testing.T) {
 }
 
 func TestPlanConnectionFields_TrivyCombinesUsernameAndPasswordIntoOneSecret(t *testing.T) {
+	t.Parallel()
 	form := map[string]string{"base_url": "https://harbor.example.com", "username": "robot$lotus", "password": "s3cr3t"}
 	baseURL, secret, config := planConnectionFields("trivy", func(k string) string { return form[k] })
 	if baseURL != "https://harbor.example.com" {
@@ -52,6 +55,7 @@ func TestPlanConnectionFields_TrivyCombinesUsernameAndPasswordIntoOneSecret(t *t
 }
 
 func TestPlanConnectionFields_SentrySeparatesSecretFromPlainConfig(t *testing.T) {
+	t.Parallel()
 	form := map[string]string{"base_url": "https://sentry.io", "token": "tok_abc", "org": "alurkerja"}
 	baseURL, secret, config := planConnectionFields("sentry", func(k string) string { return form[k] })
 	if baseURL != "https://sentry.io" {
@@ -66,6 +70,7 @@ func TestPlanConnectionFields_SentrySeparatesSecretFromPlainConfig(t *testing.T)
 }
 
 func TestBuildBindingConfig_OmitsBlankFieldsAndTypesNumbersCorrectly(t *testing.T) {
+	t.Parallel()
 	fields := []integrations.FormField{
 		{Key: "default_branch", Type: "text"},
 		{Key: "stale_branch_days", Type: "number"},
@@ -83,6 +88,7 @@ func TestBuildBindingConfig_OmitsBlankFieldsAndTypesNumbersCorrectly(t *testing.
 }
 
 func TestBuildBindingConfig_RejectsNonNumericNumberField(t *testing.T) {
+	t.Parallel()
 	fields := []integrations.FormField{{Key: "max_issues", Label: "Max issues", Type: "number"}}
 	form := map[string]string{"max_issues": "lots"}
 	if _, err := buildBindingConfig(fields, func(k string) string { return form[k] }); err == nil {
@@ -91,6 +97,7 @@ func TestBuildBindingConfig_RejectsNonNumericNumberField(t *testing.T) {
 }
 
 func TestBuildBindingConfig_MultiselectSplitsOnCommas(t *testing.T) {
+	t.Parallel()
 	fields := []integrations.FormField{{Key: "environments", Type: "multiselect"}}
 	form := map[string]string{"environments": "production, staging,  qa"}
 	raw, err := buildBindingConfig(fields, func(k string) string { return form[k] })
@@ -103,6 +110,7 @@ func TestBuildBindingConfig_MultiselectSplitsOnCommas(t *testing.T) {
 }
 
 func TestConnectionFieldsFor_UsesTheRegisteredCollector(t *testing.T) {
+	t.Parallel()
 	fields := connectionFieldsFor("sentry")
 	if len(fields) == 0 {
 		t.Fatal("connectionFieldsFor(sentry) = empty — is the sentry collector blank-imported into this test binary?")
@@ -123,6 +131,7 @@ func TestConnectionFieldsFor_UsesTheRegisteredCollector(t *testing.T) {
 // from the kind means a fifth integration cannot reintroduce that by
 // forgetting a template branch.
 func TestConnectionNamePlaceholder_DiffersPerKindAndCoversEveryBindableKind(t *testing.T) {
+	t.Parallel()
 	seen := map[string]string{}
 	for _, kind := range bindableKinds {
 		got := connectionNamePlaceholder(kind)
@@ -138,12 +147,14 @@ func TestConnectionNamePlaceholder_DiffersPerKindAndCoversEveryBindableKind(t *t
 }
 
 func TestConnectionNamePlaceholder_UnknownKindStillGetsAnExample(t *testing.T) {
+	t.Parallel()
 	if got := connectionNamePlaceholder("something-new"); got == "" {
 		t.Error("an unregistered kind rendered an empty placeholder attribute")
 	}
 }
 
 func TestBuildConnectionForm_CarriesTheSelectedKindsPlaceholder(t *testing.T) {
+	t.Parallel()
 	for _, kind := range bindableKinds {
 		view := buildConnectionForm(kind, "", nil, "")
 		if view.NamePlaceholder != connectionNamePlaceholder(kind) {

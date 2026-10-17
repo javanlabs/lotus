@@ -11,6 +11,7 @@ import (
 )
 
 func TestQAPlans_DuplicateCopiesScopeNotDates(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-dup")
 	ctx := context.Background()
 	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)

@@ -22,6 +22,7 @@ func strPtrHome(s string) *string { return &s }
 // Each condition raises its alert, failing ones before warnings and the
 // newest first within a tone; figures count what the alerts are about.
 func TestBuildHomeDashboard_AlertsAndFigures(t *testing.T) {
+	t.Parallel()
 	at := func(d time.Duration) *time.Time { v := homeNow.Add(-d); return &v }
 	failing := homeComponent("AlurKerja", "Authentication")
 	stale := homeComponent("AlurKerja", "Billing")
@@ -112,6 +113,7 @@ func TestBuildHomeDashboard_AlertsAndFigures(t *testing.T) {
 
 // Past the cap, the page lists the most severe and says how many more.
 func TestBuildHomeDashboard_AlertsAreCapped(t *testing.T) {
+	t.Parallel()
 	var bindings []repo.FailingBinding
 	for i := 0; i < homeAlertCap+4; i++ {
 		bindings = append(bindings, repo.FailingBinding{Kind: "sonarqube", ConsecutiveFailures: 3, LiveComponent: homeComponent("P", fmt.Sprintf("c%d", i))})
@@ -124,6 +126,7 @@ func TestBuildHomeDashboard_AlertsAreCapped(t *testing.T) {
 
 // Without QA access the page shows none of QA's numbers, issues or lists.
 func TestBuildHomeDashboard_NoQAWithoutQAAccess(t *testing.T) {
+	t.Parallel()
 	d := buildHomeDashboard(homeInputs{
 		Now: homeNow, CanQA: false, OpenIssues: 9,
 		SevereIssues: []repo.QAIssueSummary{{Key: 1, Severity: "blocker"}},
@@ -144,6 +147,7 @@ func TestBuildHomeDashboard_NoQAWithoutQAAccess(t *testing.T) {
 // row with nothing to count, five at most; testers only for whoever may
 // read the workload.
 func TestHomeTops(t *testing.T) {
+	t.Parallel()
 	proj := func(name string, total, untested, cases, issues int) repo.QAWorkloadProject {
 		return repo.QAWorkloadProject{ProjectID: uuid.New(), ProjectSlug: strings.ToLower(name), Name: name, CasesCreated: cases, IssuesCreated: issues,
 			QAWorkloadCounts: repo.QAWorkloadCounts{Total: total, Untested: untested}}
@@ -196,6 +200,7 @@ func TestHomeTops(t *testing.T) {
 }
 
 func TestHomeEventFor(t *testing.T) {
+	t.Parallel()
 	is := repo.QAIssueSummary{ProjectID: uuid.New(), ProjectName: "AlurKerja", ProjectSlug: "alurkerja", Key: 7, Title: "Typo", Severity: "minor"}
 	cases := []struct {
 		a              repo.QAIssueActivity
@@ -222,6 +227,7 @@ func TestHomeEventFor(t *testing.T) {
 }
 
 func TestMonthLabel(t *testing.T) {
+	t.Parallel()
 	if got := monthLabel("2026-10"); got != "October 2026" {
 		t.Errorf("monthLabel = %q", got)
 	}

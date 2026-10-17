@@ -50,6 +50,7 @@ func seedQALibrary(t *testing.T, e qaEnv, projectID uuid.UUID) (sectionID uuid.U
 }
 
 func TestQAProject_LandingShowsCountsAndSubnav(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qaproj")
 	p := e.project(t, "Portal")
 	seedQALibrary(t, e, p)
@@ -71,6 +72,7 @@ func TestQAProject_LandingShowsCountsAndSubnav(t *testing.T) {
 }
 
 func TestQAProject_GuestReachesOnlyItsProject(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qaproj-guest")
 	mine := e.project(t, "Client portal")
 	other := e.project(t, "Internal billing")
@@ -97,6 +99,7 @@ func TestQAProject_GuestReachesOnlyItsProject(t *testing.T) {
 }
 
 func TestProjectPage_LinksToTestCases(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qaproj-link")
 	p := e.project(t, "Portal")
 	_, body := e.get(t, e.owner, e.projectPath(t, p))
@@ -106,13 +109,14 @@ func TestProjectPage_LinksToTestCases(t *testing.T) {
 }
 
 func TestProjectDelete_CountsAndConfirmsQARows(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qaproj-del")
 	p := e.project(t, "Portal")
 	seedQALibrary(t, e, p)
 	// The JSON endpoints keep taking the project's id.
 	path := "/projects/" + p.String()
 
-	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, path+"/delete-impact", e.owner))
+	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, path+"/delete-impact", e.owner), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,12 +130,12 @@ func TestProjectDelete_CountsAndConfirmsQARows(t *testing.T) {
 	}
 
 	// Confirming only the metric counts no longer covers what would go.
-	stale, _ := e.app.Test(reqWithSession(http.MethodDelete, e.host, path+"?confirm_components=0&confirm_bindings=0", e.owner))
+	stale, _ := e.app.Test(reqWithSession(http.MethodDelete, e.host, path+"?confirm_components=0&confirm_bindings=0", e.owner), -1)
 	if stale.StatusCode != http.StatusConflict {
 		t.Fatalf("delete without QA confirmation = %d; want 409", stale.StatusCode)
 	}
 	ok, _ := e.app.Test(reqWithSession(http.MethodDelete, e.host,
-		path+"?confirm_components=0&confirm_bindings=0&confirm_qa_cases=2&confirm_qa_runs=1&confirm_qa_issues=1", e.owner))
+		path+"?confirm_components=0&confirm_bindings=0&confirm_qa_cases=2&confirm_qa_runs=1&confirm_qa_issues=1", e.owner), -1)
 	if ok.StatusCode != http.StatusNoContent {
 		t.Fatalf("confirmed delete = %d; want 204", ok.StatusCode)
 	}

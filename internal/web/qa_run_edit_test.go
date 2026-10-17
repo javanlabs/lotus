@@ -46,6 +46,7 @@ func newQARunMailEnv(t *testing.T, sub string) qaRunEnv {
 }
 
 func TestQARun_ResultCommentLimit(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qarun-comment")
 	ctx := context.Background()
 	run, items := r.firstRun(t)
@@ -83,6 +84,7 @@ func TestQARun_ResultCommentLimit(t *testing.T) {
 }
 
 func TestQAAPI_ItemsCarryTheirLatestComment(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-api-lastcomment")
 	ctx := context.Background()
 	run, items := e.firstRun(t)
@@ -243,6 +245,7 @@ func itemWithIssue(t *testing.T, r qaRunEnv) (repo.QARun, []repo.QARunItem, *rep
 }
 
 func TestQARun_RemoveItemsKeepsIssues(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qarun-remove")
 	ctx := context.Background()
 	run, items, is := itemWithIssue(t, r)
@@ -278,6 +281,7 @@ func TestQARun_RemoveItemsKeepsIssues(t *testing.T) {
 }
 
 func TestQARun_DeleteKeepsIssuesAndOpensThePlan(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qarun-delete")
 	ctx := context.Background()
 	run, _, is := itemWithIssue(t, r)

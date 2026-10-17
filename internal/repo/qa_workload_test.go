@@ -99,6 +99,7 @@ func wlProject(t *testing.T, s tenant.Scope, name string) (uuid.UUID, uuid.UUID)
 }
 
 func TestQAWorkload_MonthRecapPerPersonAndPerProject(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-workload")
 	ctx := context.Background()
 	owner := wlUser(t, f.db, f.s, "owner@wl.example", "Olga Owner", "owner", "active")
@@ -240,6 +241,7 @@ func TestQAWorkload_MonthRecapPerPersonAndPerProject(t *testing.T) {
 }
 
 func TestQAWorkload_RejectsAMalformedMonth(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-workload-bad")
 	for _, m := range []string{"", "2026-13", "2026-3", "march", "2026-03-01"} {
 		if _, err := repo.LoadQAWorkload(context.Background(), f.s, m); err != repo.ErrInvalidInput {
@@ -249,6 +251,7 @@ func TestQAWorkload_RejectsAMalformedMonth(t *testing.T) {
 }
 
 func TestQAWorkload_CurrentMonthIsTheDatabases(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-workload-now")
 	var want string
 	if err := f.db.Get(&want, `SELECT to_char(now(), 'YYYY-MM')`); err != nil {

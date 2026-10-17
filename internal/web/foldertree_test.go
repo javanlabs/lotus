@@ -116,6 +116,7 @@ func projectsOf(comps []componentInfo) []repo.Project {
 // projects filed directly in it — never the contents of the folders it
 // lists. Clicking a folder opens the next level.
 func TestFolderView_ShowsOnlyTheCurrentLevelFoldersFirst(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	product := f.folder("Product", nil)
 	it := f.folder("IT Services", nil)
@@ -146,6 +147,7 @@ func TestFolderView_ShowsOnlyTheCurrentLevelFoldersFirst(t *testing.T) {
 }
 
 func TestFolderView_BreadcrumbLeadsBackToTheTop(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	it := f.folder("IT Services", nil)
 	tribeA := f.folder("Tribe lead A", &it)
@@ -177,6 +179,7 @@ func TestFolderView_BreadcrumbLeadsBackToTheTop(t *testing.T) {
 // depth, flat, worst first, each saying where it lives — so a team sees
 // what to fix without clicking through folders.
 func TestFolderView_FailingListsEveryFailingProjectBeneathWithItsPath(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	it := f.folder("IT Services", nil)
 	tribeA := f.folder("Tribe lead A", &it)
@@ -205,6 +208,7 @@ func TestFolderView_FailingListsEveryFailingProjectBeneathWithItsPath(t *testing
 }
 
 func TestProjectTree_FolderRowCountsPassingAtAnyDepthAndNamesFailing(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	it := f.folder("IT Services", nil)
 	tribeA := f.folder("Tribe lead A", &it)
@@ -227,6 +231,7 @@ func TestProjectTree_FolderRowCountsPassingAtAnyDepthAndNamesFailing(t *testing.
 }
 
 func TestProjectTree_EightyPercentIsGreenButAnyFailureKeepsTheDotRed(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	eighty := f.folder("Eighty", nil)
 	seventyFive := f.folder("SeventyFive", nil)
@@ -250,6 +255,7 @@ func TestProjectTree_EightyPercentIsGreenButAnyFailureKeepsTheDotRed(t *testing.
 }
 
 func TestProjectTree_EmptyFolderShowsNoVerdict(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	f.folder("Empty", nil)
 	f.project("Somewhere", nil, "pass", intPtr(90))
@@ -266,6 +272,7 @@ func TestProjectTree_EmptyFolderShowsNoVerdict(t *testing.T) {
 }
 
 func TestProjectTree_UnmeasuredProjectsAreCalledOutNotCounted(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	product := f.folder("Product", nil)
 	f.project("AlurKerja", &product, "pass", intPtr(84))
@@ -291,6 +298,7 @@ func TestProjectTree_UnmeasuredProjectsAreCalledOutNotCounted(t *testing.T) {
 // A folder row counts its failing projects rather than naming them; the
 // "Failing" filter is where they are listed.
 func TestProjectTree_FolderSubtextCountsFailingWithoutNamingThem(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	bad := f.folder("Bad", nil)
 	for i, name := range []string{"A", "B", "C", "D", "E"} {
@@ -303,6 +311,7 @@ func TestProjectTree_FolderSubtextCountsFailingWithoutNamingThem(t *testing.T) {
 }
 
 func TestProjectTree_KindCellsFollowBindableKindsAndCountShares(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	fo := f.folder("F", nil)
 	f.project("P1", &fo, "pass", intPtr(90))
@@ -324,6 +333,7 @@ func TestProjectTree_KindCellsFollowBindableKindsAndCountShares(t *testing.T) {
 }
 
 func TestProjectTree_FilingProjectsDoesNotChangeTheOrgScore(t *testing.T) {
+	t.Parallel()
 	flat := newTreeFixture(t)
 	flat.project("A", nil, "pass", intPtr(90))
 	flat.project("B", nil, "fail", intPtr(40))
@@ -340,6 +350,7 @@ func TestProjectTree_FilingProjectsDoesNotChangeTheOrgScore(t *testing.T) {
 }
 
 func TestProjectTree_FoldersWithoutComponentsStillShowTheTree(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	fo := f.folder("Product", nil)
 	f.project("Fresh", &fo, "", nil)
@@ -356,6 +367,7 @@ func TestProjectTree_FoldersWithoutComponentsStillShowTheTree(t *testing.T) {
 // which on the tree includes folder rows — 5 projects in 2 folders reads
 // "All 7". "All", the footer and the subtitle must all count PROJECTS.
 func TestProjectTree_RowCountCountsProjectsNotFolderRows(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	it := f.folder("IT Services", nil)
 	tribeA := f.folder("Tribe lead A", &it)
@@ -381,6 +393,7 @@ func TestProjectTree_RowCountCountsProjectsNotFolderRows(t *testing.T) {
 // "No repositories yet" empty state, or there is no way to create the
 // first folder.
 func TestProjectTree_ComponentlessProjectWithNoFoldersShowsTheTreeNotEmptyState(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	f.project("Fresh", nil, "", nil)
 	vm := f.build()
@@ -398,6 +411,7 @@ func TestProjectTree_ComponentlessProjectWithNoFoldersShowsTheTreeNotEmptyState(
 // projects at ANY depth, so a folder holding only a subfolder — which
 // itself holds projects — used to claim it held those projects too.
 func TestProjectTree_DeleteHintCountsOnlyDirectlyFiledProjects(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	outer := f.folder("Outer", nil)
 	inner := f.folder("Inner", &outer)
@@ -412,6 +426,7 @@ func TestProjectTree_DeleteHintCountsOnlyDirectlyFiledProjects(t *testing.T) {
 }
 
 func TestFolderOptions_PathsAndCreateTargetsSkipMaxDepth(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	it := f.folder("IT Services", nil)
 	f.folder("Tribe lead A", &it)
@@ -442,6 +457,7 @@ func TestFolderOptions_PathsAndCreateTargetsSkipMaxDepth(t *testing.T) {
 }
 
 func TestProjectTree_MoveOptionsExcludeTheFolderItsSubtreeAndTooDeepTargets(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	it := f.folder("IT Services", nil)
 	f.folder("Tribe lead A", &it)
@@ -477,6 +493,7 @@ func TestProjectTree_MoveOptionsExcludeTheFolderItsSubtreeAndTooDeepTargets(t *t
 }
 
 func TestFolderTrail_JoinsThePageBreadcrumbOnlyInsideAFolder(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	it := f.folder("IT Services", nil)
 	tribeA := f.folder("Tribe lead A", &it)
@@ -500,6 +517,7 @@ func TestFolderTrail_JoinsThePageBreadcrumbOnlyInsideAFolder(t *testing.T) {
 // folder down to the project, all links back up (the organization's name,
 // rendered before the trail, links to the top level).
 func TestProjectTrail_IncludesTheFolderPath(t *testing.T) {
+	t.Parallel()
 	f := newTreeFixture(t)
 	it := f.folder("IT Services", nil)
 	tribeA := f.folder("Tribe lead A", &it)

@@ -53,6 +53,7 @@ func issueFromItem(t *testing.T, r qaRunEnv) (*repo.QAIssue, repo.QARun) {
 }
 
 func TestQAIssue_PageShowsFieldsLinksAndTimeline(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qaissue-page")
 	ctx := context.Background()
 	is, run := issueFromItem(t, r)
@@ -78,6 +79,7 @@ func TestQAIssue_PageShowsFieldsLinksAndTimeline(t *testing.T) {
 }
 
 func TestQAIssue_StatusEditAndCommentPermissions(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qaissue-perm")
 	ctx := context.Background()
 	is, _ := issueFromItem(t, r)
@@ -132,10 +134,10 @@ func TestQAIssue_StatusEditAndCommentPermissions(t *testing.T) {
 	// The guest's file is served only through its own project.
 	files, _ := repo.ListQAAttachments(ctx, r.s, repo.QAAttachmentOwner{EventID: &last.ID})
 	other := r.project(t, "Billing")
-	if res, _ := r.app.Test(reqWithSession(http.MethodGet, r.host, r.projectPath(t, other)+"/qa/files/"+files[0].ID.String(), r.member)); res.StatusCode != http.StatusNotFound {
+	if res, _ := r.app.Test(reqWithSession(http.MethodGet, r.host, r.projectPath(t, other)+"/qa/files/"+files[0].ID.String(), r.member), -1); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("file via another project = %d; want 404", res.StatusCode)
 	}
-	if res, _ := r.app.Test(reqWithSession(http.MethodGet, r.host, r.base+"/files/"+files[0].ID.String(), r.guest)); res.StatusCode != http.StatusOK {
+	if res, _ := r.app.Test(reqWithSession(http.MethodGet, r.host, r.base+"/files/"+files[0].ID.String(), r.guest), -1); res.StatusCode != http.StatusOK {
 		t.Fatalf("file via its project = %d; want 200", res.StatusCode)
 	}
 }

@@ -14,6 +14,7 @@ import (
 // anyone who reads the log could open it. The log keeps the route, not the
 // token.
 func TestRequestLog_RedactsLinkTokens(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	app := fiber.New()
 	app.Use(requestLogger(&out))
@@ -21,7 +22,7 @@ func TestRequestLog_RedactsLinkTokens(t *testing.T) {
 
 	secret := strings.Repeat("ab", 32)
 	for _, path := range []string{"/s/qa/" + secret, "/invite/" + secret, "/invite/" + secret + "/confirm", "/projects/x?token=" + secret} {
-		if _, err := app.Test(httptest.NewRequest(http.MethodGet, path, nil)); err != nil {
+		if _, err := app.Test(httptest.NewRequest(http.MethodGet, path, nil), -1); err != nil {
 			t.Fatal(err)
 		}
 	}

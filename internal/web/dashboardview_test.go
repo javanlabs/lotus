@@ -20,6 +20,7 @@ func int64Ptr(v int64) *int64 { return &v }
 func statusList(statuses ...collector.Status) []collector.Status { return statuses }
 
 func TestBuildDashboardViewModel_EmptyOrgHasNoComponents(t *testing.T) {
+	t.Parallel()
 	vm := buildDashboardViewModel("subtitle", 0, nil, nil)
 	if !vm.Empty || !vm.NoProjects {
 		t.Fatalf("Empty=%v NoProjects=%v, want both true for zero projects", vm.Empty, vm.NoProjects)
@@ -32,6 +33,7 @@ func TestBuildDashboardViewModel_EmptyOrgHasNoComponents(t *testing.T) {
 // copy must say "add a repository", not "create your first project" (the
 // project already exists).
 func TestBuildDashboardViewModel_ProjectWithNoComponentsIsNotNoProjects(t *testing.T) {
+	t.Parallel()
 	vm := buildDashboardViewModel("subtitle", 1, nil, nil)
 	if !vm.Empty {
 		t.Fatalf("Empty = false, want true (no components to show)")
@@ -54,6 +56,7 @@ func metricsJSON(t *testing.T, kinds map[string]repo.KindHeadline) []byte {
 }
 
 func TestBuildDashboardViewModel_RowsCarryBadgesAndSortAlphabetically(t *testing.T) {
+	t.Parallel()
 	compA, compB := uuid.New(), uuid.New()
 	scoreA, scoreB := 90, 40
 	components := []componentInfo{
@@ -127,6 +130,7 @@ func TestBuildDashboardViewModel_RowsCarryBadgesAndSortAlphabetically(t *testing
 // vulnerabilities" (already plural) — naively appending "s" for any
 // count != 1 produced "vulnerabilitiess".
 func TestHeadlineText_DoesNotDoublePluralizeAnAlreadyPluralLabel(t *testing.T) {
+	t.Parallel()
 	got := headlineText(repo.KindHeadline{CountValue: int64Ptr(3), CountLabel: "bugs + vulnerabilities"})
 	if got != "3 bugs + vulnerabilities" {
 		t.Fatalf("headlineText = %q, want %q", got, "3 bugs + vulnerabilities")
@@ -134,6 +138,7 @@ func TestHeadlineText_DoesNotDoublePluralizeAnAlreadyPluralLabel(t *testing.T) {
 }
 
 func TestHeadlineText_PluralizesASingularLabel(t *testing.T) {
+	t.Parallel()
 	got := headlineText(repo.KindHeadline{CountValue: int64Ptr(2), CountLabel: "critical finding"})
 	if got != "2 critical findings" {
 		t.Fatalf("headlineText = %q, want %q", got, "2 critical findings")
@@ -151,6 +156,7 @@ func TestHeadlineText_PluralizesASingularLabel(t *testing.T) {
 }
 
 func TestBuildDashboardViewModel_ComponentNeverCollectedIsUnknownNotPass(t *testing.T) {
+	t.Parallel()
 	comp := uuid.New()
 	components := []componentInfo{{ID: comp, Name: "never-synced", ProjectName: "P"}}
 	// No entry in metrics at all — never had a successful Collect.
@@ -167,6 +173,7 @@ func TestBuildDashboardViewModel_ComponentNeverCollectedIsUnknownNotPass(t *test
 // to average, because the two levels roll up differently and the tile must
 // show whichever number its page's rows show.
 func TestBuildScoreCard_BucketsByStatusExcludingUnknownFromBar(t *testing.T) {
+	t.Parallel()
 	statuses := statusList("pass", "fail", "unknown")
 	sc := buildScoreCard(statuses, intPtr(60))
 	if sc.HealthyN != 1 || sc.FailingN != 1 {
@@ -181,6 +188,7 @@ func TestBuildScoreCard_BucketsByStatusExcludingUnknownFromBar(t *testing.T) {
 }
 
 func TestBuildKPIs_NoDataYetWhenKindNeverBound(t *testing.T) {
+	t.Parallel()
 	kindStatuses := map[string][]collector.Status{
 		"sonarqube": statusList("pass", "pass", "fail"),
 		// trivy/sentry/gitlab: absent entirely — never bound anywhere.
@@ -207,6 +215,7 @@ func TestBuildKPIs_NoDataYetWhenKindNeverBound(t *testing.T) {
 // project read 81 in the list and 80 on its own page — two numbers, both
 // called "the Lotus score".
 func TestProjectScore_IsIdenticalOnBothPages(t *testing.T) {
+	t.Parallel()
 	// Deliberately lopsided: two components report gitlab, one reports
 	// sonarqube. A flat average and a per-kind average disagree here, which
 	// is exactly what made the discrepancy visible.
@@ -256,6 +265,7 @@ func TestProjectScore_IsIdenticalOnBothPages(t *testing.T) {
 // with the columns beneath it, which is exactly the inconsistency the
 // convention exists to prevent.
 func TestKindOrderIsConsistentEverywhere(t *testing.T) {
+	t.Parallel()
 	want := []string{"sonarqube", "trivy", "sentry", "gitlab"}
 
 	if len(bindableKinds) != len(want) {
@@ -351,6 +361,7 @@ func TestStaleCells_MarkEachIntegrationNotSyncedForADay(t *testing.T) {
 // and SECURITY were dropped, and every row has one cell per column plus
 // the last-updated cell.
 func TestComponentColumns_NoPlaceholderColumns(t *testing.T) {
+	t.Parallel()
 	for _, c := range componentColumns {
 		if c.Key == "" {
 			t.Fatalf("placeholder column %q is back", c.Label)

@@ -11,6 +11,7 @@ import (
 )
 
 func TestStatusTone(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{"ok": "pass", "pending": "none", "auth_failed": "fail", "error": "fail"}
 	for status, want := range cases {
 		if got := statusTone(status); got != want {
@@ -20,6 +21,7 @@ func TestStatusTone(t *testing.T) {
 }
 
 func TestProviderLabel(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{"gitlab": "GitLab", "sonarqube": "SonarQube", "harbor_trivy": "Trivy (Harbor)", "sentry": "Sentry", "unknown": "unknown"}
 	for provider, want := range cases {
 		if got := providerLabel(provider); got != want {
@@ -29,6 +31,7 @@ func TestProviderLabel(t *testing.T) {
 }
 
 func TestBuildConnectionRow_FlattensNullableFieldsAndComputesDisplayStrings(t *testing.T) {
+	t.Parallel()
 	last4 := "abcd"
 	updatedAt := time.Now().Add(-2 * time.Hour)
 	verifiedAt := time.Now().Add(-1 * time.Hour)
@@ -53,6 +56,7 @@ func TestBuildConnectionRow_FlattensNullableFieldsAndComputesDisplayStrings(t *t
 }
 
 func TestBuildConnectionRow_NilSecretFieldsRenderDash(t *testing.T) {
+	t.Parallel()
 	conn := repo.Connection{ID: uuid.New(), Provider: "sentry", Name: "sentry.io", BaseURL: "https://sentry.io", Status: "pending"}
 	row := buildConnectionRow(conn, 0)
 	if row.SecretLast4 != "" {
@@ -64,6 +68,7 @@ func TestBuildConnectionRow_NilSecretFieldsRenderDash(t *testing.T) {
 }
 
 func TestBuildTokenRow_NeverUsedNeverExpiresRendersPlaceholders(t *testing.T) {
+	t.Parallel()
 	tok := global.APIToken{ID: uuid.New(), Name: "laptop", TokenPrefix: "lotus_pat_ab12"}
 	row := buildTokenRow(tok)
 	if row.LastUsedAt != "never" || row.ExpiresAt != "never" {

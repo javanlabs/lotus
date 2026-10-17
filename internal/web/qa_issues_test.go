@@ -11,6 +11,7 @@ import (
 )
 
 func TestQAIssues_ListFiltersEscapesAndPages(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qaissues")
 	ctx := context.Background()
 	mk := func(title, severity, source string) *repo.QAIssue {

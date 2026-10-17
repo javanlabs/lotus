@@ -28,6 +28,7 @@ func renderCard(t *testing.T, args map[string]any) string {
 }
 
 func TestCard_GlassIsTheDefaultVariant(t *testing.T) {
+	t.Parallel()
 	got := renderCard(t, map[string]any{})
 	if !strings.Contains(got, `class="lotus-card"`) {
 		t.Errorf("got %q, want the glass class", got)
@@ -40,6 +41,7 @@ func TestCard_GlassIsTheDefaultVariant(t *testing.T) {
 }
 
 func TestCard_InverseVariant(t *testing.T) {
+	t.Parallel()
 	got := renderCard(t, map[string]any{"Variant": "inverse"})
 	if !strings.Contains(got, `class="lotus-card-inverse"`) {
 		t.Errorf("got %q, want the inverse class", got)
@@ -50,6 +52,7 @@ func TestCard_InverseVariant(t *testing.T) {
 }
 
 func TestCard_PaddingAndStylePassThrough(t *testing.T) {
+	t.Parallel()
 	got := renderCard(t, map[string]any{
 		"Padding": "20px 22px",
 		"Class":   "lotus-shape",
@@ -75,6 +78,7 @@ func TestCard_PaddingAndStylePassThrough(t *testing.T) {
 // A card with only extra classes and no padding must still skip the style
 // attribute — the branch that builds it keys off Padding OR Style.
 func TestCard_ClassOnlyEmitsNoStyle(t *testing.T) {
+	t.Parallel()
 	got := renderCard(t, map[string]any{"Class": "lotus-shape"})
 	if !strings.Contains(got, `class="lotus-card lotus-shape"`) {
 		t.Errorf("got %q", got)
@@ -91,6 +95,7 @@ func TestCard_ClassOnlyEmitsNoStyle(t *testing.T) {
 // grid and left every row misaligned with its own header. Dynamic values
 // have to be built with printf instead.
 func TestCardArgs_HaveNoUnevaluatedActions(t *testing.T) {
+	t.Parallel()
 	call := regexp.MustCompile(`(?s)\{\{template "lotus_card[a-z_]*_open" \(dict(.*?)\)\}\}`)
 	quoted := regexp.MustCompile(`"(Padding|Class|Style|Variant)" "([^"]*)"`)
 	backtick := regexp.MustCompile("\"Attrs\" `([^`]*)`")

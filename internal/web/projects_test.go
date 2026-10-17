@@ -95,6 +95,7 @@ func jsonReqWithSession(method, host, path, raw, body string) *http.Request {
 }
 
 func TestProjects_CreateThenListThenGet(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newProjectsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	_ = orgID
@@ -102,7 +103,7 @@ func TestProjects_CreateThenListThenGet(t *testing.T) {
 	host := "acme." + cfg.BaseDomain
 
 	createResp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/projects", raw,
-		`{"slug":"web","name":"Web","description":"desc"}`))
+		`{"slug":"web","name":"Web","description":"desc"}`), -1)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -114,7 +115,7 @@ func TestProjects_CreateThenListThenGet(t *testing.T) {
 		t.Fatalf("decode create: %v", err)
 	}
 
-	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects", raw))
+	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects", raw), -1)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -126,7 +127,7 @@ func TestProjects_CreateThenListThenGet(t *testing.T) {
 		t.Fatalf("list = %+v, want one project with slug=web", list)
 	}
 
-	getResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/"+created.ID.String(), raw))
+	getResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/"+created.ID.String(), raw), -1)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -136,7 +137,8 @@ func TestProjects_CreateThenListThenGet(t *testing.T) {
 
 	// Component under the project.
 	compResp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/projects/"+created.ID.String()+"/components", raw,
-		`{"slug":"api","name":"API","kind":"backend"}`))
+		`{"slug":"api","name":"API","kind":"backend"}`), -1)
+
 	if err != nil {
 		t.Fatalf("create component: %v", err)
 	}
@@ -153,6 +155,7 @@ func TestProjects_CreateThenListThenGet(t *testing.T) {
 }
 
 func TestProjects_SlugUniquePerOrgNotGlobal(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newProjectsTestApp(t)
 	orgA, userA := seedMember(t, db, "acme", "owner")
 	orgB, userB := seedMember(t, db, "beta", "owner")
@@ -161,14 +164,14 @@ func TestProjects_SlugUniquePerOrgNotGlobal(t *testing.T) {
 
 	// Same slug in org A twice: second is rejected.
 	hostA := "acme." + cfg.BaseDomain
-	resp1, err := app.Test(jsonReqWithSession(http.MethodPost, hostA, "/projects", rawA, `{"slug":"web","name":"Web"}`))
+	resp1, err := app.Test(jsonReqWithSession(http.MethodPost, hostA, "/projects", rawA, `{"slug":"web","name":"Web"}`), -1)
 	if err != nil {
 		t.Fatalf("create 1: %v", err)
 	}
 	if resp1.StatusCode != http.StatusCreated {
 		t.Fatalf("create 1 status = %d, want 201", resp1.StatusCode)
 	}
-	resp2, err := app.Test(jsonReqWithSession(http.MethodPost, hostA, "/projects", rawA, `{"slug":"web","name":"Web Again"}`))
+	resp2, err := app.Test(jsonReqWithSession(http.MethodPost, hostA, "/projects", rawA, `{"slug":"web","name":"Web Again"}`), -1)
 	if err != nil {
 		t.Fatalf("create 2: %v", err)
 	}
@@ -178,7 +181,7 @@ func TestProjects_SlugUniquePerOrgNotGlobal(t *testing.T) {
 
 	// Same slug in org B: allowed.
 	hostB := "beta." + cfg.BaseDomain
-	resp3, err := app.Test(jsonReqWithSession(http.MethodPost, hostB, "/projects", rawB, `{"slug":"web","name":"Web"}`))
+	resp3, err := app.Test(jsonReqWithSession(http.MethodPost, hostB, "/projects", rawB, `{"slug":"web","name":"Web"}`), -1)
 	if err != nil {
 		t.Fatalf("create 3: %v", err)
 	}
@@ -188,6 +191,7 @@ func TestProjects_SlugUniquePerOrgNotGlobal(t *testing.T) {
 }
 
 func TestComponents_RenameDoesNotBreakBindings(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newProjectsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -199,7 +203,8 @@ func TestComponents_RenameDoesNotBreakBindings(t *testing.T) {
 	bindingID := mustSeedBinding(t, db, orgID, componentID, connID)
 
 	resp, err := app.Test(jsonReqWithSession(http.MethodPatch, host, "/components/"+componentID.String(), raw,
-		`{"slug":"api-v2","name":"API v2","sort_order":1}`))
+		`{"slug":"api-v2","name":"API v2","sort_order":1}`), -1)
+
 	if err != nil {
 		t.Fatalf("rename: %v", err)
 	}
@@ -219,6 +224,7 @@ func TestComponents_RenameDoesNotBreakBindings(t *testing.T) {
 }
 
 func TestProjects_CrossOrgAccessIs404NotForbidden(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newProjectsTestApp(t)
 	orgA, _ := seedMember(t, db, "acme", "owner")
 	orgB, userB := seedMember(t, db, "beta", "owner")
@@ -226,7 +232,7 @@ func TestProjects_CrossOrgAccessIs404NotForbidden(t *testing.T) {
 
 	projectInA := mustSeedProject(t, db, orgA, "secret")
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, "beta."+cfg.BaseDomain, "/projects/"+projectInA.String(), rawB))
+	resp, err := app.Test(reqWithSession(http.MethodGet, "beta."+cfg.BaseDomain, "/projects/"+projectInA.String(), rawB), -1)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -235,7 +241,8 @@ func TestProjects_CrossOrgAccessIs404NotForbidden(t *testing.T) {
 	}
 
 	patchResp, err := app.Test(jsonReqWithSession(http.MethodPatch, "beta."+cfg.BaseDomain, "/projects/"+projectInA.String(), rawB,
-		`{"slug":"stolen","name":"Stolen"}`))
+		`{"slug":"stolen","name":"Stolen"}`), -1)
+
 	if err != nil {
 		t.Fatalf("patch: %v", err)
 	}
@@ -245,13 +252,14 @@ func TestProjects_CrossOrgAccessIs404NotForbidden(t *testing.T) {
 }
 
 func TestProjects_ArchiveHidesButPreservesData(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newProjectsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme." + cfg.BaseDomain
 	projectID := mustSeedProject(t, db, orgID, "web")
 
-	archiveResp, err := app.Test(reqWithSession(http.MethodPost, host, "/projects/"+projectID.String()+"/archive", raw))
+	archiveResp, err := app.Test(reqWithSession(http.MethodPost, host, "/projects/"+projectID.String()+"/archive", raw), -1)
 	if err != nil {
 		t.Fatalf("archive: %v", err)
 	}
@@ -259,14 +267,14 @@ func TestProjects_ArchiveHidesButPreservesData(t *testing.T) {
 		t.Fatalf("archive status = %d, want 204", archiveResp.StatusCode)
 	}
 
-	listResp, _ := app.Test(reqWithSession(http.MethodGet, host, "/projects", raw))
+	listResp, _ := app.Test(reqWithSession(http.MethodGet, host, "/projects", raw), -1)
 	var list []repo.Project
 	json.NewDecoder(listResp.Body).Decode(&list)
 	if len(list) != 0 {
 		t.Fatalf("default list should hide archived projects, got %d", len(list))
 	}
 
-	getResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/"+projectID.String(), raw))
+	getResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/"+projectID.String(), raw), -1)
 	if err != nil {
 		t.Fatalf("get archived: %v", err)
 	}
@@ -276,11 +284,12 @@ func TestProjects_ArchiveHidesButPreservesData(t *testing.T) {
 }
 
 func TestProjects_ViewerCannotCreate(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newProjectsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "viewer")
 	raw := seedSession(t, db, orgID, userID)
 
-	resp, err := app.Test(jsonReqWithSession(http.MethodPost, "acme."+cfg.BaseDomain, "/projects", raw, `{"slug":"web","name":"Web"}`))
+	resp, err := app.Test(jsonReqWithSession(http.MethodPost, "acme."+cfg.BaseDomain, "/projects", raw, `{"slug":"web","name":"Web"}`), -1)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -290,6 +299,7 @@ func TestProjects_ViewerCannotCreate(t *testing.T) {
 }
 
 func TestProjects_HardDeleteRequiresMatchingConfirmationCounts(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newProjectsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -298,7 +308,7 @@ func TestProjects_HardDeleteRequiresMatchingConfirmationCounts(t *testing.T) {
 	mustSeedComponent(t, db, orgID, projectID, "api")
 
 	// Stale/wrong confirmation counts are rejected.
-	staleResp, err := app.Test(reqWithSession(http.MethodDelete, host, "/projects/"+projectID.String()+"?confirm_components=0&confirm_bindings=0", raw))
+	staleResp, err := app.Test(reqWithSession(http.MethodDelete, host, "/projects/"+projectID.String()+"?confirm_components=0&confirm_bindings=0", raw), -1)
 	if err != nil {
 		t.Fatalf("delete stale: %v", err)
 	}
@@ -307,7 +317,7 @@ func TestProjects_HardDeleteRequiresMatchingConfirmationCounts(t *testing.T) {
 	}
 
 	// Correct counts succeed.
-	okResp, err := app.Test(reqWithSession(http.MethodDelete, host, "/projects/"+projectID.String()+"?confirm_components=1&confirm_bindings=0", raw))
+	okResp, err := app.Test(reqWithSession(http.MethodDelete, host, "/projects/"+projectID.String()+"?confirm_components=1&confirm_bindings=0", raw), -1)
 	if err != nil {
 		t.Fatalf("delete ok: %v", err)
 	}

@@ -23,6 +23,7 @@ import (
 // project and, per its own description, plausibly the most valuable: this
 // is what catches the next unauthenticated write endpoint before it ships.
 func TestRouteCoverage(t *testing.T) {
+	t.Parallel()
 	// Both modes: single mode registers a different route set, and a route
 	// correctly guarded in one mode could be bare in the other. Running the
 	// scan twice is what turns that risk into a CI failure rather than a
@@ -65,6 +66,7 @@ func TestRouteCoverage(t *testing.T) {
 // fail — a coverage check that can never fail proves nothing (the same
 // principle task 5.3 states for the cross-tenant fixture suite).
 func TestRouteCoverage_CatchesABareRoute(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Get("/decided", authz.Public("test fixture"), func(c *fiber.Ctx) error { return nil })
 	app.Get("/undecided", func(c *fiber.Ctx) error { return nil })

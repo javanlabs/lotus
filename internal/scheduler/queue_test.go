@@ -16,6 +16,7 @@ import (
 )
 
 func TestEnqueueImmediate_NewBindingGetsARunRightAway(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, connID, bindingID := seedFixture(t, db, "acme")
 
@@ -36,6 +37,7 @@ func TestEnqueueImmediate_NewBindingGetsARunRightAway(t *testing.T) {
 }
 
 func TestEnqueueDueBindingsForOrg_OnlyEnqueuesDueBindings(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, _, bindingID := seedFixture(t, db, "acme")
 	ctx := context.Background()
@@ -72,6 +74,7 @@ func TestEnqueueDueBindingsForOrg_OnlyEnqueuesDueBindings(t *testing.T) {
 }
 
 func TestEnqueueDueBindingsForOrg_DisabledBindingNeverEnqueued(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, _, bindingID := seedFixture(t, db, "acme")
 	ctx := context.Background()
@@ -91,6 +94,7 @@ func TestEnqueueDueBindingsForOrg_DisabledBindingNeverEnqueued(t *testing.T) {
 }
 
 func TestEnqueueDueBindingsAllOrgs_CoversEveryOrg(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	seedFixture(t, db, "acme")
 	seedFixture(t, db, "beta")
@@ -110,6 +114,7 @@ func TestEnqueueDueBindingsAllOrgs_CoversEveryOrg(t *testing.T) {
 // due daily; running it again adds nothing, and deleting the scan turns
 // it off for good.
 func TestEnsureRepoScanBindings(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, connID, gitlabID := seedFixture(t, db, "acme-reposcan")
 	ctx := context.Background()
@@ -147,6 +152,7 @@ func TestEnsureRepoScanBindings(t *testing.T) {
 // A component that has a container image (a Harbor Trivy binding) is
 // scanned by its image, not its repository.
 func TestEnsureRepoScanBindings_ImageWins(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, _, gitlabID := seedFixture(t, db, "acme-reposcan-image")
 	ctx := context.Background()

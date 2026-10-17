@@ -11,6 +11,7 @@ import (
 )
 
 func TestQASignoff_GuestSignsOffAndThePlanShowsTheLatest(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-signoff")
 	ctx := context.Background()
 	planPath := r.base + "/plans/" + r.plan.ID.String()

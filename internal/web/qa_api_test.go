@@ -90,6 +90,7 @@ func decodeJSON[T any](t *testing.T, body string) T {
 }
 
 func TestQAAPI_TokensOnlyAndJSONErrors(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-api-auth")
 
 	status, body := e.api(t, http.MethodGet, "", "/api/qa/projects", nil)
@@ -99,7 +100,7 @@ func TestQAAPI_TokensOnlyAndJSONErrors(t *testing.T) {
 	// A browser session is not an API credential: no redirect to sign in,
 	// no ambient cookie authority.
 	req := reqWithSession(http.MethodGet, e.host, "/api/qa/projects", e.member)
-	resp, err := e.app.Test(req)
+	resp, err := e.app.Test(req, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,6 +126,7 @@ func TestQAAPI_TokensOnlyAndJSONErrors(t *testing.T) {
 }
 
 func TestQAAPI_ReadsTheLibraryPlansAndRuns(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-api-read")
 	base := "/api/qa/projects/" + e.projectID.String()
 
@@ -211,6 +213,7 @@ func TestQAAPI_ReadsTheLibraryPlansAndRuns(t *testing.T) {
 }
 
 func TestQAAPI_GuestAndPinnedTokensReachOnlyTheirProject(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-api-scope")
 	for name, token := range map[string]string{"guest": e.guestToken, "pinned": e.pinnedToken} {
 		status, body := e.api(t, http.MethodGet, token, "/api/qa/projects", nil)

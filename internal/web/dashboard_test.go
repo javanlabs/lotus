@@ -88,12 +88,13 @@ func newDashboardTestAppWith(t *testing.T, change func(*Deps)) (*fiber.App, *sql
 }
 
 func TestDashboard_NoSessionRedirectsRatherThanShowingData(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, _ := seedMember(t, db, "acme-nosession", "owner")
 	_ = orgID
 	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	req.Host = "acme-nosession." + dashboardTestDomain
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -104,12 +105,13 @@ func TestDashboard_NoSessionRedirectsRatherThanShowingData(t *testing.T) {
 }
 
 func TestDashboard_EmptyOrgShowsEmptyState(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-empty", "owner")
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme-empty." + dashboardTestDomain
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects", raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -129,6 +131,7 @@ func TestDashboard_EmptyOrgShowsEmptyState(t *testing.T) {
 // into one. Listing components here would skip the project level entirely,
 // which is what this used to do.
 func TestDashboard_ShowsProjectRowNotComponentRow(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-full", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -150,7 +153,7 @@ func TestDashboard_ShowsProjectRowNotComponentRow(t *testing.T) {
 		}
 	})
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects", raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -171,6 +174,7 @@ func TestDashboard_ShowsProjectRowNotComponentRow(t *testing.T) {
 }
 
 func TestNewProject_SubmitCreatesAndRedirects(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-newproj", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -182,7 +186,7 @@ func TestNewProject_SubmitCreatesAndRedirects(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -211,11 +215,12 @@ func TestNewProject_SubmitCreatesAndRedirects(t *testing.T) {
 // TestDashboardPathIsTheLandingPage: /dashboard, once a forward to the
 // project list, is the page sign-in lands on (home_dashboard.go).
 func TestDashboardPathIsTheLandingPage(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-fwd", "owner")
 	raw := seedSession(t, db, orgID, userID)
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-fwd."+dashboardTestDomain, "/dashboard", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, "acme-fwd."+dashboardTestDomain, "/dashboard", raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}

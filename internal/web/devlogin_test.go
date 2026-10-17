@@ -44,6 +44,7 @@ func routeExists(app *fiber.App, method, path string) bool {
 // If this test ever fails, a build that can impersonate an account without
 // any credential is one deploy away from production.
 func TestDevLoginRouteOnlyExistsInDevMode(t *testing.T) {
+	t.Parallel()
 	const method, path = fiber.MethodPost, "/login/dev/:user"
 
 	if !routeExists(buildSingleModeApp(t, true), method, path) {
@@ -57,6 +58,7 @@ func TestDevLoginRouteOnlyExistsInDevMode(t *testing.T) {
 // The magic-link routes, unlike the dev shortcut, exist in both — they are
 // a real login mechanism, not a testing affordance.
 func TestMagicLinkRoutesExistRegardlessOfDevMode(t *testing.T) {
+	t.Parallel()
 	for _, dev := range []bool{true, false} {
 		app := buildSingleModeApp(t, dev)
 		for _, r := range []struct{ method, path string }{

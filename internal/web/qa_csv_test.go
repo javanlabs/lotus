@@ -9,6 +9,7 @@ import (
 )
 
 func TestParseQACaseCSV_RowsAndErrors(t *testing.T) {
+	t.Parallel()
 	in := "\xef\xbb\xbfSection,Title,Precondition,Steps,Expected,Priority,Negative\n" +
 		"Auth / Login,Login valid,User exists,\"Open portal\nSubmit\",\"Login page\nDashboard\",High,no\n" +
 		"Auth,Session expires,,,,,\n" +
@@ -48,6 +49,7 @@ func TestParseQACaseCSV_RowsAndErrors(t *testing.T) {
 }
 
 func TestParseQACaseCSV_SemicolonsAndHeaderChecks(t *testing.T) {
+	t.Parallel()
 	rows, errs, err := parseQACaseCSV(strings.NewReader("section;title;precondition;steps;expected;priority;negative\nAuth;Login;;;;low;\n"))
 	if err != nil || len(errs) != 0 || len(rows) != 1 || *rows[0].Priority != "low" {
 		t.Fatalf("semicolon file = %+v %v %v", rows, errs, err)
@@ -66,6 +68,7 @@ func TestParseQACaseCSV_SemicolonsAndHeaderChecks(t *testing.T) {
 }
 
 func TestParseQACaseCSV_PICColumnIsOptional(t *testing.T) {
+	t.Parallel()
 	rows, errs, err := parseQACaseCSV(strings.NewReader("section,title,precondition,steps,expected,priority,negative,PIC\n" +
 		"Auth,Login,,,,,, Ana@Example.com \nAuth,Logout,,,,,\n"))
 	if err != nil || len(errs) != 0 || len(rows) != 2 || rows[0].PIC != "Ana@Example.com" || rows[1].PIC != "" {
@@ -79,6 +82,7 @@ func TestParseQACaseCSV_PICColumnIsOptional(t *testing.T) {
 }
 
 func TestWriteQACaseCSV_RoundTrips(t *testing.T) {
+	t.Parallel()
 	high := "high"
 	cases := []qaCSVRow{
 		{SectionPath: []string{"Auth", "Login"}, Title: "Login valid", Precondition: "User, with comma", Priority: &high,

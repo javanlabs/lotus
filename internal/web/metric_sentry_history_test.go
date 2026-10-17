@@ -19,6 +19,7 @@ import (
 // picker over the days a snapshot was captured, and ?date= shows what was
 // current at the end of that day.
 func TestSentryDetail_DatePicker(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-sentry-hist", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -70,7 +71,7 @@ func getPage(t *testing.T, app interface {
 	Test(*http.Request, ...int) (*http.Response, error)
 }, host, path, raw string) (int, string) {
 	t.Helper()
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, path, raw), -1)
 	if err != nil {
 		t.Fatal(err)
 	}

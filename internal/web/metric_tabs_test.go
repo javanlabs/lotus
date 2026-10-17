@@ -88,6 +88,7 @@ func renderMetricTabs(t *testing.T, data map[string]any) string {
 // integration page; only the open tab changes, and the page's other
 // numbers sit under it.
 func TestMetricTabs_SameStripOnEveryPage(t *testing.T) {
+	t.Parallel()
 	project := &repo.Project{ID: uuid.New(), Slug: "payments"}
 	comp := uuid.New()
 	score := 80
@@ -136,6 +137,7 @@ func TestMetricTabs_SameStripOnEveryPage(t *testing.T) {
 // computation, so a tab cannot show a different number on the page it opens
 // than on the page it came from.
 func TestProjectSummary_MatchesTheProjectPage(t *testing.T) {
+	t.Parallel()
 	project := &repo.Project{ID: uuid.New(), Slug: "payments"}
 	var components []componentInfo
 	metrics := map[uuid.UUID]repo.ComponentMetric{}
@@ -271,6 +273,7 @@ func TestComponentTabs(t *testing.T) {
 // A component opens on its first bound kind in the fixed order — SonarQube
 // when it has one — whatever order the bindings were made in.
 func TestFirstBoundKind(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		kinds []string
 		want  string
@@ -293,6 +296,7 @@ func TestFirstBoundKind(t *testing.T) {
 // A pass rate's chip says whether it meets the target, and by how much it
 // misses — the same line rateTone colours the number by.
 func TestRateVerdict(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		pct  int
 		want tabVerdict
@@ -317,6 +321,7 @@ func TestRateVerdict(t *testing.T) {
 // pass rate measures itself against the target, and a kind with no data
 // draws an empty slot rather than a verdict.
 func TestProjectTabs_Verdicts(t *testing.T) {
+	t.Parallel()
 	kpis := []kpiCard{
 		{Key: "sonarqube", Value: "50", Unit: "%", Tone: "fail"},
 		{Key: "trivy", Value: "100", Unit: "%", Tone: "pass"},

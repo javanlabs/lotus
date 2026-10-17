@@ -38,6 +38,7 @@ func newBindingsTestApp(t *testing.T) (*fiber.App, *sqlx.DB, config.Config) {
 // A component has one binding per kind (migration 00035): a second GitLab
 // repo on the same component is refused, a different kind is not.
 func TestBindings_OneBindingPerKindOnAComponent(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newBindingsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -49,7 +50,7 @@ func TestBindings_OneBindingPerKindOnAComponent(t *testing.T) {
 	post := func(kind, key string) int {
 		t.Helper()
 		body := `{"connection_id":"` + connID.String() + `","kind":"` + kind + `","external_key":"` + key + `","config":{}}`
-		resp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/components/"+componentID.String()+"/bindings", raw, body))
+		resp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/components/"+componentID.String()+"/bindings", raw, body), -1)
 		if err != nil {
 			t.Fatalf("create %s %s: %v", kind, key, err)
 		}
@@ -68,6 +69,7 @@ func TestBindings_OneBindingPerKindOnAComponent(t *testing.T) {
 }
 
 func TestBindings_ConnectionFromAnotherOrgRejected(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newBindingsTestApp(t)
 	orgA, userA := seedMember(t, db, "acme", "owner")
 	orgB, _ := seedMember(t, db, "beta", "owner")
@@ -79,7 +81,7 @@ func TestBindings_ConnectionFromAnotherOrgRejected(t *testing.T) {
 	connInOrgB := mustSeedConnection(t, db, orgB)
 
 	body := `{"connection_id":"` + connInOrgB.String() + `","kind":"gitlab","external_key":"group/project","config":{}}`
-	resp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/components/"+componentID.String()+"/bindings", raw, body))
+	resp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/components/"+componentID.String()+"/bindings", raw, body), -1)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -89,6 +91,7 @@ func TestBindings_ConnectionFromAnotherOrgRejected(t *testing.T) {
 }
 
 func TestBindings_SentrySharedModeWithoutTagValueRejectedInGoAndDB(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newBindingsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -100,7 +103,7 @@ func TestBindings_SentrySharedModeWithoutTagValueRejectedInGoAndDB(t *testing.T)
 
 	// Rejected in Go (never reaches the database).
 	body := `{"connection_id":"` + connID.String() + `","kind":"sentry","external_key":"app","config":{"mode":"shared"}}`
-	resp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/components/"+componentID.String()+"/bindings", raw, body))
+	resp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/components/"+componentID.String()+"/bindings", raw, body), -1)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -132,6 +135,7 @@ func TestBindings_SentrySharedModeWithoutTagValueRejectedInGoAndDB(t *testing.T)
 }
 
 func TestBindings_DisableStopsSchedulingWithoutDeletingHistory(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newBindingsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -142,11 +146,12 @@ func TestBindings_DisableStopsSchedulingWithoutDeletingHistory(t *testing.T) {
 	connID := mustSeedConnection(t, db, orgID)
 
 	createResp, _ := app.Test(jsonReqWithSession(http.MethodPost, host, "/components/"+componentID.String()+"/bindings", raw,
-		`{"connection_id":"`+connID.String()+`","kind":"gitlab","external_key":"group/project","config":{}}`))
+		`{"connection_id":"`+connID.String()+`","kind":"gitlab","external_key":"group/project","config":{}}`), -1)
+
 	var created repo.Binding
 	json.NewDecoder(createResp.Body).Decode(&created)
 
-	disableResp, err := app.Test(reqWithSession(http.MethodPost, host, "/bindings/"+created.ID.String()+"/disable", raw))
+	disableResp, err := app.Test(reqWithSession(http.MethodPost, host, "/bindings/"+created.ID.String()+"/disable", raw), -1)
 	if err != nil {
 		t.Fatalf("disable: %v", err)
 	}
@@ -154,7 +159,7 @@ func TestBindings_DisableStopsSchedulingWithoutDeletingHistory(t *testing.T) {
 		t.Fatalf("disable status = %d, want 204", disableResp.StatusCode)
 	}
 
-	getResp, err := app.Test(reqWithSession(http.MethodGet, host, "/bindings/"+created.ID.String(), raw))
+	getResp, err := app.Test(reqWithSession(http.MethodGet, host, "/bindings/"+created.ID.String(), raw), -1)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -169,6 +174,7 @@ func TestBindings_DisableStopsSchedulingWithoutDeletingHistory(t *testing.T) {
 }
 
 func TestBindings_SoftDeletePreservesRowButHidesFromList(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newBindingsTestApp(t)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -179,11 +185,12 @@ func TestBindings_SoftDeletePreservesRowButHidesFromList(t *testing.T) {
 	connID := mustSeedConnection(t, db, orgID)
 
 	createResp, _ := app.Test(jsonReqWithSession(http.MethodPost, host, "/components/"+componentID.String()+"/bindings", raw,
-		`{"connection_id":"`+connID.String()+`","kind":"gitlab","external_key":"group/project","config":{}}`))
+		`{"connection_id":"`+connID.String()+`","kind":"gitlab","external_key":"group/project","config":{}}`), -1)
+
 	var created repo.Binding
 	json.NewDecoder(createResp.Body).Decode(&created)
 
-	delResp, err := app.Test(reqWithSession(http.MethodDelete, host, "/bindings/"+created.ID.String(), raw))
+	delResp, err := app.Test(reqWithSession(http.MethodDelete, host, "/bindings/"+created.ID.String(), raw), -1)
 	if err != nil {
 		t.Fatalf("delete: %v", err)
 	}
@@ -191,7 +198,7 @@ func TestBindings_SoftDeletePreservesRowButHidesFromList(t *testing.T) {
 		t.Fatalf("delete status = %d, want 204", delResp.StatusCode)
 	}
 
-	listResp, _ := app.Test(reqWithSession(http.MethodGet, host, "/components/"+componentID.String()+"/bindings", raw))
+	listResp, _ := app.Test(reqWithSession(http.MethodGet, host, "/components/"+componentID.String()+"/bindings", raw), -1)
 	var list []repo.Binding
 	json.NewDecoder(listResp.Body).Decode(&list)
 	if len(list) != 0 {

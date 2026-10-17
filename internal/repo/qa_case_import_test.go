@@ -10,6 +10,7 @@ import (
 )
 
 func TestImportQACases_CreatesSectionsByPathInOneTransaction(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	_, s := folderTestOrg(t, db, "acme-case-import")

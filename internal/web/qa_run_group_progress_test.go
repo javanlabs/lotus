@@ -10,6 +10,7 @@ import (
 // Recording a result refreshes the count in its group's header too, not
 // only the run's progress: the header said "0/2 done" until a reload.
 func TestQARun_RecordRefreshesTheGroupHeader(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-group-progress")
 	run, items := r.firstRun(t)
 

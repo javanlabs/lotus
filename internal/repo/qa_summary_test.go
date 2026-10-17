@@ -10,6 +10,7 @@ import (
 )
 
 func TestQASummaries_CountLiveRowsPerProject(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-qa-summary")
 	ctx := context.Background()
 	iss, err := repo.CreateQAIssue(ctx, f.s, f.projectID, repo.QAIssueInput{Title: "x", Severity: "minor", Source: "internal"}, nil, nil)
@@ -65,6 +66,7 @@ func TestQASummaries_CountLiveRowsPerProject(t *testing.T) {
 }
 
 func TestQAScenarioCaseCounts_CountsLiveAndArchivedCases(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-scenario-counts")
 	ctx := context.Background()
 	repo.ArchiveQACase(ctx, f.s, f.report.ID)

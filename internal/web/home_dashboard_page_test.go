@@ -13,6 +13,7 @@ import (
 // and keeps failing to sync, its connection cannot sign in, and a blocker
 // is open and was moved along — each shows where the team will look.
 func TestHomeDashboard_Page(t *testing.T) {
+	t.Parallel()
 	f := seedKindPage(t, "acme-home", "sonarqube")
 	f.exec(t, `UPDATE metric_bindings SET consecutive_failures = 4 WHERE id = $1`, f.ledgerBind)
 	f.exec(t, `UPDATE integration_connections SET status = 'auth_failed', last_error = 'bad token'`)
@@ -59,6 +60,7 @@ func TestHomeDashboard_Page(t *testing.T) {
 // Sign-in returns to /, which lands on the dashboard on an organization's
 // host; a guest is sent on to its own work.
 func TestHomeDashboard_LandingAndGuests(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-home-land")
 	if status, loc, _ := e.get3(t, e.owner, "/"); status != http.StatusFound || loc != "/dashboard" {
 		t.Fatalf("GET / = %d → %q; want 302 → /dashboard", status, loc)

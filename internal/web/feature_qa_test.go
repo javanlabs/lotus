@@ -18,6 +18,7 @@ func qaEnvWithFeature(t *testing.T, sub string, on bool) qaEnv {
 }
 
 func TestQAFeature_OffMeansEveryQAURLIsNotFound(t *testing.T) {
+	t.Parallel()
 	// One per route group: the UI, a guest's home, the share/workload
 	// pages, the JSON API and the MCP server are registered separately,
 	// so each could be left behind on its own.
@@ -37,6 +38,7 @@ func TestQAFeature_OffMeansEveryQAURLIsNotFound(t *testing.T) {
 }
 
 func TestQAFeature_OffRemovesTheSidebarEntry(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		on   bool
 		want bool
@@ -53,6 +55,7 @@ func TestQAFeature_OffRemovesTheSidebarEntry(t *testing.T) {
 }
 
 func TestQAFeature_OffRemovesQAFromTheDashboard(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		on   bool
 		want bool
@@ -69,6 +72,7 @@ func TestQAFeature_OffRemovesQAFromTheDashboard(t *testing.T) {
 }
 
 func TestQAFeature_OffRemovesTheProjectsTestCasesButton(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		on   bool
 		want bool
@@ -88,6 +92,7 @@ func TestQAFeature_OffRemovesTheProjectsTestCasesButton(t *testing.T) {
 // The tokens page hands out a copy-paste MCP config. With QA off that
 // config would point an assistant at a 404.
 func TestQAFeature_OffRemovesTheQAAPISectionFromTokens(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		on   bool
 		want bool

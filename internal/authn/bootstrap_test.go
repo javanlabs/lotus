@@ -52,6 +52,7 @@ func ownerCount(t *testing.T, db *sqlx.DB, orgID uuid.UUID) int {
 }
 
 func TestClaimOwnership_MatchingVerifiedEmailBecomesOwner(t *testing.T) {
+	t.Parallel()
 	db, orgID := seedBootstrap(t, "you@javan.co.id")
 	claimed, err := claimAs(t, db, "you@javan.co.id", true)
 	if err != nil || !claimed {
@@ -66,6 +67,7 @@ func TestClaimOwnership_MatchingVerifiedEmailBecomesOwner(t *testing.T) {
 // that lets a user self-assert an arbitrary address must not be able to
 // hand them ownership of a fresh instance.
 func TestClaimOwnership_UnverifiedEmailIsRejected(t *testing.T) {
+	t.Parallel()
 	db, orgID := seedBootstrap(t, "you@javan.co.id")
 	if _, err := claimAs(t, db, "you@javan.co.id", false); err == nil {
 		t.Fatal("claim with an unverified email returned nil error, want rejection")
@@ -76,6 +78,7 @@ func TestClaimOwnership_UnverifiedEmailIsRejected(t *testing.T) {
 }
 
 func TestClaimOwnership_NonMatchingEmailIsRejected(t *testing.T) {
+	t.Parallel()
 	db, orgID := seedBootstrap(t, "you@javan.co.id")
 	if _, err := claimAs(t, db, "someoneelse@example.com", true); err == nil {
 		t.Fatal("claim with a non-matching email returned nil error, want rejection")
@@ -89,6 +92,7 @@ func TestClaimOwnership_NonMatchingEmailIsRejected(t *testing.T) {
 // case-sensitive in practice, and an operator typing --owner-email at a
 // shell should not have to match their IdP's casing exactly.
 func TestClaimOwnership_MatchIsCaseInsensitive(t *testing.T) {
+	t.Parallel()
 	db, orgID := seedBootstrap(t, "You@Javan.co.id")
 	if claimed, err := claimAs(t, db, "you@javan.co.id", true); err != nil || !claimed {
 		t.Fatalf("claim = %v, err = %v; want true, nil", claimed, err)
@@ -101,6 +105,7 @@ func TestClaimOwnership_MatchIsCaseInsensitive(t *testing.T) {
 // TestClaimOwnership_ConsumedBootstrapIsInert: once ownership is claimed, a
 // later login must not add a second Owner or re-run the claim.
 func TestClaimOwnership_ConsumedBootstrapIsInert(t *testing.T) {
+	t.Parallel()
 	db, orgID := seedBootstrap(t, "you@javan.co.id")
 	if _, err := claimAs(t, db, "you@javan.co.id", true); err != nil {
 		t.Fatalf("first claim: %v", err)

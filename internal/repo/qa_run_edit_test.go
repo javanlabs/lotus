@@ -14,6 +14,7 @@ import (
 )
 
 func TestQAItems_CommentLimitRefusesBeforeWriting(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-comment-limit")
 	ctx := context.Background()
 	run, _ := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "C1"}, nil)
@@ -40,6 +41,7 @@ func TestQAItems_CommentLimitRefusesBeforeWriting(t *testing.T) {
 }
 
 func TestQAItems_LatestResultPerItem(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-latest-result")
 	ctx := context.Background()
 	tester := mustUser(t, f.db, "tester@acme.example")
@@ -70,6 +72,7 @@ func TestQAItems_LatestResultPerItem(t *testing.T) {
 }
 
 func TestQARuns_NotesLimitOnCreateAndUpdate(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-run-notes")
 	ctx := context.Background()
 	long := strings.Repeat("ñ", repo.MaxQARunNotesLength+1)
@@ -94,6 +97,7 @@ func TestQARuns_NotesLimitOnCreateAndUpdate(t *testing.T) {
 }
 
 func TestQARuns_AssigneeFillsUnassignedItemsOnCreate(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-run-lead")
 	ctx := context.Background()
 	lead := mustUser(t, f.db, "lead@acme.example")
@@ -123,6 +127,7 @@ func TestQARuns_AssigneeFillsUnassignedItemsOnCreate(t *testing.T) {
 }
 
 func TestQARuns_UpdateSyncsOnlyItemsThatFollowedTheRun(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-run-sync")
 	ctx := context.Background()
 	a := mustUser(t, f.db, "a@acme.example")
@@ -193,6 +198,7 @@ func runWithIssue(t *testing.T, f runFixture, store blob.Store) (*repo.QARun, []
 }
 
 func TestQARuns_RemoveItemsKeepsTheirIssues(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-run-remove")
 	ctx := context.Background()
 	store, _ := blob.NewFS(t.TempDir())
@@ -227,6 +233,7 @@ func TestQARuns_RemoveItemsKeepsTheirIssues(t *testing.T) {
 }
 
 func TestQARuns_DeleteKeepsIssuesAndRetests(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-run-delete")
 	ctx := context.Background()
 	store, _ := blob.NewFS(t.TempDir())

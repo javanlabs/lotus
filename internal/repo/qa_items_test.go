@@ -10,6 +10,7 @@ import (
 )
 
 func TestQAItems_ResultUpdatesItemAndHistory(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-res")
 	ctx := context.Background()
 	tester := mustUser(t, f.db, "tester@acme.example")
@@ -39,6 +40,7 @@ func TestQAItems_ResultUpdatesItemAndHistory(t *testing.T) {
 }
 
 func TestQAItems_BulkAssignProgressAndMyWork(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-assign")
 	ctx := context.Background()
 	a := mustUser(t, f.db, "a@acme.example")

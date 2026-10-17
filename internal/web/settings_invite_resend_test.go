@@ -19,6 +19,7 @@ var inviteLink = regexp.MustCompile(`/invite/([A-Za-z0-9_-]{20,})`)
 // invitee already has. The guest's projects travel with it, and accepting
 // the new link lists the guest on them.
 func TestInvitations_ResendShowsTheNewLink(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-resend")
 	admin, _ := e.session(t, "admin@acme.example", "admin")
 	portal := e.project(t, "Portal")
@@ -55,7 +56,7 @@ func TestInvitations_ResendShowsTheNewLink(t *testing.T) {
 	}
 	// A link by the project's id, as mail sent before slug URLs carried,
 	// still lands there.
-	resp, err = e.app.Test(reqWithSession(http.MethodGet, e.host, "/projects/"+portal.String()+"/qa", guest))
+	resp, err = e.app.Test(reqWithSession(http.MethodGet, e.host, "/projects/"+portal.String()+"/qa", guest), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +68,7 @@ func TestInvitations_ResendShowsTheNewLink(t *testing.T) {
 // An invitation id belongs to one organization: another organization's
 // admin can neither resend nor revoke it.
 func TestInvitations_ResendAndRevokeStayInTheOrganization(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-invite-scope")
 	admin, _ := e.session(t, "admin@acme.example", "admin")
 	_, body := e.post(t, admin, "/settings/members/invite", url.Values{"email": {"new@acme.example"}, "role": {"member"}}, true)

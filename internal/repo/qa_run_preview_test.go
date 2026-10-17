@@ -10,6 +10,7 @@ import (
 )
 
 func TestPreviewQARun_CountsWhoGetsWhatAndWritesNothing(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-run-preview") // 3 distinct cases across UAT (2) and Regression (2, one shared)
 	ctx := context.Background()
 	a, b := mustUser(t, f.db, "a@acme.example"), mustUser(t, f.db, "b@acme.example")

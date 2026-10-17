@@ -14,6 +14,7 @@ import (
 )
 
 func TestQARun_BulkAssignTwoHundredInOneRequest(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qarun-assign")
 	ctx := context.Background()
 	sec, _ := repo.CreateQASection(ctx, r.s, r.projectID, "Bulk", nil)
@@ -71,6 +72,7 @@ func TestQARun_BulkAssignTwoHundredInOneRequest(t *testing.T) {
 }
 
 func TestQARun_RetestAndClose(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qarun-retest")
 	ctx := context.Background()
 	run, items := r.firstRun(t)
@@ -113,6 +115,7 @@ func TestQARun_RetestAndClose(t *testing.T) {
 }
 
 func TestQARun_SaveAsScenario(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qarun-save")
 	ctx := context.Background()
 	viewer, _ := r.session(t, "viewer@acme.example", "viewer")

@@ -58,6 +58,7 @@ func createTestInvitation(t *testing.T, db *sqlx.DB, orgID, invitedBy uuid.UUID,
 }
 
 func TestSendInvitation_EscalationGuard(t *testing.T) {
+	t.Parallel()
 	_, db, _, deps := newInviteTestApp(t)
 	orgID, ownerID := seedInvitedOrg(t, db, "acme")
 	ctx := context.Background()
@@ -80,6 +81,7 @@ func TestSendInvitation_EscalationGuard(t *testing.T) {
 }
 
 func TestSendInvitation_RateLimitedPerOrg(t *testing.T) {
+	t.Parallel()
 	_, db, _, deps := newInviteTestApp(t)
 	orgID, ownerID := seedInvitedOrg(t, db, "acme")
 	ctx := context.Background()
@@ -103,6 +105,7 @@ func TestSendInvitation_RateLimitedPerOrg(t *testing.T) {
 }
 
 func TestInvitation_ExpiredUsedRevokedAllRejected(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, _ := newInviteTestApp(t)
 	orgID, ownerID := seedInvitedOrg(t, db, "acme")
 
@@ -124,7 +127,7 @@ func TestInvitation_ExpiredUsedRevokedAllRejected(t *testing.T) {
 	for name, token := range map[string]string{"expired": expiredToken, "used": usedToken, "revoked": revokedToken} {
 		t.Run(name, func(t *testing.T) {
 			req := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, "/invite/"+token)
-			resp, err := app.Test(req)
+			resp, err := app.Test(req, -1)
 			if err != nil {
 				t.Fatalf("request: %v", err)
 			}
@@ -137,6 +140,7 @@ func TestInvitation_ExpiredUsedRevokedAllRejected(t *testing.T) {
 }
 
 func TestInvitation_AdminRoleMismatchHardRejected(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, _ := newInviteTestApp(t)
 	orgID, ownerID := seedInvitedOrg(t, db, "acme")
 	_, token := createTestInvitation(t, db, orgID, ownerID, "invited@example.com", "admin", 24*time.Hour)
@@ -149,7 +153,7 @@ func TestInvitation_AdminRoleMismatchHardRejected(t *testing.T) {
 
 	req := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, "/invite/"+token)
 	req.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -161,7 +165,7 @@ func TestInvitation_AdminRoleMismatchHardRejected(t *testing.T) {
 	// Even hitting confirm directly must not accept it.
 	confirmReq := hostReq(http.MethodPost, "auth."+cfg.BaseDomain, "/invite/"+token+"/confirm")
 	confirmReq.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-	confirmResp, err := app.Test(confirmReq)
+	confirmResp, err := app.Test(confirmReq, -1)
 	if err != nil {
 		t.Fatalf("confirm request: %v", err)
 	}
@@ -179,6 +183,7 @@ func TestInvitation_AdminRoleMismatchHardRejected(t *testing.T) {
 }
 
 func TestInvitation_MemberRoleMismatchRequiresConfirm(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, _ := newInviteTestApp(t)
 	orgID, ownerID := seedInvitedOrg(t, db, "acme")
 	_, token := createTestInvitation(t, db, orgID, ownerID, "invited@example.com", "member", 24*time.Hour)
@@ -192,7 +197,7 @@ func TestInvitation_MemberRoleMismatchRequiresConfirm(t *testing.T) {
 
 	landingReq := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, "/invite/"+token)
 	landingReq.AddCookie(authCookie)
-	landingResp, err := app.Test(landingReq)
+	landingResp, err := app.Test(landingReq, -1)
 	if err != nil {
 		t.Fatalf("landing: %v", err)
 	}
@@ -203,7 +208,7 @@ func TestInvitation_MemberRoleMismatchRequiresConfirm(t *testing.T) {
 
 	confirmReq := hostReq(http.MethodPost, "auth."+cfg.BaseDomain, "/invite/"+token+"/confirm")
 	confirmReq.AddCookie(authCookie)
-	confirmResp, err := app.Test(confirmReq)
+	confirmResp, err := app.Test(confirmReq, -1)
 	if err != nil {
 		t.Fatalf("confirm: %v", err)
 	}
@@ -221,6 +226,7 @@ func TestInvitation_MemberRoleMismatchRequiresConfirm(t *testing.T) {
 }
 
 func TestInvitation_MatchingVerifiedEmailAcceptsImmediately(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, _ := newInviteTestApp(t)
 	orgID, ownerID := seedInvitedOrg(t, db, "acme")
 	_, token := createTestInvitation(t, db, orgID, ownerID, "alice@example.com", "member", 24*time.Hour)
@@ -233,7 +239,7 @@ func TestInvitation_MatchingVerifiedEmailAcceptsImmediately(t *testing.T) {
 
 	req := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, "/invite/"+token)
 	req.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -252,12 +258,13 @@ func TestInvitation_MatchingVerifiedEmailAcceptsImmediately(t *testing.T) {
 }
 
 func TestInvitation_DeclineSetsDeclinedAt(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, _ := newInviteTestApp(t)
 	orgID, ownerID := seedInvitedOrg(t, db, "acme")
 	_, token := createTestInvitation(t, db, orgID, ownerID, "declineme@example.com", "member", 24*time.Hour)
 
 	req := hostReq(http.MethodPost, "auth."+cfg.BaseDomain, "/invite/"+token+"/decline")
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("decline: %v", err)
 	}
@@ -275,6 +282,7 @@ func TestInvitation_DeclineSetsDeclinedAt(t *testing.T) {
 }
 
 func TestResendInvitation_InvalidatesOldToken(t *testing.T) {
+	t.Parallel()
 	_, db, _, _ := newInviteTestApp(t)
 	orgID, ownerID := seedInvitedOrg(t, db, "acme")
 	oldID, _ := createTestInvitation(t, db, orgID, ownerID, "resend@example.com", "member", 24*time.Hour)
@@ -303,6 +311,7 @@ func TestResendInvitation_InvalidatesOldToken(t *testing.T) {
 }
 
 func TestCreateInvitation_OnePendingPerOrgEmail(t *testing.T) {
+	t.Parallel()
 	_, db, _, _ := newInviteTestApp(t)
 	orgID, ownerID := seedInvitedOrg(t, db, "acme")
 

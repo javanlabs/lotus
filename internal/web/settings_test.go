@@ -50,7 +50,7 @@ func postForm(t *testing.T, app interface {
 	req.Body = io.NopCloser(strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.ContentLength = int64(len(form.Encode()))
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("POST %s: %v", path, err)
 	}
@@ -58,6 +58,7 @@ func postForm(t *testing.T, app interface {
 }
 
 func TestSettingsConnections_MemberCanReadButCannotWrite(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, ownerID := seedMember(t, db, "acme-conn-perm", "owner")
 	memberID := seedSecondMember(t, db, orgID, "acme-conn-perm-member", "member")
@@ -72,7 +73,7 @@ func TestSettingsConnections_MemberCanReadButCannotWrite(t *testing.T) {
 		t.Fatalf("owner create status = %d, want 302", createResp.StatusCode)
 	}
 
-	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/connections", memberRaw))
+	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/connections", memberRaw), -1)
 	if err != nil {
 		t.Fatalf("member list request: %v", err)
 	}
@@ -97,6 +98,7 @@ func TestSettingsConnections_MemberCanReadButCannotWrite(t *testing.T) {
 }
 
 func TestDeleteConnection_ShowsAffectedBindingCountAndCascadesWithAudit(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-conn-del", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -126,7 +128,7 @@ func TestDeleteConnection_ShowsAffectedBindingCountAndCascadesWithAudit(t *testi
 		}
 	})
 
-	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/connections", raw))
+	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/connections", raw), -1)
 	if err != nil {
 		t.Fatalf("list request: %v", err)
 	}
@@ -189,6 +191,7 @@ func TestDeleteConnection_ShowsAffectedBindingCountAndCascadesWithAudit(t *testi
 }
 
 func TestSettingsMembers_InviteResendRevokeAndRoleChange(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, ownerID := seedMember(t, db, "acme-members", "owner")
 	adminID := seedSecondMember(t, db, orgID, "acme-members-admin", "admin")
@@ -202,7 +205,7 @@ func TestSettingsMembers_InviteResendRevokeAndRoleChange(t *testing.T) {
 		t.Fatalf("invite status = %d, want 302", inviteResp.StatusCode)
 	}
 
-	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/members", ownerRaw))
+	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/members", ownerRaw), -1)
 	if err != nil {
 		t.Fatalf("list request: %v", err)
 	}
@@ -265,7 +268,7 @@ func TestSettingsMembers_InviteResendRevokeAndRoleChange(t *testing.T) {
 	if revokeResp.StatusCode != http.StatusFound {
 		t.Fatalf("revoke status = %d, want 302", revokeResp.StatusCode)
 	}
-	afterRevoke, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/members", ownerRaw))
+	afterRevoke, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/members", ownerRaw), -1)
 	if err != nil {
 		t.Fatalf("list request: %v", err)
 	}
@@ -277,6 +280,7 @@ func TestSettingsMembers_InviteResendRevokeAndRoleChange(t *testing.T) {
 }
 
 func TestSettingsOrganization_ProfileUpdateSubdomainChangeAndTransfer(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, ownerID := seedMember(t, db, "acme-org-settings", "owner")
 	newOwnerID := seedSecondMember(t, db, orgID, "acme-org-newowner", "member")
@@ -333,6 +337,7 @@ func TestSettingsOrganization_ProfileUpdateSubdomainChangeAndTransfer(t *testing
 }
 
 func TestSettingsOrganization_DeleteRequiresExactSubdomainConfirmation(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, ownerID := seedMember(t, db, "acme-org-del", "owner")
 	raw := seedSession(t, db, orgID, ownerID)
@@ -374,6 +379,7 @@ func TestSettingsOrganization_DeleteRequiresExactSubdomainConfirmation(t *testin
 }
 
 func TestSettingsTokens_PATPlaintextShownOnceThenNotAgain(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-tokens", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -389,7 +395,7 @@ func TestSettingsTokens_PATPlaintextShownOnceThenNotAgain(t *testing.T) {
 		t.Fatalf("Location = %q, want /settings/tokens?created=<flash id>", loc)
 	}
 
-	firstViewResp, err := app.Test(reqWithSession(http.MethodGet, host, loc, raw))
+	firstViewResp, err := app.Test(reqWithSession(http.MethodGet, host, loc, raw), -1)
 	if err != nil {
 		t.Fatalf("follow redirect: %v", err)
 	}
@@ -399,7 +405,7 @@ func TestSettingsTokens_PATPlaintextShownOnceThenNotAgain(t *testing.T) {
 		t.Fatalf("first view of the flash URL missing the plaintext banner:\n%s", firstViewBody)
 	}
 
-	secondViewResp, err := app.Test(reqWithSession(http.MethodGet, host, loc, raw))
+	secondViewResp, err := app.Test(reqWithSession(http.MethodGet, host, loc, raw), -1)
 	if err != nil {
 		t.Fatalf("second request to the same flash URL: %v", err)
 	}
@@ -411,7 +417,7 @@ func TestSettingsTokens_PATPlaintextShownOnceThenNotAgain(t *testing.T) {
 		t.Fatalf("plaintext banner reappeared on a second visit to the same flash URL:\n%s", secondViewBody)
 	}
 
-	freshResp, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/tokens", raw))
+	freshResp, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/tokens", raw), -1)
 	if err != nil {
 		t.Fatalf("fresh GET: %v", err)
 	}
@@ -423,6 +429,7 @@ func TestSettingsTokens_PATPlaintextShownOnceThenNotAgain(t *testing.T) {
 }
 
 func TestSettingsTokens_ServiceTokenRequiresAdminOrOwner(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, ownerID := seedMember(t, db, "acme-svc-token", "owner")
 	memberID := seedSecondMember(t, db, orgID, "acme-svc-token-member", "member")
@@ -438,6 +445,7 @@ func TestSettingsTokens_ServiceTokenRequiresAdminOrOwner(t *testing.T) {
 }
 
 func TestSettingsIngest_ListsOnlyTrivyBindingsWithComputedURL(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-ingest", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -460,7 +468,7 @@ func TestSettingsIngest_ListsOnlyTrivyBindingsWithComputedURL(t *testing.T) {
 		}
 	})
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/ingest", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/settings/ingest", raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -479,6 +487,7 @@ func TestSettingsIngest_ListsOnlyTrivyBindingsWithComputedURL(t *testing.T) {
 }
 
 func TestActivityPage_ShowsSyncRunsAcrossTheWholeOrg(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-activity", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -505,7 +514,7 @@ func TestActivityPage_ShowsSyncRunsAcrossTheWholeOrg(t *testing.T) {
 		}
 	})
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/activity", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/activity", raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}

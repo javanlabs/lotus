@@ -22,7 +22,7 @@ func browserGet(t *testing.T, e qaEnv, raw, path string, header map[string]strin
 	for k, v := range header {
 		req.Header.Set(k, v)
 	}
-	resp, err := e.app.Test(req)
+	resp, err := e.app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("GET %s: %v", path, err)
 	}
@@ -32,6 +32,7 @@ func browserGet(t *testing.T, e qaEnv, raw, path string, header map[string]strin
 }
 
 func TestErrorPages_BrowserGetsAPagePerStatus(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "errpages")
 	viewer, _ := e.session(t, "viewer@errpages.test", "viewer")
 	pid := e.project(t, "Shop")
@@ -70,6 +71,7 @@ func TestErrorPages_BrowserGetsAPagePerStatus(t *testing.T) {
 }
 
 func TestErrorPages_OtherClientsKeepTheirResponse(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "errkeep")
 	pid := e.project(t, "Shop")
 	path := e.projectPath(t, pid) + "/qa/cases/999"
@@ -94,6 +96,7 @@ func TestErrorPages_OtherClientsKeepTheirResponse(t *testing.T) {
 }
 
 func TestErrorPages_UnauthorizedOffersSignIn(t *testing.T) {
+	t.Parallel()
 	d := errorPageFor(401, false)
 	if d.LoginHref != "/handoff/start" {
 		t.Fatalf("saas login href = %q", d.LoginHref)
@@ -110,6 +113,7 @@ func TestErrorPages_UnauthorizedOffersSignIn(t *testing.T) {
 // of returning an error goes through the errorPages middleware, not the
 // ErrorHandler.
 func TestErrorPages_WrittenStatusBecomesAPage(t *testing.T) {
+	t.Parallel()
 	d := Deps{Renderer: httpx.NewRenderer(os.DirFS("../../web/templates"), true)}
 	app := fiber.New()
 	app.Use(errorPages(d))
@@ -122,7 +126,7 @@ func TestErrorPages_WrittenStatusBecomesAPage(t *testing.T) {
 	get := func(path string) (int, string) {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.Header.Set("Accept", "text/html")
-		resp, err := app.Test(req)
+		resp, err := app.Test(req, -1)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
 		}

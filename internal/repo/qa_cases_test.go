@@ -25,6 +25,7 @@ func mustQACase(t *testing.T, s tenant.Scope, projectID, sectionID uuid.UUID, ti
 }
 
 func TestQACases_KeysAreSequentialPerProjectEvenUnderConcurrency(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme-case")
 	p1 := mustProject(t, s, "portal", nil)
@@ -65,6 +66,7 @@ func TestQACases_KeysAreSequentialPerProjectEvenUnderConcurrency(t *testing.T) {
 }
 
 func TestQACases_VersionBumpsOnlyOnContentChange(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	_, s := folderTestOrg(t, db, "acme-ver")
@@ -86,6 +88,7 @@ func TestQACases_VersionBumpsOnlyOnContentChange(t *testing.T) {
 }
 
 func TestQACases_RejectsSectionOfAnotherProject(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	_, s := folderTestOrg(t, db, "acme-xsec")

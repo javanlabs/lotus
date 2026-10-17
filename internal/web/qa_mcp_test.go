@@ -48,6 +48,7 @@ func (e qaAPIEnv) callTool(t *testing.T, token, name string, args map[string]any
 }
 
 func TestQAMCP_HandshakeAndToolList(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-mcp")
 
 	// The legacy endpoint answered anyone who sent X-Public; this one
@@ -109,6 +110,7 @@ func TestQAMCP_HandshakeAndToolList(t *testing.T) {
 }
 
 func TestQAMCP_ToolsCallTheAPIWithItsChecks(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-mcp-tools")
 	project := e.projectID.String()
 
@@ -162,6 +164,7 @@ func TestQAMCP_ToolsCallTheAPIWithItsChecks(t *testing.T) {
 // Settings → Tokens says where the QA API and the MCP endpoint are and
 // how an assistant sends the token.
 func TestQAMCP_TokensPageShowsTheEndpoints(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-mcp-settings")
 	status, body := e.get(t, e.member, "/settings/tokens")
 	if status != http.StatusOK || !strings.Contains(body, "/mcp/qa") || !strings.Contains(body, "/api/qa/projects") || !strings.Contains(body, "Authorization") {

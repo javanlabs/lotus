@@ -8,6 +8,7 @@ import (
 )
 
 func TestRollupStatus_WorstWins(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		in   []collector.Status
@@ -29,6 +30,7 @@ func TestRollupStatus_WorstWins(t *testing.T) {
 }
 
 func TestRollupScore_AveragesOnlyScoredEntries(t *testing.T) {
+	t.Parallel()
 	a, b := 80, 60
 	got := repo.RollupScore([]*int{&a, nil, &b})
 	if got == nil || *got != 70 {
@@ -43,6 +45,7 @@ func TestRollupScore_AveragesOnlyScoredEntries(t *testing.T) {
 }
 
 func TestPassRate_ExcludesUnknownFromDenominator(t *testing.T) {
+	t.Parallel()
 	rate, ok := repo.PassRate([]collector.Status{
 		collector.StatusPass, collector.StatusPass, collector.StatusFail, collector.StatusUnknown, collector.StatusUnknown,
 	})

@@ -12,6 +12,7 @@ import (
 )
 
 func TestQAMyWork_ListsOpenUntestedItemsAndCountsThem(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qamy")
 	ctx := context.Background()
 	run, items := r.firstRun(t) // 2 items
@@ -41,6 +42,7 @@ func TestQAMyWork_ListsOpenUntestedItemsAndCountsThem(t *testing.T) {
 }
 
 func TestQAMyWork_GuestSeesOnlyItsProjects(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qamy-guest")
 	ctx := context.Background()
 	run, items := r.firstRun(t)

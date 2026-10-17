@@ -20,6 +20,7 @@ import (
 // Final review, Important 1: the picker must reach past the cases a large
 // scenario already holds.
 func TestQAScenarioPicker_ReachesCasesPastTheOnesHeld(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-rf-picker")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -43,6 +44,7 @@ func TestQAScenarioPicker_ReachesCasesPastTheOnesHeld(t *testing.T) {
 // Final review, Important 2: nothing goes into an archived section, and a
 // case filed in one is restored by moving it out first.
 func TestQACase_ArchivedSectionRefusesNewRowsAndRestore(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-rf-archsec")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -77,6 +79,7 @@ func TestQACase_ArchivedSectionRefusesNewRowsAndRestore(t *testing.T) {
 // Final review, Important 3: an archived scenario refuses edits, and
 // archiving twice records one audit event (cases likewise).
 func TestQAArchive_IsFinalAndAuditedOnce(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-rf-archive")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -105,6 +108,7 @@ func TestQAArchive_IsFinalAndAuditedOnce(t *testing.T) {
 // Final review, Important 4: archiving a section from its dialog leaves
 // the section's own URL; that URL, visited later, shows the archived view.
 func TestQASections_ArchiveLeavesTheArchivedSection(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-rf-archnav")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -115,7 +119,7 @@ func TestQASections_ArchiveLeavesTheArchivedSection(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent || resp.Header.Get("HX-Redirect") != base+"/cases" {
 		t.Fatalf("archive from the dialog = %d, HX-Redirect %q", resp.StatusCode, resp.Header.Get("HX-Redirect"))
 	}
-	r, _ := e.app.Test(reqWithSession(http.MethodGet, e.host, base+"/cases?section="+sec.ID.String(), e.owner))
+	r, _ := e.app.Test(reqWithSession(http.MethodGet, e.host, base+"/cases?section="+sec.ID.String(), e.owner), -1)
 	if r.StatusCode != http.StatusFound || r.Header.Get("Location") != base+"/cases?archived=1&section="+sec.ID.String() {
 		t.Fatalf("archived section URL = %d %s", r.StatusCode, r.Header.Get("Location"))
 	}
@@ -124,6 +128,7 @@ func TestQASections_ArchiveLeavesTheArchivedSection(t *testing.T) {
 // Final review, Minor 6 (re-graded Important): the confirm form posts the
 // file as multipart, so a file the preview accepted fits the confirm too.
 func TestQACaseImport_ConfirmPostsMultipart(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-rf-multipart")
 	p := e.project(t, "Portal")
 	base := e.projectPath(t, p) + "/qa/cases/import"
@@ -157,6 +162,7 @@ func TestQACaseImport_ConfirmPostsMultipart(t *testing.T) {
 // archived scenario it holds, and runs leave archived scenarios out, as
 // they leave archived cases out.
 func TestQAPlans_ArchivedScenarioStaysOnEditAndRunsSkipIt(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-rf-archscen")
 	ctx := context.Background()
 	scs := mustPlanScenarios(t, r.qaEnv, r.plan.ID)
@@ -182,6 +188,7 @@ func TestQAPlans_ArchivedScenarioStaysOnEditAndRunsSkipIt(t *testing.T) {
 // be assigned (a viewer now, gone, an imported account) still saves when
 // the assignee is left as it is; another invalid assignee gets a message.
 func TestQAIssue_EditKeepsAStaleAssignee(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-rf-stale")
 	ctx := context.Background()
 	_, viewerID := r.session(t, "viewer@acme.example", "viewer")
@@ -207,6 +214,7 @@ func TestQAIssue_EditKeepsAStaleAssignee(t *testing.T) {
 // Phase 6 final review, Important 3: "Change status" to the status the
 // issue already has says so rather than dropping the typed note.
 func TestQAIssue_UnchangedStatusIsRefusedWithAMessage(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-rf-samestatus")
 	ctx := context.Background()
 	is, _ := repo.CreateQAIssue(ctx, r.s, r.projectID, repo.QAIssueInput{Title: "X", Severity: "minor"}, nil, nil)

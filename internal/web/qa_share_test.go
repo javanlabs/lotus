@@ -20,7 +20,7 @@ func (r qaRunEnv) openShared(t *testing.T, host, token string) (*http.Response, 
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "http://"+host+"/s/qa/"+token, nil)
 	req.Host = host
-	resp, err := r.app.Test(req)
+	resp, err := r.app.Test(req, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,6 +30,7 @@ func (r qaRunEnv) openShared(t *testing.T, host, token string) (*http.Response, 
 }
 
 func TestQAShare_LinkOpensTheReportUntilRevoked(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-share")
 	ctx := context.Background()
 	planPath := r.base + "/plans/" + r.plan.ID.String()

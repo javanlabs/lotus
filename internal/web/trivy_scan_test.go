@@ -49,6 +49,7 @@ func doScanReq(t *testing.T, req *http.Request, app interface {
 // queues a manual run and the bar turns to waiting and polls; once the
 // scan has finished, the next poll tells htmx to reload the page.
 func TestRepoScan_ScanNowQueuesAndThePageReloadsWhenDone(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	host, raw, bindingID := seedRepoScan(t, db, "acme-scan", "member")
 	base := "/projects/p/components/c/metrics/trivy"
@@ -98,6 +99,7 @@ func TestRepoScan_ScanNowQueuesAndThePageReloadsWhenDone(t *testing.T) {
 
 // A viewer sees the bar but cannot start a scan.
 func TestRepoScan_ViewerCannotScan(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	host, raw, _ := seedRepoScan(t, db, "acme-scan-viewer", "viewer")
 	base := "/projects/p/components/c/metrics/trivy"

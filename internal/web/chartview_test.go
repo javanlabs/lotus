@@ -28,6 +28,7 @@ func linePath(t *testing.T, svg string) string {
 }
 
 func TestBuildChartSVG_NoDataReturnsHasDataFalse(t *testing.T) {
+	t.Parallel()
 	if got := buildChartSVG(nil, "higher_better", "%", time.Time{}, time.Time{}, 100, 40); got.HasData {
 		t.Error("HasData = true for nil points")
 	}
@@ -45,6 +46,7 @@ func TestBuildChartSVG_NoDataReturnsHasDataFalse(t *testing.T) {
 // bucket's HasValue=false must start a *new* "M" (moveto) subpath rather
 // than an "L" (lineto) connecting through it.
 func TestBuildChartSVG_GapBreaksThePathInsteadOfDroppingToZero(t *testing.T) {
+	t.Parallel()
 	points := []repo.Point{
 		pt(6, 90, true),
 		pt(5, 0, false),
@@ -66,6 +68,7 @@ func TestBuildChartSVG_GapBreaksThePathInsteadOfDroppingToZero(t *testing.T) {
 }
 
 func TestBuildChartSVG_ContinuousDataIsOnePathRun(t *testing.T) {
+	t.Parallel()
 	points := []repo.Point{pt(2, 10, true), pt(1, 20, true), pt(0, 30, true)}
 	got := buildChartSVG(points, "higher_better", "count", time.Time{}, time.Time{}, 300, 80)
 	if strings.Count(linePath(t, string(got.SVG)), "M") != 1 {
@@ -83,6 +86,7 @@ func TestBuildChartSVG_ContinuousDataIsOnePathRun(t *testing.T) {
 // invisible). Each real point must render its own <circle>, not just
 // the series' last one.
 func TestBuildChartSVG_IsolatedSinglePointsAreStillVisible(t *testing.T) {
+	t.Parallel()
 	points := []repo.Point{
 		pt(21, 70, true), pt(20, 0, false), pt(19, 0, false), pt(18, 0, false),
 		pt(14, 78, true), pt(13, 0, false), pt(12, 0, false), pt(11, 0, false),
@@ -105,6 +109,7 @@ func TestBuildChartSVG_IsolatedSinglePointsAreStillVisible(t *testing.T) {
 // must read as worsening — both purely from the direction field repo.Point
 // pairs with, never a per-metric special case.
 func TestBuildChartSVG_TrendToneFollowsDirectionNotAHardcodedList(t *testing.T) {
+	t.Parallel()
 	rising := []repo.Point{pt(2, 70, true), pt(1, 80, true), pt(0, 90, true)}
 	falling := []repo.Point{pt(2, 90, true), pt(1, 80, true), pt(0, 70, true)}
 
@@ -126,6 +131,7 @@ func TestBuildChartSVG_TrendToneFollowsDirectionNotAHardcodedList(t *testing.T) 
 }
 
 func TestBuildChartSVG_FlatSeriesDoesNotPanicOnZeroRange(t *testing.T) {
+	t.Parallel()
 	flat := []repo.Point{pt(2, 50, true), pt(1, 50, true), pt(0, 50, true)}
 	got := buildChartSVG(flat, "higher_better", "%", time.Time{}, time.Time{}, 200, 60)
 	if !got.HasData || got.Tone != "none" {
@@ -147,6 +153,7 @@ func readings(start time.Time, step time.Duration, n int, v float64) []repo.Poin
 // identical readings hold one flat segment, and the curve turns over the
 // one sync interval in which the value actually moved.
 func TestBuildChartSVG_SmoothCurveThroughTheChanges(t *testing.T) {
+	t.Parallel()
 	start := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	points := append(readings(start, 15*time.Minute, 100, 10), readings(start.Add(100*15*time.Minute), 15*time.Minute, 100, 20)...)
 	got := buildChartSVG(points, "higher_better", "count", time.Time{}, time.Time{}, 400, 80)
@@ -167,6 +174,7 @@ func TestBuildChartSVG_SmoothCurveThroughTheChanges(t *testing.T) {
 // A monotone curve never draws a value that was not measured: every
 // control point of a segment stays between that segment's two readings.
 func TestMonotonePath_NeverOvershoots(t *testing.T) {
+	t.Parallel()
 	xs := []float64{0, 10, 11, 50, 51, 100}
 	ys := []float64{50, 50, 10, 10, 90, 90}
 	d := monotonePath(xs, ys)
@@ -191,6 +199,7 @@ func TestMonotonePath_NeverOvershoots(t *testing.T) {
 // A small move on a large value does not fill the chart: coverage from
 // 93.0% to 94.6% spans less than half the plot, not top to bottom.
 func TestBuildChartSVG_SmallChangeIsNotACliff(t *testing.T) {
+	t.Parallel()
 	start := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	points := append(readings(start, time.Hour, 5, 93.0), readings(start.Add(5*time.Hour), time.Hour, 5, 94.6)...)
 	got := buildChartSVG(points, "higher_better", "%", time.Time{}, time.Time{}, 400, 100)
@@ -213,6 +222,7 @@ func TestBuildChartSVG_SmallChangeIsNotACliff(t *testing.T) {
 // The window spans the axis: a reading at its middle sits mid-chart, and
 // the latest value holds on to the window's end.
 func TestBuildChartSVG_LongStretchWithoutReadingsBreaksTheLine(t *testing.T) {
+	t.Parallel()
 	to := time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC)
 	from := to.Add(-7 * 24 * time.Hour)
 	mid := from.Add(7 * 24 * time.Hour / 2)
@@ -238,6 +248,7 @@ func TestBuildChartSVG_LongStretchWithoutReadingsBreaksTheLine(t *testing.T) {
 // A series whose readings stopped long ago does not pretend its last
 // value is still current.
 func TestBuildChartSVG_StaleLastReadingDoesNotHoldToTheEnd(t *testing.T) {
+	t.Parallel()
 	to := time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC)
 	from := to.Add(-7 * 24 * time.Hour)
 	points := readings(from.Add(time.Hour), time.Hour, 6, 5)
@@ -248,6 +259,7 @@ func TestBuildChartSVG_StaleLastReadingDoesNotHoldToTheEnd(t *testing.T) {
 }
 
 func TestGapThreshold(t *testing.T) {
+	t.Parallel()
 	start := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	if got := gapThreshold(readings(start, 15*time.Minute, 10, 1)); got != 45*time.Minute {
 		t.Errorf("15-minute readings: %v, want 45m", got)
@@ -264,6 +276,7 @@ func TestGapThreshold(t *testing.T) {
 }
 
 func TestFormatMetricValue(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		v    float64
 		unit string
@@ -288,6 +301,7 @@ func TestFormatMetricValue(t *testing.T) {
 }
 
 func TestResolveChartRange(t *testing.T) {
+	t.Parallel()
 	cases := map[string]struct {
 		wantLabel  string
 		wantAround time.Duration
@@ -316,6 +330,7 @@ func TestResolveChartRange(t *testing.T) {
 }
 
 func TestResolveChartRange_TiersMatchSeriesThresholds(t *testing.T) {
+	t.Parallel()
 	// task 4.6's acceptance criterion that the ranges "beneran muat
 	// resolusi yang beda" depends entirely on each width landing on a
 	// different repo.Series tier — this pins that invariant at the
@@ -343,6 +358,7 @@ func TestResolveChartRange_TiersMatchSeriesThresholds(t *testing.T) {
 }
 
 func TestPrimaryChartKey(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"gitlab": "gitlab.pipeline_success_rate", "sonarqube": "sonar.coverage",
 		"trivy": "trivy.total", "sentry": "sentry.score", "unknown": "",
@@ -358,6 +374,7 @@ func TestPrimaryChartKey(t *testing.T) {
 // chart, not one hour of a week; the reading at the change stays put, and
 // a held reading never moves behind the one before it.
 func TestEaseChanges(t *testing.T) {
+	t.Parallel()
 	xs := []float64{0, 99, 100, 200}
 	ys := []float64{10, 10, 20, 20}
 	easeChanges(xs, ys, 20)
@@ -397,6 +414,7 @@ func f(v float64) *float64 { return &v }
 // The x axis is the window's days, evenly spaced: seven days are seven
 // positions, each a dot and a hover point, the curve through all of them.
 func TestBuildDailyChartSVG_OnePositionPerDay(t *testing.T) {
+	t.Parallel()
 	got := buildDailyChartSVG(dailyPoints(f(10), f(10), f(12), f(12), f(12), f(15), f(15)), "higher_better", "count", 560, 130)
 	var hover []struct {
 		X    float64
@@ -429,6 +447,7 @@ func TestBuildDailyChartSVG_OnePositionPerDay(t *testing.T) {
 // Days before the first reading are left empty and the curve starts at
 // the first that has one, each of those ten days a dot.
 func TestBuildDailyChartSVG_StartsAtTheFirstReading(t *testing.T) {
+	t.Parallel()
 	values := make([]*float64, 30)
 	for i := 20; i < 30; i++ {
 		values[i] = f(90)

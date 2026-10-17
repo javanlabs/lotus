@@ -57,6 +57,7 @@ func newDiscoveryTestApp(t *testing.T, resolveHost func(host string) []net.IP) (
 }
 
 func TestDiscovery_RunUpsertsAndClaimCreatesProjectComponentBinding(t *testing.T) {
+	t.Parallel()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `[{"id":1,"name":"BPM Service","path_with_namespace":"group/bpm-service"}]`)
 	}))
@@ -77,7 +78,7 @@ func TestDiscovery_RunUpsertsAndClaimCreatesProjectComponentBinding(t *testing.T
 	host := "acme." + cfg.BaseDomain
 
 	createResp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/connections", raw,
-		`{"provider":"gitlab","name":"main","base_url":"http://gitlab.fake:`+upstreamPort+`","secret":"token"}`))
+		`{"provider":"gitlab","name":"main","base_url":"http://gitlab.fake:`+upstreamPort+`","secret":"token"}`), -1)
 	if err != nil {
 		t.Fatalf("create connection: %v", err)
 	}
@@ -105,7 +106,7 @@ func TestDiscovery_RunUpsertsAndClaimCreatesProjectComponentBinding(t *testing.T
 		t.Fatalf("discover body = %+v, want count=1 degraded=false", discoverBody)
 	}
 
-	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/connections/"+conn.ID.String()+"/discovered?unclaimed=true", raw))
+	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/connections/"+conn.ID.String()+"/discovered?unclaimed=true", raw), -1)
 	if err != nil {
 		t.Fatalf("list discovered: %v", err)
 	}
@@ -119,7 +120,7 @@ func TestDiscovery_RunUpsertsAndClaimCreatesProjectComponentBinding(t *testing.T
 		"new_project_slug":"bpm","new_project_name":"BPM",
 		"new_component_slug":"service","new_component_name":"Service","new_component_kind":"backend",
 		"binding_config":{}}]}`
-	claimResp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/connections/"+conn.ID.String()+"/discovered/claim", raw, claimBody))
+	claimResp, err := app.Test(jsonReqWithSession(http.MethodPost, host, "/connections/"+conn.ID.String()+"/discovered/claim", raw, claimBody), -1)
 	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}
@@ -134,7 +135,7 @@ func TestDiscovery_RunUpsertsAndClaimCreatesProjectComponentBinding(t *testing.T
 	}
 
 	// The claimed resource no longer shows up as unclaimed.
-	afterResp, _ := app.Test(reqWithSession(http.MethodGet, host, "/connections/"+conn.ID.String()+"/discovered?unclaimed=true", raw))
+	afterResp, _ := app.Test(reqWithSession(http.MethodGet, host, "/connections/"+conn.ID.String()+"/discovered?unclaimed=true", raw), -1)
 	var afterList []repo.DiscoveredResource
 	json.NewDecoder(afterResp.Body).Decode(&afterList)
 	if len(afterList) != 0 {
@@ -153,6 +154,7 @@ func TestDiscovery_RunUpsertsAndClaimCreatesProjectComponentBinding(t *testing.T
 }
 
 func TestDiscovery_SonarQubeDegradedDoesNotError(t *testing.T) {
+	t.Parallel()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 	}))
@@ -170,7 +172,7 @@ func TestDiscovery_SonarQubeDegradedDoesNotError(t *testing.T) {
 	host := "acme." + cfg.BaseDomain
 
 	createResp, _ := app.Test(jsonReqWithSession(http.MethodPost, host, "/connections", raw,
-		`{"provider":"sonarqube","name":"main","base_url":"http://sonar.fake:`+upstreamPort+`","secret":"limited-token"}`))
+		`{"provider":"sonarqube","name":"main","base_url":"http://sonar.fake:`+upstreamPort+`","secret":"limited-token"}`), -1)
 	var conn repo.Connection
 	json.NewDecoder(createResp.Body).Decode(&conn)
 
@@ -191,6 +193,7 @@ func TestDiscovery_SonarQubeDegradedDoesNotError(t *testing.T) {
 }
 
 func TestDiscovery_MissingFromUpstreamFreezesLastSeenRatherThanDeleting(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newDiscoveryTestApp(t, nil)
 	orgID, userID := seedMember(t, db, "acme", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -213,7 +216,7 @@ func TestDiscovery_MissingFromUpstreamFreezesLastSeenRatherThanDeleting(t *testi
 
 	// Upsert with an empty result set (as if upstream no longer has it) —
 	// the existing row must be left completely untouched.
-	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/connections/"+connID.String()+"/discovered", raw))
+	listResp, err := app.Test(reqWithSession(http.MethodGet, host, "/connections/"+connID.String()+"/discovered", raw), -1)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}

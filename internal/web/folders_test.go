@@ -46,19 +46,21 @@ func auditCount(t *testing.T, db *sqlx.DB, orgID uuid.UUID, action string) int {
 }
 
 func TestFolders_MemberCreatesNestedFoldersAndItIsAudited(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-fold", "member")
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme-fold." + dashboardTestDomain
 
-	resp, err := app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"IT Services"}}, false))
+	resp, err := app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"IT Services"}}, false), -1)
 	if err != nil || resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects" {
 		t.Fatalf("create = %v, %v; want 302 to /projects", resp, err)
 	}
 	it := folderIDNamed(t, db, orgID, "IT Services")
 
 	resp, err = app.Test(folderFormReq(host, "/folders", raw,
-		url.Values{"name": {"Tribe lead A"}, "parent_id": {it.String()}}, true))
+		url.Values{"name": {"Tribe lead A"}, "parent_id": {it.String()}}, true), -1)
+
 	if err != nil || resp.StatusCode != http.StatusNoContent || resp.Header.Get("HX-Refresh") != "true" {
 		t.Fatalf("htmx create = %v, %v; want 204 with HX-Refresh", resp, err)
 	}
@@ -69,12 +71,13 @@ func TestFolders_MemberCreatesNestedFoldersAndItIsAudited(t *testing.T) {
 }
 
 func TestFolders_ViewerCannotCreate_MemberCannotDelete(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, viewerID := seedMember(t, db, "acme-perm", "viewer")
 	viewerRaw := seedSession(t, db, orgID, viewerID)
 	host := "acme-perm." + dashboardTestDomain
 
-	resp, _ := app.Test(folderFormReq(host, "/folders", viewerRaw, url.Values{"name": {"X"}}, false))
+	resp, _ := app.Test(folderFormReq(host, "/folders", viewerRaw, url.Values{"name": {"X"}}, false), -1)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("viewer create status = %d, want 403", resp.StatusCode)
 	}
@@ -90,7 +93,7 @@ func TestFolders_ViewerCannotCreate_MemberCannotDelete(t *testing.T) {
 	app.Test(folderFormReq(host, "/folders", memberRaw, url.Values{"name": {"Old"}}, false), -1)
 	id := folderIDNamed(t, db, orgID, "Old")
 
-	resp, _ = app.Test(folderFormReq(host, "/folders/"+id.String()+"/delete", memberRaw, nil, false))
+	resp, _ = app.Test(folderFormReq(host, "/folders/"+id.String()+"/delete", memberRaw, nil, false), -1)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("member delete status = %d, want 403", resp.StatusCode)
 	}
@@ -100,6 +103,7 @@ func TestFolders_ViewerCannotCreate_MemberCannotDelete(t *testing.T) {
 // every write" — the existing test only covered create. This adds rename,
 // move, delete and project move.
 func TestFolders_ViewerRefusedOnEveryWrite(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, ownerID := seedMember(t, db, "acme-viewer-w", "owner")
 	ownerRaw := seedSession(t, db, orgID, ownerID)
@@ -142,7 +146,7 @@ func TestFolders_ViewerRefusedOnEveryWrite(t *testing.T) {
 		{"bulk project move", "/projects/move", url.Values{"project_id": {projectID.String()}, "folder_id": {product.String()}}},
 	} {
 		t.Run(step.name, func(t *testing.T) {
-			resp, err := app.Test(folderFormReq(host, step.path, viewerRaw, step.form, false))
+			resp, err := app.Test(folderFormReq(host, step.path, viewerRaw, step.form, false), -1)
 			if err != nil || resp.StatusCode != http.StatusForbidden {
 				t.Fatalf("viewer %s status = %v, %v; want 403", step.name, resp, err)
 			}
@@ -151,6 +155,7 @@ func TestFolders_ViewerRefusedOnEveryWrite(t *testing.T) {
 }
 
 func TestFolders_RejectionsComeBackIntoTheDialogForHtmx(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-rej", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -177,7 +182,7 @@ func TestFolders_RejectionsComeBackIntoTheDialogForHtmx(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			resp, err := app.Test(folderFormReq(host, c.path, raw, c.form, true))
+			resp, err := app.Test(folderFormReq(host, c.path, raw, c.form, true), -1)
 			if err != nil || resp.StatusCode != http.StatusOK {
 				t.Fatalf("htmx status = %v, %v; want 200", resp, err)
 			}
@@ -185,7 +190,7 @@ func TestFolders_RejectionsComeBackIntoTheDialogForHtmx(t *testing.T) {
 			if !strings.Contains(string(body), c.wantText) && !strings.Contains(string(body), strings.ReplaceAll(c.wantText, "'", "&#39;")) {
 				t.Fatalf("htmx body = %s, want it to contain %q", body, c.wantText)
 			}
-			resp, _ = app.Test(folderFormReq(host, c.path, raw, c.form, false))
+			resp, _ = app.Test(folderFormReq(host, c.path, raw, c.form, false), -1)
 			if resp.StatusCode != c.wantStatus {
 				t.Fatalf("plain status = %d, want %d", resp.StatusCode, c.wantStatus)
 			}
@@ -199,6 +204,7 @@ func TestFolders_RejectionsComeBackIntoTheDialogForHtmx(t *testing.T) {
 // through folderFormError like every other rejection, so the dialog shows
 // "That folder no longer exists."
 func TestFolders_RenameMoveOfAMissingFolderShowsInTheDialog(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-gone", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -209,7 +215,7 @@ func TestFolders_RenameMoveOfAMissingFolderShowsInTheDialog(t *testing.T) {
 		"/folders/" + missing.String() + "/rename",
 		"/folders/" + missing.String() + "/move",
 	} {
-		resp, err := app.Test(folderFormReq(host, path, raw, url.Values{"name": {"X"}}, true))
+		resp, err := app.Test(folderFormReq(host, path, raw, url.Values{"name": {"X"}}, true), -1)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			t.Fatalf("%s htmx status = %v, %v; want 200", path, resp, err)
 		}
@@ -221,12 +227,13 @@ func TestFolders_RenameMoveOfAMissingFolderShowsInTheDialog(t *testing.T) {
 }
 
 func TestFolders_RenameMoveDeleteAreAudited(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-aud", "admin")
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme-aud." + dashboardTestDomain
-	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"IT"}}, false))
-	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"Tribe"}}, false))
+	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"IT"}}, false), -1)
+	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"Tribe"}}, false), -1)
 	it := folderIDNamed(t, db, orgID, "IT")
 	tribe := folderIDNamed(t, db, orgID, "Tribe")
 
@@ -239,7 +246,7 @@ func TestFolders_RenameMoveDeleteAreAudited(t *testing.T) {
 		{"/folders/" + tribe.String() + "/move", url.Values{"parent_id": {""}}},
 		{"/folders/" + tribe.String() + "/delete", nil},
 	} {
-		resp, err := app.Test(folderFormReq(host, step.path, raw, step.form, false))
+		resp, err := app.Test(folderFormReq(host, step.path, raw, step.form, false), -1)
 		if err != nil || resp.StatusCode != http.StatusFound {
 			t.Fatalf("%s = %v, %v; want 302", step.path, resp, err)
 		}
@@ -252,11 +259,12 @@ func TestFolders_RenameMoveDeleteAreAudited(t *testing.T) {
 }
 
 func TestProjects_MoveIntoAFolderIsAudited(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-mv", "member")
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme-mv." + dashboardTestDomain
-	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"Product"}}, false))
+	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"Product"}}, false), -1)
 	product := folderIDNamed(t, db, orgID, "Product")
 	var projectID uuid.UUID
 	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
@@ -266,7 +274,8 @@ func TestProjects_MoveIntoAFolderIsAudited(t *testing.T) {
 	})
 
 	resp, err := app.Test(folderFormReq(host, "/projects/"+projectID.String()+"/move", raw,
-		url.Values{"folder_id": {product.String()}}, false))
+		url.Values{"folder_id": {product.String()}}, false), -1)
+
 	if err != nil || resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects/syarq" {
 		t.Fatalf("move = %v, %v; want 302 back to the project", resp, err)
 	}
@@ -298,16 +307,18 @@ func seedProjectsNamed(t *testing.T, db *sqlx.DB, orgID uuid.UUID, names ...stri
 }
 
 func TestProjects_BulkMoveFilesEveryProjectAndAuditsEach(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-bulk", "member")
 	raw := seedSession(t, db, orgID, userID)
 	host := "acme-bulk." + dashboardTestDomain
-	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"IT Services"}}, false))
+	app.Test(folderFormReq(host, "/folders", raw, url.Values{"name": {"IT Services"}}, false), -1)
 	it := folderIDNamed(t, db, orgID, "IT Services")
 	ids := seedProjectsNamed(t, db, orgID, "linknet", "dignas", "anri")
 
 	resp, err := app.Test(folderFormReq(host, "/projects/move", raw,
-		url.Values{"project_id": {ids[0].String(), ids[1].String()}, "folder_id": {it.String()}}, true))
+		url.Values{"project_id": {ids[0].String(), ids[1].String()}, "folder_id": {it.String()}}, true), -1)
+
 	if err != nil || resp.StatusCode != http.StatusNoContent || resp.Header.Get("HX-Refresh") != "true" {
 		t.Fatalf("bulk move = %v, %v; want 204 with HX-Refresh", resp, err)
 	}
@@ -326,6 +337,7 @@ func TestProjects_BulkMoveFilesEveryProjectAndAuditsEach(t *testing.T) {
 }
 
 func TestProjects_BulkMoveRejectionsComeBackIntoTheDialog(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-bulk-rej", "member")
 	raw := seedSession(t, db, orgID, userID)
@@ -342,7 +354,7 @@ func TestProjects_BulkMoveRejectionsComeBackIntoTheDialog(t *testing.T) {
 		"malformed id":     {url.Values{"project_id": {"nope"}, "folder_id": {""}}, "That project or folder no longer exists."},
 	} {
 		t.Run(name, func(t *testing.T) {
-			resp, err := app.Test(folderFormReq(host, "/projects/move", raw, c.form, true))
+			resp, err := app.Test(folderFormReq(host, "/projects/move", raw, c.form, true), -1)
 			if err != nil || resp.StatusCode != http.StatusOK {
 				t.Fatalf("status = %v, %v; want 200 fragment", resp, err)
 			}

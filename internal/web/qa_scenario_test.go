@@ -23,6 +23,7 @@ func scenarioOrder(t *testing.T, e qaEnv, scenarioID uuid.UUID) string {
 }
 
 func TestQAScenario_BuildUATWithTwoGroups(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qascenario")
 	ctx := context.Background()
 	member, _ := e.session(t, "qa@acme.example", "member")
@@ -79,6 +80,7 @@ func TestQAScenario_BuildUATWithTwoGroups(t *testing.T) {
 }
 
 func TestQAScenario_RejectsForeignIDsArchivedAndReaders(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qascenario-bad")
 	ctx := context.Background()
 	viewer, _ := e.session(t, "viewer@acme.example", "viewer")

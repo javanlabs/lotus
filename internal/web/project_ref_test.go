@@ -18,7 +18,7 @@ import (
 // following a redirect, which is what these tests look at.
 func (e qaEnv) get3(t *testing.T, raw, path string) (int, string, string) {
 	t.Helper()
-	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, path, raw))
+	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, path, raw), -1)
 	if err != nil {
 		t.Fatalf("GET %s: %v", path, err)
 	}
@@ -37,6 +37,7 @@ func (e qaEnv) component(t *testing.T, projectID uuid.UUID, slug string) *repo.C
 }
 
 func TestProjectRef_SlugOpensThePageAndAnIDMovesThere(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-ref")
 	p := e.project(t, "portal")
 
@@ -66,6 +67,7 @@ func TestProjectRef_SlugOpensThePageAndAnIDMovesThere(t *testing.T) {
 }
 
 func TestProjectRef_GuestCannotTellAnUnlistedProjectFromAMissingOne(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-ref-guest")
 	mine, other := e.project(t, "mine"), e.project(t, "theirs")
 	guest, guestID := e.session(t, "client@bank.example", "guest")
@@ -91,6 +93,7 @@ func TestProjectRef_GuestCannotTellAnUnlistedProjectFromAMissingOne(t *testing.T
 }
 
 func TestProjectRef_ComponentAndMetricURLs(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-ref-comp")
 	projectID, componentID, _, bindingID := seedMetricChromeFixture(t, e.db, e.orgID, "gitlab", "grp/api") // project p, component c
 	otherProject := e.project(t, "other")
@@ -179,6 +182,7 @@ func TestProjectRef_ComponentAndMetricURLs(t *testing.T) {
 }
 
 func TestProjectRef_PostByIDStillWorks(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-ref-post")
 	p := e.project(t, "portal")
 	// A form loaded before slug URLs posts to the id address: it is taken,
@@ -190,6 +194,7 @@ func TestProjectRef_PostByIDStillWorks(t *testing.T) {
 }
 
 func TestProjectRef_SlugsAreEscapedAndUnroutableOnesFallBackToTheID(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-ref-esc")
 	// Inserted directly: these are slugs the forms no longer accept, or
 	// that need escaping.
@@ -230,6 +235,7 @@ func TestProjectRef_SlugsAreEscapedAndUnroutableOnesFallBackToTheID(t *testing.T
 }
 
 func TestProjectRef_ReservedSlugsAreRefused(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-ref-reserved")
 	for _, slug := range []string{"new", "move", "..", uuid.NewString()} {
 		resp, body := e.post(t, e.owner, "/projects/new", url.Values{"name": {"X"}, "slug": {slug}}, false)

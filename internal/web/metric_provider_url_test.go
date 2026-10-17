@@ -10,6 +10,7 @@ import (
 // The metric header links a binding's key to what it reads in the
 // integration's own UI.
 func TestMetricChrome_ProviderURL(t *testing.T) {
+	t.Parallel()
 	chrome := func(kind, base, key, cfg, connCfg string) metricChrome {
 		return metricChrome{
 			Binding:    repo.Binding{Kind: kind, ExternalKey: key, Config: json.RawMessage(cfg)},

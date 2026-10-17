@@ -41,6 +41,7 @@ func inviteAndAccept(t *testing.T, e qaEnv, admin, email string, projects ...uui
 }
 
 func TestGuests_InvitedToTwoProjectsSeesExactlyThose(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-guests")
 	admin, adminID := e.session(t, "admin@acme.example", "admin")
 	a, b := e.project(t, "Portal"), e.project(t, "Mobile")
@@ -65,6 +66,7 @@ func TestGuests_InvitedToTwoProjectsSeesExactlyThose(t *testing.T) {
 }
 
 func TestGuests_ProjectEndpointsAddAndRemove(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-guests-panel")
 	admin, adminID := e.session(t, "admin@acme.example", "admin")
 	_, memberID := e.session(t, "qa@acme.example", "member")
@@ -105,6 +107,7 @@ func TestGuests_ProjectEndpointsAddAndRemove(t *testing.T) {
 }
 
 func TestGuests_AdminChangesGuestToMemberAndBack(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-guests-role")
 	admin, adminID := e.session(t, "admin@acme.example", "admin")
 	p := e.project(t, "Portal")
@@ -126,6 +129,7 @@ func TestGuests_AdminChangesGuestToMemberAndBack(t *testing.T) {
 // Removing a guest from the organization ends its project listings: invited
 // back later to one project, it sees that project only.
 func TestGuests_RemovedFromTheOrganizationLosesItsProjects(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-guest-removed")
 	admin, adminID := e.session(t, "admin@acme.example", "admin")
 	a, b, c := e.project(t, "Portal"), e.project(t, "Mobile"), e.project(t, "Billing")

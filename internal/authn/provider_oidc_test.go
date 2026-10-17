@@ -70,6 +70,7 @@ func newFakeIdP(t *testing.T, userinfo map[string]any) *fakeIdP {
 }
 
 func TestOIDCProviderDiscoversItsEndpointsAndBuildsAnAuthURL(t *testing.T) {
+	t.Parallel()
 	idp := newFakeIdP(t, nil)
 	p := authn.NewOIDCProvider(idp.server.URL, "lotus", "shh", "https://lotus.example/login/sso/callback")
 
@@ -105,6 +106,7 @@ func TestOIDCProviderDiscoversItsEndpointsAndBuildsAnAuthURL(t *testing.T) {
 }
 
 func TestOIDCProviderDiscoversOnceAcrossManyCalls(t *testing.T) {
+	t.Parallel()
 	idp := newFakeIdP(t, map[string]any{"sub": "u-1", "email": "a@b.c", "email_verified": true})
 	p := authn.NewOIDCProvider(idp.server.URL, "lotus", "shh", "https://lotus.example/login/sso/callback")
 
@@ -123,6 +125,7 @@ func TestOIDCProviderDiscoversOnceAcrossManyCalls(t *testing.T) {
 }
 
 func TestOIDCProviderReturnsTheStandardClaims(t *testing.T) {
+	t.Parallel()
 	idp := newFakeIdP(t, map[string]any{
 		"sub": "kc-9f2", "email": "bayu@javan.co.id", "email_verified": true, "name": "Bayu Hendra",
 	})
@@ -143,6 +146,7 @@ func TestOIDCProviderReturnsTheStandardClaims(t *testing.T) {
 }
 
 func TestOIDCProviderFallsBackToPreferredUsernameForTheName(t *testing.T) {
+	t.Parallel()
 	// Keycloak omits `name` unless both given and family name are set.
 	idp := newFakeIdP(t, map[string]any{
 		"sub": "kc-1", "email": "a@b.c", "email_verified": true, "preferred_username": "bayu",
@@ -159,6 +163,7 @@ func TestOIDCProviderFallsBackToPreferredUsernameForTheName(t *testing.T) {
 }
 
 func TestOIDCProviderCarriesAnUnverifiedEmailThrough(t *testing.T) {
+	t.Parallel()
 	idp := newFakeIdP(t, map[string]any{"sub": "kc-2", "email": "a@b.c", "email_verified": false})
 	p := authn.NewOIDCProvider(idp.server.URL, "lotus", "shh", "cb")
 
@@ -172,6 +177,7 @@ func TestOIDCProviderCarriesAnUnverifiedEmailThrough(t *testing.T) {
 }
 
 func TestOIDCProviderErrorsRatherThanRedirectingNowhereWhenDiscoveryFails(t *testing.T) {
+	t.Parallel()
 	// The reason Provider.AuthCodeURL returns an error at all: an
 	// unreachable issuer must fail the login, not send the browser to "".
 	idp := newFakeIdP(t, nil)
@@ -188,6 +194,7 @@ func TestOIDCProviderErrorsRatherThanRedirectingNowhereWhenDiscoveryFails(t *tes
 }
 
 func TestOIDCProviderRejectsADiscoveryDocumentMissingAnEndpoint(t *testing.T) {
+	t.Parallel()
 	idp := newFakeIdP(t, nil)
 	idp.discoveryBody = `{"issuer":"x","authorization_endpoint":"https://idp/auth"}`
 	p := authn.NewOIDCProvider(idp.server.URL, "lotus", "shh", "cb")
@@ -198,6 +205,7 @@ func TestOIDCProviderRejectsADiscoveryDocumentMissingAnEndpoint(t *testing.T) {
 }
 
 func TestOIDCProviderRetriesDiscoveryAfterAFailure(t *testing.T) {
+	t.Parallel()
 	// A failed discovery must not be cached: the IdP is the only way into
 	// a single-mode instance, so a blip during startup cannot lock
 	// everyone out until someone thinks to restart the process.
@@ -215,6 +223,7 @@ func TestOIDCProviderRetriesDiscoveryAfterAFailure(t *testing.T) {
 }
 
 func TestOIDCProviderLeavesAnUnverifiedEmailUnverifiedByDefault(t *testing.T) {
+	t.Parallel()
 	idp := newFakeIdP(t, map[string]any{"sub": "kc-3", "email": "bayu@javan.co.id", "email_verified": false})
 	p := authn.NewOIDCProvider(idp.server.URL, "lotus", "shh", "cb")
 
@@ -228,6 +237,7 @@ func TestOIDCProviderLeavesAnUnverifiedEmailUnverifiedByDefault(t *testing.T) {
 }
 
 func TestOIDCProviderTrustEmailVouchesForAnAdministeredAddress(t *testing.T) {
+	t.Parallel()
 	// Javan's Keycloak reports email_verified=false for every account,
 	// because an administrator creates them and nobody clicks a
 	// verification link. That locked the first Owner out of production.
@@ -245,6 +255,7 @@ func TestOIDCProviderTrustEmailVouchesForAnAdministeredAddress(t *testing.T) {
 }
 
 func TestOIDCProviderTrustEmailNeverVerifiesAnEmptyAddress(t *testing.T) {
+	t.Parallel()
 	idp := newFakeIdP(t, map[string]any{"sub": "kc-5", "email": "", "email_verified": false})
 	p := authn.NewOIDCProvider(idp.server.URL, "lotus", "shh", "cb")
 	p.TrustEmail = true

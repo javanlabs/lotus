@@ -9,6 +9,7 @@ import (
 )
 
 func TestAcquireLeader_OnlyOneHolderAtATime(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 

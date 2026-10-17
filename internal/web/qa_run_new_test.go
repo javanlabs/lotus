@@ -45,6 +45,7 @@ func newQARunEnvWith(t *testing.T, sub string, change func(*Deps)) qaRunEnv {
 }
 
 func TestQARunNew_CreatesWithDistribution(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-runnew")
 	ctx := context.Background()
 	path := r.base + "/plans/" + r.plan.ID.String() + "/runs"
@@ -67,6 +68,7 @@ func TestQARunNew_CreatesWithDistribution(t *testing.T) {
 }
 
 func TestQARunNew_PreviewAndRejections(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-runnew-bad")
 	ctx := context.Background()
 	viewer, viewerID := r.session(t, "viewer@acme.example", "viewer")

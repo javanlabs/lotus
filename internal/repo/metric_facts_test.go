@@ -70,6 +70,7 @@ func numFact(key string, v float64) collector.Fact {
 }
 
 func TestInsertMetricFacts_NewKeyImmediatelyQueryableAndInCatalog(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, componentID, bindingID := seedMFFixture(t, db, "acme", "gitlab")
 	scope := tenant.FromRun(db, orgID)
@@ -110,6 +111,7 @@ func TestInsertMetricFacts_NewKeyImmediatelyQueryableAndInCatalog(t *testing.T) 
 }
 
 func TestInsertMetricFacts_DeclaredKeysSeededFromDescriptor(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, componentID, bindingID := seedMFFixture(t, db, "acme", "trivy")
 	scope := tenant.FromRun(db, orgID)
@@ -146,6 +148,7 @@ func TestInsertMetricFacts_DeclaredKeysSeededFromDescriptor(t *testing.T) {
 // actually produces (sentry.score, total_issues, events_total, new,
 // escalating, regressed, ongoing).
 func TestInsertMetricFacts_SentryEmitsAtLeastSixSeparatelyQueryableFacts(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, componentID, bindingID := seedMFFixture(t, db, "acme", "sentry")
 	scope := tenant.FromRun(db, orgID)
@@ -172,6 +175,7 @@ func TestInsertMetricFacts_SentryEmitsAtLeastSixSeparatelyQueryableFacts(t *test
 }
 
 func TestSeries_IsolatesAcrossOrgsWithIdenticalKey(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgA, compA, bindA := seedMFFixture(t, db, "acme", "gitlab")
 	orgB, compB, bindB := seedMFFixture(t, db, "beta", "gitlab")

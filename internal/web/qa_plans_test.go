@@ -25,6 +25,7 @@ func planNamed(t *testing.T, e qaEnv, projectID uuid.UUID, name string) repo.QAP
 }
 
 func TestQAPlans_CreateListFilterAndPage(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qaplans")
 	ctx := context.Background()
 	member, _ := e.session(t, "qa@acme.example", "member")
@@ -68,6 +69,7 @@ func TestQAPlans_CreateListFilterAndPage(t *testing.T) {
 }
 
 func TestQAPlans_EditValidatesDatesAndScenarios(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qaplans-edit")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -95,6 +97,7 @@ func TestQAPlans_EditValidatesDatesAndScenarios(t *testing.T) {
 }
 
 func TestQAPlans_DuplicateCopiesScopeNotDatesAndCloseIsFinal(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qaplans-dup")
 	ctx := context.Background()
 	viewer, _ := e.session(t, "viewer@acme.example", "viewer")

@@ -33,9 +33,10 @@ func newTestApp(t *testing.T) *fiber.App {
 }
 
 func TestHealthz(t *testing.T) {
+	t.Parallel()
 	app := newTestApp(t)
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -56,9 +57,10 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestHome(t *testing.T) {
+	t.Parallel()
 	app := newTestApp(t)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}

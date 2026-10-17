@@ -51,7 +51,7 @@ func newSingleModeLoginApp(t *testing.T, db *sqlx.DB) *fiber.App {
 // returns the callback response.
 func signInThroughGitHub(t *testing.T, app *fiber.App, returnPath string) *http.Response {
 	t.Helper()
-	loginResp, err := app.Test(httptest.NewRequest(http.MethodGet, "/login/github?return="+returnPath, nil))
+	loginResp, err := app.Test(httptest.NewRequest(http.MethodGet, "/login/github?return="+returnPath, nil), -1)
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
@@ -60,7 +60,7 @@ func signInThroughGitHub(t *testing.T, app *fiber.App, returnPath string) *http.
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("callback: %v", err)
 	}
@@ -81,6 +81,7 @@ func tenantSessionCookie(resp *http.Response) *http.Cookie {
 // /login — over and over — because the callback minted only the global
 // session and single mode has no handoff to mint the tenant one.
 func TestSingleMode_OAuthLoginOpensTheAppInsteadOfLoopingBackToLogin(t *testing.T) {
+	t.Parallel()
 	db, _ := seedBootstrap(t, "octocat@example.com")
 	app := newSingleModeLoginApp(t, db)
 
@@ -99,7 +100,7 @@ func TestSingleMode_OAuthLoginOpensTheAppInsteadOfLoopingBackToLogin(t *testing.
 
 	req := httptest.NewRequest(http.MethodGet, "/projects", nil)
 	req.AddCookie(session)
-	page, err := app.Test(req)
+	page, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("projects: %v", err)
 	}
@@ -112,6 +113,7 @@ func TestSingleMode_OAuthLoginOpensTheAppInsteadOfLoopingBackToLogin(t *testing.
 // Someone who signs in but belongs to no organization would otherwise
 // loop the same way. They are told instead, and given no tenant session.
 func TestSingleMode_OAuthLoginByANonMemberIsToldRatherThanLooped(t *testing.T) {
+	t.Parallel()
 	db := openOrgWithoutBootstrap(t)
 	app := newSingleModeLoginApp(t, db)
 
@@ -132,6 +134,7 @@ func TestSingleMode_OAuthLoginByANonMemberIsToldRatherThanLooped(t *testing.T) {
 // An invitee signs in before they are a member. Their invitation link has
 // to recognise them afterwards, so they go back to it — not to a notice.
 func TestSingleMode_OAuthLoginByAnInviteeReturnsToTheInvitation(t *testing.T) {
+	t.Parallel()
 	db := openOrgWithoutBootstrap(t)
 	app := newSingleModeLoginApp(t, db)
 
@@ -146,6 +149,7 @@ func TestSingleMode_OAuthLoginByAnInviteeReturnsToTheInvitation(t *testing.T) {
 // <subdomain>.<base>/handoff/start — a saas-only host that does not exist
 // on a single-origin install. It now lands in the app with a session.
 func TestSingleMode_AcceptingAnInvitationLandsInTheApp(t *testing.T) {
+	t.Parallel()
 	db := openOrgWithoutBootstrap(t)
 	app := newSingleModeLoginApp(t, db)
 
@@ -158,7 +162,7 @@ func TestSingleMode_AcceptingAnInvitationLandsInTheApp(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/invite/"+token, nil)
 	req.AddCookie(&http.Cookie{Name: "lotus_auth", Value: seedGlobalSession(t, db, aliceID)})
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("invite: %v", err)
 	}

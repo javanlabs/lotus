@@ -40,7 +40,7 @@ func loginPage(t *testing.T, providers authn.Registry) string {
 		Renderer: httpx.NewRenderer(os.DirFS("../../web/templates"), true), StaticFS: os.DirFS("../../web/static"),
 		Resolver: tenant.NewResolver(cfg, db), DB: db, Cfg: cfg, OAuthProviders: providers,
 	})
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "http://localhost:8008/login", nil))
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "http://localhost:8008/login", nil), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,6 +54,7 @@ func loginPage(t *testing.T, providers authn.Registry) string {
 // For now login is SSO only: the email (magic link) form is hidden while an
 // SSO provider is configured. The page carries the Lotus mark and tagline.
 func TestLoginPage_SSOOnlyWithTheLotusBrand(t *testing.T) {
+	t.Parallel()
 	page := loginPage(t, authn.Registry{"sso": fakeSSO{}})
 	if strings.Contains(page, `action="/login/email"`) {
 		t.Errorf("the email login form is shown next to SSO")
@@ -68,6 +69,7 @@ func TestLoginPage_SSOOnlyWithTheLotusBrand(t *testing.T) {
 // Without any SSO provider, hiding the email form would leave no way in:
 // then it stays.
 func TestLoginPage_EmailFormWhenNoSSO(t *testing.T) {
+	t.Parallel()
 	if page := loginPage(t, authn.Registry{}); !strings.Contains(page, `action="/login/email"`) {
 		t.Errorf("no SSO configured and no email form: nobody can log in")
 	}

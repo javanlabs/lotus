@@ -14,6 +14,7 @@ import (
 )
 
 func TestDefaultExecute_NoRegisteredCollectorFailsAsConfigError(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, connID, bindingID := seedFixture(t, db, "acme")
 

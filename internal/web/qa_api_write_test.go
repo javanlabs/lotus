@@ -32,6 +32,7 @@ func apiCaseRows(n int, section ...string) []map[string]any {
 }
 
 func TestQAAPI_BulkCreateCasesIsAtomic(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-api-bulk")
 	path := "/api/qa/projects/" + e.projectID.String() + "/cases"
 	rows := apiCaseRows(3, "Billing", "Invoices")
@@ -92,6 +93,7 @@ func TestQAAPI_BulkCreateCasesIsAtomic(t *testing.T) {
 }
 
 func TestQAAPI_ConcurrentBulkCreatesGetSequentialKeys(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-api-concurrent")
 	path := "/api/qa/projects/" + e.projectID.String() + "/cases"
 	var wg sync.WaitGroup
@@ -139,6 +141,7 @@ func TestQAAPI_ConcurrentBulkCreatesGetSequentialKeys(t *testing.T) {
 }
 
 func TestQAAPI_RecordResultAndReportIssue(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-api-execute")
 	base := "/api/qa/projects/" + e.projectID.String()
 	run, items := e.firstRun(t)

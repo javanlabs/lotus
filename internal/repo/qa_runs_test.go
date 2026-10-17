@@ -51,6 +51,7 @@ func newRunFixture(t *testing.T, sub string) runFixture {
 }
 
 func TestQARuns_SnapshotDedupeAndGroupNames(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-run")
 	ctx := context.Background()
 	run, err := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "Cycle 1", Distribution: repo.DistributeNone}, nil)
@@ -87,6 +88,7 @@ func TestQARuns_SnapshotDedupeAndGroupNames(t *testing.T) {
 }
 
 func TestQARuns_Distribution(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-dist")
 	ctx := context.Background()
 	a := mustUser(t, f.db, "a@acme.example")
@@ -123,6 +125,7 @@ func TestQARuns_Distribution(t *testing.T) {
 }
 
 func TestQARuns_RetestTakesFailedAndBlockedWithCurrentText(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-retest")
 	ctx := context.Background()
 	tester := mustUser(t, f.db, "t@acme.example")
@@ -150,6 +153,7 @@ func TestQARuns_RetestTakesFailedAndBlockedWithCurrentText(t *testing.T) {
 }
 
 func TestQARuns_ClosedPlanRefusesRuns(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-closed")
 	ctx := context.Background()
 	if err := repo.CloseQAPlan(ctx, f.s, f.plan.ID); err != nil {

@@ -41,6 +41,7 @@ func seedLargeScenario(t *testing.T, r qaRunEnv, n int) (*repo.QAScenario, *repo
 // Past qaCollapseAbove items a run opens with its groups closed, unless a
 // filter has already narrowed it; small runs open as before.
 func TestQARun_LargeRunOpensWithGroupsClosed(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qalarge-run")
 	ctx := context.Background()
 	_, plan := seedLargeScenario(t, r, qaCollapseAbove+1)
@@ -60,6 +61,7 @@ func TestQARun_LargeRunOpensWithGroupsClosed(t *testing.T) {
 }
 
 func TestQAScenario_LargeScenarioOpensWithGroupsClosed(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qalarge-scenario")
 	sc, _ := seedLargeScenario(t, r, qaCollapseAbove+1)
 	_, body := r.get(t, r.member, r.base+"/scenarios/"+sc.ID.String())

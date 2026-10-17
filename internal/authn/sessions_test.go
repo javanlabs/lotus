@@ -47,6 +47,7 @@ func seedTenantSession(t *testing.T, db *sqlx.DB, orgID, userID uuid.UUID, permE
 }
 
 func TestRequireTenantSession_RoleChangeRotatesAndSucceeds(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newSessionTestApp(t)
 	orgID, userID := seedActiveMember(t, db, "acme")
 	raw := seedTenantSession(t, db, orgID, userID, 0)
@@ -59,7 +60,7 @@ func TestRequireTenantSession_RoleChangeRotatesAndSucceeds(t *testing.T) {
 
 	req := hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/protected")
 	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -80,7 +81,7 @@ func TestRequireTenantSession_RoleChangeRotatesAndSucceeds(t *testing.T) {
 	// The old session id must now be revoked: a second request with it fails.
 	req2 := hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/protected")
 	req2.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
-	resp2, _ := app.Test(req2)
+	resp2, _ := app.Test(req2, -1)
 	if resp2.StatusCode == http.StatusOK {
 		t.Fatal("expected old session id to be revoked after rotation")
 	}
@@ -88,13 +89,14 @@ func TestRequireTenantSession_RoleChangeRotatesAndSucceeds(t *testing.T) {
 	// The new session id works.
 	req3 := hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/protected")
 	req3.AddCookie(newCookie)
-	resp3, _ := app.Test(req3)
+	resp3, _ := app.Test(req3, -1)
 	if resp3.StatusCode != http.StatusOK {
 		t.Fatal("expected the new rotated session id to work")
 	}
 }
 
 func TestRequireTenantSession_RemovedMembershipHardRejected(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newSessionTestApp(t)
 	orgID, userID := seedActiveMember(t, db, "acme")
 	raw := seedTenantSession(t, db, orgID, userID, 0)
@@ -106,7 +108,7 @@ func TestRequireTenantSession_RemovedMembershipHardRejected(t *testing.T) {
 
 	req := hostReq(http.MethodPost, "acme."+cfg.BaseDomain, "/protected")
 	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -124,13 +126,14 @@ func TestRequireTenantSession_RemovedMembershipHardRejected(t *testing.T) {
 }
 
 func TestRequireTenantSession_UnchangedPermEpochJustTouchesLastSeen(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newSessionTestApp(t)
 	orgID, userID := seedActiveMember(t, db, "acme")
 	raw := seedTenantSession(t, db, orgID, userID, 0)
 
 	req := hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/protected")
 	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -145,13 +148,14 @@ func TestRequireTenantSession_UnchangedPermEpochJustTouchesLastSeen(t *testing.T
 }
 
 func TestRequireTenantSession_MissingSessionRedirectsToHandoffOnGET(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newSessionTestApp(t)
 	if _, err := db.Exec(`INSERT INTO organizations (subdomain, name) VALUES ('acme', 'acme')`); err != nil {
 		t.Fatalf("insert org: %v", err)
 	}
 
 	req := hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/protected")
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -168,6 +172,7 @@ func TestRequireTenantSession_MissingSessionRedirectsToHandoffOnGET(t *testing.T
 }
 
 func TestRequireTenantSession_MissingSessionOnPOSTGets401(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	cfg := config.Config{BaseDomain: handoffTestDomain, Dev: true, CookieSecure: false}
 	resolver := tenant.NewResolver(cfg, db)
@@ -180,7 +185,7 @@ func TestRequireTenantSession_MissingSessionOnPOSTGets401(t *testing.T) {
 		t.Fatalf("insert org: %v", err)
 	}
 	req := hostReq(http.MethodPost, "acme."+cfg.BaseDomain, "/protected")
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -190,6 +195,7 @@ func TestRequireTenantSession_MissingSessionOnPOSTGets401(t *testing.T) {
 }
 
 func TestSession_RawCookieValueNeverStored(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, userID := seedActiveMember(t, db, "acme")
 	raw := seedTenantSession(t, db, orgID, userID, 0)
@@ -204,6 +210,7 @@ func TestSession_RawCookieValueNeverStored(t *testing.T) {
 }
 
 func TestLogout_RevokesSessionAndClearsCookie(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	cfg := config.Config{BaseDomain: handoffTestDomain, Dev: true, CookieSecure: false}
 	resolver := tenant.NewResolver(cfg, db)
@@ -217,7 +224,7 @@ func TestLogout_RevokesSessionAndClearsCookie(t *testing.T) {
 
 	req := hostReq(http.MethodPost, "acme."+cfg.BaseDomain, "/logout")
 	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("logout: %v", err)
 	}

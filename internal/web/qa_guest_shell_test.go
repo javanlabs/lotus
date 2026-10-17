@@ -20,6 +20,7 @@ var routeParam = regexp.MustCompile(`:[A-Za-z_]+\??|\*`)
 // everything else is 404, never a page — nor a redirect that would show
 // another project's slug.
 func TestGuestShell_CrawlEveryGetRoute(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-guest-crawl")
 	_, adminID := e.session(t, "admin@acme.example", "admin")
 	listed, other := e.project(t, "Portal"), e.project(t, "Mobile")
@@ -91,12 +92,13 @@ func guestCrawlCheck(t *testing.T, route string, listed, byID bool, status int) 
 // offers QA, and a guest missing a QA permission still gets 403 (the page
 // exists for it; the action does not).
 func TestGuestShell_HomeIsMyWork(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-guest-home")
 	_, adminID := e.session(t, "admin@acme.example", "admin")
 	listed := e.project(t, "Portal")
 	guest, _, _ := inviteAndAccept(t, e, e.relogin(t, adminID), "client@bank.example", listed)
 
-	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, "/projects", guest))
+	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, "/projects", guest), -1)
 	if err != nil {
 		t.Fatal(err)
 	}

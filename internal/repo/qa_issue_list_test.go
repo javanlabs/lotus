@@ -9,6 +9,7 @@ import (
 )
 
 func TestQAIssues_PagingCountAndSearch(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-issue-list")
 	ctx := context.Background()
 	for i := 1; i <= 5; i++ {

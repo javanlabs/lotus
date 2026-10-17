@@ -8,6 +8,7 @@ import (
 )
 
 func TestQAIssues_FromItemTimelineAndKeys(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-iss")
 	ctx := context.Background()
 	qa := mustUser(t, f.db, "qa@acme.example")

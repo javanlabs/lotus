@@ -11,6 +11,7 @@ import (
 )
 
 func TestQAScenarios_GroupsOrderAndDedupe(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	_, s := folderTestOrg(t, db, "acme-scn")
@@ -65,6 +66,7 @@ func TestQAScenarios_GroupsOrderAndDedupe(t *testing.T) {
 }
 
 func TestQAScenarios_GroupMustBelongToTheScenario(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	_, s := folderTestOrg(t, db, "acme-scg")
@@ -80,6 +82,7 @@ func TestQAScenarios_GroupMustBelongToTheScenario(t *testing.T) {
 }
 
 func TestQAScenarios_ListGroupsInOrder(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-scenario-groups")
 	ctx := context.Background()
 	repo.CreateQAScenarioGroup(ctx, f.s, f.uat.ID, "Day 3")
@@ -90,6 +93,7 @@ func TestQAScenarios_ListGroupsInOrder(t *testing.T) {
 }
 
 func TestQAScenarios_RenameReorderAndRegroup(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-scenario-edit")
 	ctx := context.Background()
 	day2 := mustGroup(t, f, "Day 2")
@@ -144,6 +148,7 @@ func mustGroup(t *testing.T, f runFixture, name string) uuid.UUID {
 }
 
 func TestCreateQAScenarioFromRun_KeepsOrderAndGroups(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-scenario-from-run")
 	ctx := context.Background()
 	run, _ := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "C1", ScenarioIDs: []uuid.UUID{f.uat.ID}}, nil)

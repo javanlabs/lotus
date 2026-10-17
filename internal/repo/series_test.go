@@ -83,6 +83,7 @@ func openSeriesCountingDB(t *testing.T, dsn string) (*sqlx.DB, *int64) {
 // range reads hourly, and a 1-year range reads daily — task 3.7's own
 // acceptance criterion, worded exactly that way.
 func TestSeries_TierChosenByRangeWidth(t *testing.T) {
+	t.Parallel()
 	dsn := dbtest.DSN(t)
 	setupDB, count := openSeriesCountingDB(t, dsn)
 
@@ -139,6 +140,7 @@ func TestSeries_TierChosenByRangeWidth(t *testing.T) {
 // acceptance criterion, quoted directly: a bucket without data returns
 // HasValue: false, not Value: 0.
 func TestSeries_EmptyBucketHasValueFalseNotZero(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, componentID, bindingID := seedMFFixture(t, db, "acme", "gitlab")
 	scope := tenant.FromRun(db, orgID)
@@ -207,6 +209,7 @@ func openDDL(t *testing.T) *sqlx.DB {
 }
 
 func TestRollup_IsIdempotent(t *testing.T) {
+	t.Parallel()
 	db := openDDL(t)
 	orgID, componentID, bindingID := seedMFFixture(t, db, "acme", "gitlab")
 
@@ -260,6 +263,7 @@ func TestRollup_IsIdempotent(t *testing.T) {
 // acceptance criterion: backfilling over 90 days of raw data produces a
 // daily tier that matches direct aggregation from raw.
 func TestBackfillDaily_MatchesDirectAggregationFromRaw(t *testing.T) {
+	t.Parallel()
 	db := openDDL(t)
 	orgID, componentID, bindingID := seedMFFixture(t, db, "acme", "gitlab")
 
@@ -319,6 +323,7 @@ func TestBackfillDaily_MatchesDirectAggregationFromRaw(t *testing.T) {
 // none carries the day before forward, starting from the last reading
 // before the window.
 func TestDailySeries_OneValuePerDayCarriedForward(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, componentID, bindingID := seedMFFixture(t, db, "acme-daily", "gitlab")
 	scope := tenant.FromRun(db, orgID)
@@ -360,6 +365,7 @@ func TestDailySeries_OneValuePerDayCarriedForward(t *testing.T) {
 }
 
 func TestDailySeries_DaysBeforeTheFirstReadingAreEmpty(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, componentID, bindingID := seedMFFixture(t, db, "acme-daily-first", "gitlab")
 	scope := tenant.FromRun(db, orgID)

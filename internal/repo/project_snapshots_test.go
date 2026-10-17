@@ -78,6 +78,7 @@ func (f projectKindFixture) exec(t *testing.T, db *sqlx.DB, q string, args ...an
 // a retired binding's newer one, not another project's, and not another
 // organization's.
 func TestListLatestSonarSnapshotsForProject_LatestOfLiveBindingsOnly(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	f := seedProjectKindFixture(t, db, "acme-psnap")
@@ -124,6 +125,7 @@ func TestListLatestSonarSnapshotsForProject_LatestOfLiveBindingsOnly(t *testing.
 }
 
 func TestListLatestGitlabAndTrivySnapshotsForProject(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	f := seedProjectKindFixture(t, db, "acme-psnap-gt")
@@ -169,6 +171,7 @@ func TestListLatestGitlabAndTrivySnapshotsForProject(t *testing.T) {
 // Sentry's latest state is a whole sync — every environment it reported —
 // with each environment's issues counted by substatus.
 func TestListLatestSentryEnvironmentsForProject_LatestSyncWithIssueCounts(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	f := seedProjectKindFixture(t, db, "acme-psnap-sentry")

@@ -12,6 +12,7 @@ import (
 )
 
 func TestQAAttachments_SaveListDownloadDelete(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-att")
 	ctx := context.Background()
 	store, _ := blob.NewFS(t.TempDir())

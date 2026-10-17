@@ -55,6 +55,7 @@ func htmlUnescape(s string) string {
 }
 
 func TestQACaseImport_PreviewThenConfirm(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qaimport")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -85,6 +86,7 @@ func TestQACaseImport_PreviewThenConfirm(t *testing.T) {
 }
 
 func TestQACaseImport_RowErrorsBlockTheImport(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qaimport-bad")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -114,6 +116,7 @@ func TestQACaseImport_RowErrorsBlockTheImport(t *testing.T) {
 }
 
 func TestQACaseExport_RoundTripsIntoAnotherProject(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qaexport")
 	ctx := context.Background()
 	viewer, _ := e.session(t, "viewer@acme.example", "viewer")
@@ -128,7 +131,7 @@ func TestQACaseExport_RoundTripsIntoAnotherProject(t *testing.T) {
 	repo.CreateQACase(ctx, e.s, from, repo.QACaseInput{SectionID: auth.ID, Title: "Session expires", Negative: true}, nil)
 	repo.CreateQACase(ctx, e.s, from, repo.QACaseInput{SectionID: other.ID, Title: "Pay"}, nil)
 
-	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, e.projectPath(t, from)+"/qa/cases/export?section="+auth.ID.String(), viewer))
+	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, e.projectPath(t, from)+"/qa/cases/export?section="+auth.ID.String(), viewer), -1)
 	if err != nil || resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/csv") ||
 		!strings.Contains(resp.Header.Get("Content-Disposition"), "attachment") {
 		t.Fatalf("export = %v %v", resp, err)
@@ -158,6 +161,7 @@ func TestQACaseExport_RoundTripsIntoAnotherProject(t *testing.T) {
 }
 
 func TestQACaseImport_FiveThousandRowsInOneRequest(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("slow")
 	}
@@ -187,6 +191,7 @@ func TestQACaseImport_FiveThousandRowsInOneRequest(t *testing.T) {
 // ?archived=only exports the archived cases and nothing else, in the
 // import format, so an archive can be restored into another project.
 func TestQACaseExport_ArchivedOnly(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qaexport-arch")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -199,7 +204,7 @@ func TestQACaseExport_ArchivedOnly(t *testing.T) {
 	_ = live
 
 	get := func(query string) (string, string) {
-		resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, e.projectPath(t, p)+"/qa/cases/export"+query, e.owner))
+		resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, e.projectPath(t, p)+"/qa/cases/export"+query, e.owner), -1)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			t.Fatalf("export%s = %v %v", query, resp, err)
 		}

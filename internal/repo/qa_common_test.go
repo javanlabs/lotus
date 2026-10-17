@@ -3,6 +3,7 @@ package repo
 import "testing"
 
 func TestQASteps_RoundTripAndNeverNull(t *testing.T) {
+	t.Parallel()
 	var empty QASteps
 	v, err := empty.Value()
 	if err != nil || string(v.([]byte)) != "[]" {
@@ -23,6 +24,7 @@ func TestQASteps_RoundTripAndNeverNull(t *testing.T) {
 }
 
 func TestNormalizeQAName(t *testing.T) {
+	t.Parallel()
 	if got, err := normalizeQAName("  Login  ", MaxQANameLength); err != nil || got != "Login" {
 		t.Fatalf("got %q, %v", got, err)
 	}

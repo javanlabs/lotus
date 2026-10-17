@@ -99,6 +99,7 @@ const ingestFSReportFixture = `{"Results":[{"Target":"go.mod","Type":"gomod","Vu
 ]}]}`
 
 func TestIngestTrivy_ServiceTokenPinnedToComponentSucceeds(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, authDeps := newIngestTestApp(t)
 	orgID, userID, compA, bindA, _, _ := seedIngestFixture(t, db, "acme")
 
@@ -116,7 +117,7 @@ func TestIngestTrivy_ServiceTokenPinnedToComponentSucceeds(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+raw)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -126,6 +127,7 @@ func TestIngestTrivy_ServiceTokenPinnedToComponentSucceeds(t *testing.T) {
 }
 
 func TestIngestTrivy_ServiceTokenPinnedToOtherComponentIs404(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, authDeps := newIngestTestApp(t)
 	orgID, userID, compA, _, _, bindB := seedIngestFixture(t, db, "acme")
 
@@ -143,7 +145,7 @@ func TestIngestTrivy_ServiceTokenPinnedToOtherComponentIs404(t *testing.T) {
 	req.Host = "acme." + cfg.BaseDomain
 	req.Header.Set("Authorization", "Bearer "+raw)
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -153,6 +155,7 @@ func TestIngestTrivy_ServiceTokenPinnedToOtherComponentIs404(t *testing.T) {
 }
 
 func TestIngestTrivy_UnpinnedServiceTokenReachesAnyBindingInOrg(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, authDeps := newIngestTestApp(t)
 	orgID, userID, _, _, _, bindB := seedIngestFixture(t, db, "acme")
 
@@ -169,7 +172,7 @@ func TestIngestTrivy_UnpinnedServiceTokenReachesAnyBindingInOrg(t *testing.T) {
 	req.Host = "acme." + cfg.BaseDomain
 	req.Header.Set("Authorization", "Bearer "+raw)
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -179,6 +182,7 @@ func TestIngestTrivy_UnpinnedServiceTokenReachesAnyBindingInOrg(t *testing.T) {
 }
 
 func TestIngestTrivy_TokenWithoutIngestScopeIsForbidden(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, authDeps := newIngestTestApp(t)
 	orgID, userID, compA, bindA, _, _ := seedIngestFixture(t, db, "acme")
 
@@ -195,7 +199,7 @@ func TestIngestTrivy_TokenWithoutIngestScopeIsForbidden(t *testing.T) {
 	req.Host = "acme." + cfg.BaseDomain
 	req.Header.Set("Authorization", "Bearer "+raw)
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -205,6 +209,7 @@ func TestIngestTrivy_TokenWithoutIngestScopeIsForbidden(t *testing.T) {
 }
 
 func TestIngestTrivy_CrossOrgServiceTokenIs404(t *testing.T) {
+	t.Parallel()
 	app, db, cfg, authDeps := newIngestTestApp(t)
 	orgA, userA, _, _, _, _ := seedIngestFixture(t, db, "acme")
 	_, _, _, bindBeta, _, _ := seedIngestFixture(t, db, "beta")
@@ -224,7 +229,7 @@ func TestIngestTrivy_CrossOrgServiceTokenIs404(t *testing.T) {
 	req.Host = "beta." + cfg.BaseDomain
 	req.Header.Set("Authorization", "Bearer "+raw)
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}

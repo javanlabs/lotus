@@ -53,6 +53,7 @@ func mustProject(t *testing.T, s tenant.Scope, slug string, folder *repo.Folder)
 }
 
 func TestCreateFolder_TopLevelAndNested(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	it := mustFolder(t, s, "IT Services", nil)
@@ -74,6 +75,7 @@ func TestCreateFolder_TopLevelAndNested(t *testing.T) {
 }
 
 func TestCreateFolder_TrimsAndRejectsBlankOrLongNames(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	ctx := context.Background()
@@ -94,6 +96,7 @@ func TestCreateFolder_TrimsAndRejectsBlankOrLongNames(t *testing.T) {
 }
 
 func TestCreateFolder_SiblingNamesAreUniqueIgnoringCaseIncludingTopLevel(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	ctx := context.Background()
@@ -111,6 +114,7 @@ func TestCreateFolder_SiblingNamesAreUniqueIgnoringCaseIncludingTopLevel(t *test
 }
 
 func TestCreateFolder_DepthCapIsEightLevels(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	var parent *repo.Folder
@@ -123,6 +127,7 @@ func TestCreateFolder_DepthCapIsEightLevels(t *testing.T) {
 }
 
 func TestFolders_AreIsolatedBetweenOrganizations(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, acme := folderTestOrg(t, db, "acme")
 	_, other := folderTestOrg(t, db, "other")
@@ -148,6 +153,7 @@ func TestFolders_AreIsolatedBetweenOrganizations(t *testing.T) {
 }
 
 func TestRenameFolder(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	ctx := context.Background()
@@ -167,6 +173,7 @@ func TestRenameFolder(t *testing.T) {
 }
 
 func TestMoveProject_IntoAFolderAndBackToTheRoot(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	ctx := context.Background()
@@ -196,6 +203,7 @@ func TestMoveProject_IntoAFolderAndBackToTheRoot(t *testing.T) {
 }
 
 func TestCreateProject_CanBeFiledStraightIntoAFolder(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	product := mustFolder(t, s, "Product", nil)
@@ -208,6 +216,7 @@ func TestCreateProject_CanBeFiledStraightIntoAFolder(t *testing.T) {
 // Review focus: a filed project that is archived keeps its folder, so
 // unarchiving puts it back where it was.
 func TestArchivingAProjectKeepsItsFolder(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	ctx := context.Background()
@@ -229,6 +238,7 @@ func TestArchivingAProjectKeepsItsFolder(t *testing.T) {
 // Review focus: deleting an organization must cascade through nested
 // folders and filed projects — the reason the folder keys are NO ACTION.
 func TestDeletingAnOrganizationCascadesThroughNestedFolders(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, s := folderTestOrg(t, db, "acme")
 	it := mustFolder(t, s, "IT Services", nil)
@@ -241,6 +251,7 @@ func TestDeletingAnOrganizationCascadesThroughNestedFolders(t *testing.T) {
 }
 
 func TestMoveFolder_RefusesCycles(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	ctx := context.Background()
@@ -256,6 +267,7 @@ func TestMoveFolder_RefusesCycles(t *testing.T) {
 }
 
 func TestMoveFolder_ToAnotherParentAndBackToTheTop(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	ctx := context.Background()
@@ -273,6 +285,7 @@ func TestMoveFolder_ToAnotherParentAndBackToTheTop(t *testing.T) {
 }
 
 func TestMoveFolder_DepthCountsTheWholeSubtree(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	ctx := context.Background()
@@ -299,6 +312,7 @@ func TestMoveFolder_DepthCountsTheWholeSubtree(t *testing.T) {
 }
 
 func TestMoveFolder_NameClashAtTheDestination(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	it := mustFolder(t, s, "IT Services", nil)
@@ -311,6 +325,7 @@ func TestMoveFolder_NameClashAtTheDestination(t *testing.T) {
 }
 
 func TestMoveFolder_AcrossOrganizationsIsNotFound(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, acme := folderTestOrg(t, db, "acme")
 	_, other := folderTestOrg(t, db, "other")
@@ -330,6 +345,7 @@ func TestMoveFolder_AcrossOrganizationsIsNotFound(t *testing.T) {
 // move is valid alone but together they form a loop. The advisory lock
 // makes the second one see the first: exactly one must fail.
 func TestMoveFolder_ConcurrentOppositeMovesCannotFormALoop(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	ctx := context.Background()
@@ -363,6 +379,7 @@ func TestMoveFolder_ConcurrentOppositeMovesCannotFormALoop(t *testing.T) {
 }
 
 func TestDeleteFolder_EmptyFolderIsDeleted(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	ctx := context.Background()
@@ -381,6 +398,7 @@ func TestDeleteFolder_EmptyFolderIsDeleted(t *testing.T) {
 }
 
 func TestDeleteFolder_RefusesAFolderWithSubfolders(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	it := mustFolder(t, s, "IT Services", nil)
@@ -399,6 +417,7 @@ func TestDeleteFolder_RefusesAFolderWithSubfolders(t *testing.T) {
 // Review focus: a folder whose only project is archived looks empty on the
 // page but must still refuse deletion, naming the archived project.
 func TestDeleteFolder_RefusesAFolderHoldingOnlyAnArchivedProject(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	ctx := context.Background()
@@ -419,6 +438,7 @@ func TestDeleteFolder_RefusesAFolderHoldingOnlyAnArchivedProject(t *testing.T) {
 }
 
 func TestFolderNotEmptyError_CapsTheNamedProjects(t *testing.T) {
+	t.Parallel()
 	e := &repo.FolderNotEmptyError{
 		Name: "Big", Subfolders: 2,
 		Projects: []string{"a", "b", "c", "d", "e", "f", "g"},
@@ -430,6 +450,7 @@ func TestFolderNotEmptyError_CapsTheNamedProjects(t *testing.T) {
 }
 
 func TestMoveProjects_MovesEveryProjectAndReportsWhereEachCameFrom(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	ctx := context.Background()
@@ -454,6 +475,7 @@ func TestMoveProjects_MovesEveryProjectAndReportsWhereEachCameFrom(t *testing.T)
 }
 
 func TestMoveProjects_IsAllOrNothing(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	_, s := folderTestOrg(t, db, "acme")
 	_, other := folderTestOrg(t, db, "other")

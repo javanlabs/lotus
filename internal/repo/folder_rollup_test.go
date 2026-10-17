@@ -36,6 +36,7 @@ func treeProject(name string, in *repo.Folder, status collector.Status, s *int) 
 }
 
 func TestRollupFolders_CountsProjectsAtAnyDepth(t *testing.T) {
+	t.Parallel()
 	it := testFolder("IT Services", nil)
 	tribeA := testFolder("Tribe lead A", &it)
 	tribeB := testFolder("Tribe lead B", &it)
@@ -63,6 +64,7 @@ func TestRollupFolders_CountsProjectsAtAnyDepth(t *testing.T) {
 }
 
 func TestRollupFolders_UnknownIsCountedButNotMeasured(t *testing.T) {
+	t.Parallel()
 	f := testFolder("Product", nil)
 	got := repo.RollupFolders([]repo.Folder{f}, []repo.TreeProject{
 		treeProject("AlurKerja", &f, collector.StatusPass, score(84)),
@@ -78,6 +80,7 @@ func TestRollupFolders_UnknownIsCountedButNotMeasured(t *testing.T) {
 }
 
 func TestRollupFolders_EmptyFolderIsPresentWithNothingMeasured(t *testing.T) {
+	t.Parallel()
 	f := testFolder("Empty", nil)
 	got := repo.RollupFolders([]repo.Folder{f}, nil)
 	r, ok := got[f.ID]
@@ -90,6 +93,7 @@ func TestRollupFolders_EmptyFolderIsPresentWithNothingMeasured(t *testing.T) {
 }
 
 func TestRollupFolders_FailingWorstFirstUnscoredLast(t *testing.T) {
+	t.Parallel()
 	f := testFolder("F", nil)
 	got := repo.RollupFolders([]repo.Folder{f}, []repo.TreeProject{
 		treeProject("Mid", &f, collector.StatusFail, score(55)),
@@ -113,6 +117,7 @@ func TestRollupFolders_FailingWorstFirstUnscoredLast(t *testing.T) {
 }
 
 func TestRollupFolders_KindSharesSkipProjectsWithoutThatKind(t *testing.T) {
+	t.Parallel()
 	f := testFolder("F", nil)
 	noSonar := treeProject("NoSonar", &f, collector.StatusPass, score(90))
 	noSonar.Rollup.Kinds = map[string]repo.KindRollup{"gitlab": {Status: collector.StatusPass, Score: score(90), Count: 1}}
@@ -130,6 +135,7 @@ func TestRollupFolders_KindSharesSkipProjectsWithoutThatKind(t *testing.T) {
 }
 
 func TestPassShare_PercentRoundsHalfUp(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		share repo.PassShare
 		want  int

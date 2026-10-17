@@ -14,12 +14,13 @@ import (
 )
 
 func TestQAPIC_CSVExportAndImportByEmail(t *testing.T) {
+	t.Parallel()
 	e := newQAPICEnv(t, "acme-pic-csv")
 	ctx := context.Background()
 	repo.CreateQACase(ctx, e.s, e.p, repo.QACaseInput{SectionID: e.card.ID, Title: "Pay", PicID: &e.anaID}, nil)
 	repo.CreateQACase(ctx, e.s, e.p, repo.QACaseInput{SectionID: e.card.ID, Title: "Refund"}, nil)
 
-	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, e.base+"/cases/export", e.ana))
+	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, e.base+"/cases/export", e.ana), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,6 +49,7 @@ func TestQAPIC_CSVExportAndImportByEmail(t *testing.T) {
 }
 
 func TestQAPIC_APIShowsAndSetsThePIC(t *testing.T) {
+	t.Parallel()
 	e := newQAAPIEnv(t, "acme-pic-api")
 	ctx := context.Background()
 	path := "/api/qa/projects/" + e.projectID.String() + "/cases"

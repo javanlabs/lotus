@@ -71,7 +71,7 @@ func (e qaEnv) project(t *testing.T, name string) uuid.UUID {
 // get fetches path with the given session and returns status and body.
 func (e qaEnv) get(t *testing.T, raw, path string) (int, string) {
 	t.Helper()
-	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, path, raw))
+	resp, err := e.app.Test(reqWithSession(http.MethodGet, e.host, path, raw), -1)
 	if err != nil {
 		t.Fatalf("GET %s: %v", path, err)
 	}

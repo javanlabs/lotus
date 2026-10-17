@@ -85,13 +85,14 @@ func seedGlobalSession(t *testing.T, db *sqlx.DB, userID uuid.UUID) string {
 }
 
 func TestHandoff_FullFlow(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newHandoffTestApp(t)
 	orgID, userID := seedActiveMember(t, db, "acme")
 	_ = orgID
 	sessionRaw := seedGlobalSession(t, db, userID)
 
 	// Step 1: start on the tenant host.
-	startResp, err := app.Test(hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/handoff/start?return=/dashboard"))
+	startResp, err := app.Test(hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/handoff/start?return=/dashboard"), -1)
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -115,7 +116,7 @@ func TestHandoff_FullFlow(t *testing.T) {
 	// Step 2/3: authorize on the auth host, with a global session cookie.
 	authReq := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, authorizeURL.RequestURI())
 	authReq.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-	authResp, err := app.Test(authReq)
+	authResp, err := app.Test(authReq, -1)
 	if err != nil {
 		t.Fatalf("authorize: %v", err)
 	}
@@ -130,7 +131,7 @@ func TestHandoff_FullFlow(t *testing.T) {
 	// Step 4: finish on the tenant host, presenting the verifier cookie.
 	finishReq := hostReq(http.MethodGet, "acme."+cfg.BaseDomain, finishURL.RequestURI())
 	finishReq.AddCookie(hsCookie)
-	finishResp, err := app.Test(finishReq)
+	finishResp, err := app.Test(finishReq, -1)
 	if err != nil {
 		t.Fatalf("finish: %v", err)
 	}
@@ -156,11 +157,12 @@ func TestHandoff_FullFlow(t *testing.T) {
 }
 
 func TestHandoff_CodeReplayRejected(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newHandoffTestApp(t)
 	_, userID := seedActiveMember(t, db, "acme")
 	sessionRaw := seedGlobalSession(t, db, userID)
 
-	startResp, _ := app.Test(hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/handoff/start"))
+	startResp, _ := app.Test(hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/handoff/start"), -1)
 	authorizeURL, _ := startResp.Location()
 	var hsCookie *http.Cookie
 	for _, c := range startResp.Cookies() {
@@ -171,36 +173,37 @@ func TestHandoff_CodeReplayRejected(t *testing.T) {
 
 	authReq := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, authorizeURL.RequestURI())
 	authReq.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-	authResp, _ := app.Test(authReq)
+	authResp, _ := app.Test(authReq, -1)
 	finishURL, _ := authResp.Location()
 
 	finishReq1 := hostReq(http.MethodGet, "acme."+cfg.BaseDomain, finishURL.RequestURI())
 	finishReq1.AddCookie(hsCookie)
-	resp1, _ := app.Test(finishReq1)
+	resp1, _ := app.Test(finishReq1, -1)
 	if resp1.StatusCode != http.StatusFound {
 		t.Fatalf("first finish status = %d, want 302", resp1.StatusCode)
 	}
 
 	finishReq2 := hostReq(http.MethodGet, "acme."+cfg.BaseDomain, finishURL.RequestURI())
 	finishReq2.AddCookie(hsCookie)
-	resp2, _ := app.Test(finishReq2)
+	resp2, _ := app.Test(finishReq2, -1)
 	if resp2.StatusCode == http.StatusFound {
 		t.Fatal("expected replayed code to be rejected")
 	}
 }
 
 func TestHandoff_CrossOrgCodeRejected(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newHandoffTestApp(t)
 	_, userIDA := seedActiveMember(t, db, "acme")
 	_, _ = seedActiveMember(t, db, "beta")
 	sessionRaw := seedGlobalSession(t, db, userIDA)
 
-	startResp, _ := app.Test(hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/handoff/start"))
+	startResp, _ := app.Test(hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/handoff/start"), -1)
 	authorizeURL, _ := startResp.Location()
 
 	authReq := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, authorizeURL.RequestURI())
 	authReq.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-	authResp, _ := app.Test(authReq)
+	authResp, _ := app.Test(authReq, -1)
 	finishURL, _ := authResp.Location()
 
 	var hsCookie *http.Cookie
@@ -213,7 +216,7 @@ func TestHandoff_CrossOrgCodeRejected(t *testing.T) {
 	// Present the code minted for "acme" on "beta"'s host instead.
 	finishReq := hostReq(http.MethodGet, "beta."+cfg.BaseDomain, finishURL.RequestURI())
 	finishReq.AddCookie(hsCookie)
-	resp, err := app.Test(finishReq)
+	resp, err := app.Test(finishReq, -1)
 	if err != nil {
 		t.Fatalf("finish: %v", err)
 	}
@@ -223,21 +226,22 @@ func TestHandoff_CrossOrgCodeRejected(t *testing.T) {
 }
 
 func TestHandoff_MissingVerifierCookieRejected(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newHandoffTestApp(t)
 	_, userID := seedActiveMember(t, db, "acme")
 	sessionRaw := seedGlobalSession(t, db, userID)
 
-	startResp, _ := app.Test(hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/handoff/start"))
+	startResp, _ := app.Test(hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/handoff/start"), -1)
 	authorizeURL, _ := startResp.Location()
 
 	authReq := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, authorizeURL.RequestURI())
 	authReq.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-	authResp, _ := app.Test(authReq)
+	authResp, _ := app.Test(authReq, -1)
 	finishURL, _ := authResp.Location()
 
 	// No verifier cookie attached at all.
 	finishReq := hostReq(http.MethodGet, "acme."+cfg.BaseDomain, finishURL.RequestURI())
-	resp, err := app.Test(finishReq)
+	resp, err := app.Test(finishReq, -1)
 	if err != nil {
 		t.Fatalf("finish: %v", err)
 	}
@@ -247,6 +251,7 @@ func TestHandoff_MissingVerifierCookieRejected(t *testing.T) {
 }
 
 func TestHandoff_NonMemberGetsFriendlyPage(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newHandoffTestApp(t)
 	// User exists but is not a member of "acme".
 	if _, err := db.Exec(`INSERT INTO organizations (subdomain, name) VALUES ('acme', 'acme')`); err != nil {
@@ -258,12 +263,12 @@ func TestHandoff_NonMemberGetsFriendlyPage(t *testing.T) {
 	}
 	sessionRaw := seedGlobalSession(t, db, userID)
 
-	startResp, _ := app.Test(hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/handoff/start"))
+	startResp, _ := app.Test(hostReq(http.MethodGet, "acme."+cfg.BaseDomain, "/handoff/start"), -1)
 	authorizeURL, _ := startResp.Location()
 
 	authReq := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, authorizeURL.RequestURI())
 	authReq.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-	authResp, err := app.Test(authReq)
+	authResp, err := app.Test(authReq, -1)
 	if err != nil {
 		t.Fatalf("authorize: %v", err)
 	}
@@ -273,6 +278,7 @@ func TestHandoff_NonMemberGetsFriendlyPage(t *testing.T) {
 }
 
 func TestHandoff_ExpiredHandshakeRejected(t *testing.T) {
+	t.Parallel()
 	app, db, cfg := newHandoffTestApp(t)
 	_, userID := seedActiveMember(t, db, "acme")
 	sessionRaw := seedGlobalSession(t, db, userID)
@@ -292,7 +298,7 @@ func TestHandoff_ExpiredHandshakeRejected(t *testing.T) {
 
 	authReq := hostReq(http.MethodGet, "auth."+cfg.BaseDomain, "/handoff/authorize?hs="+hsID.String())
 	authReq.AddCookie(&http.Cookie{Name: "lotus_auth", Value: sessionRaw})
-	resp, err := app.Test(authReq)
+	resp, err := app.Test(authReq, -1)
 	if err != nil {
 		t.Fatalf("authorize: %v", err)
 	}

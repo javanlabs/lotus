@@ -62,6 +62,7 @@ func sonarBindingFixture(t *testing.T, sub string) (tenant.Scope, uuid.UUID, uui
 // to then only — never touching a live row — and leaving the dashboard's
 // current state to live collection.
 func TestWithObservedAt_WritesHistoryWithoutTouchingTheLiveState(t *testing.T) {
+	t.Parallel()
 	s, componentID, bindingID := sonarBindingFixture(t, "acme-observed")
 	ctx := context.Background()
 	cov := func(v float64) *float64 { return &v }

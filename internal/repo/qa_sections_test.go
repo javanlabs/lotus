@@ -11,6 +11,7 @@ import (
 )
 
 func TestQASections_TreeRules(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	_, s := folderTestOrg(t, db, "acme-sec")
@@ -53,6 +54,7 @@ func TestQASections_TreeRules(t *testing.T) {
 }
 
 func TestQASections_ParentMustBeInTheSameProject(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	_, s := folderTestOrg(t, db, "acme-secx")
@@ -73,6 +75,7 @@ func TestQASections_ParentMustBeInTheSameProject(t *testing.T) {
 }
 
 func TestQASections_ArchivedSectionTakesNoNewRows(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	_, s := folderTestOrg(t, db, "acme-sec-archived")

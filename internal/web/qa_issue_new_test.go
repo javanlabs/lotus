@@ -43,6 +43,7 @@ func (r qaRunEnv) report(t *testing.T, raw string, form url.Values, files ...qaF
 }
 
 func TestQAIssueNew_FromAFailedItem(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qaissue-item")
 	ctx := context.Background()
 	repo.UpdateQAPlan(ctx, r.s, r.plan.ID, repo.QAPlanInput{Name: r.plan.Name, Phase: "regression", Environment: "UAT (linknet-uati)",
@@ -80,6 +81,7 @@ func TestQAIssueNew_FromAFailedItem(t *testing.T) {
 }
 
 func TestQAIssueNew_GuestReportsAsClientAndRejections(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnv(t, "acme-qaissue-guest")
 	ctx := context.Background()
 	viewer, _ := r.session(t, "viewer@acme.example", "viewer")

@@ -29,6 +29,7 @@ func kh(status string, s *int) repo.KindHeadline {
 // weighs the same, so adding a tenth repo does not silently reweight the
 // project's health.
 func TestRollupProject_AveragesPerKindBeforeCombining(t *testing.T) {
+	t.Parallel()
 	var comps []repo.ComponentMetric
 	for i := 0; i < 9; i++ {
 		comps = append(comps, cm(map[string]repo.KindHeadline{"gitlab": kh("pass", score(90))}))
@@ -49,6 +50,7 @@ func TestRollupProject_AveragesPerKindBeforeCombining(t *testing.T) {
 // already rolls its own kinds up: one failing integration makes the project
 // failing, however healthy the rest are.
 func TestRollupProject_StatusIsWorstWins(t *testing.T) {
+	t.Parallel()
 	got := repo.RollupProject([]repo.ComponentMetric{
 		cm(map[string]repo.KindHeadline{"gitlab": kh("pass", score(95))}),
 		cm(map[string]repo.KindHeadline{"sonarqube": kh("warn", score(70))}),
@@ -62,6 +64,7 @@ func TestRollupProject_StatusIsWorstWins(t *testing.T) {
 // A kind that reports a status but no score (Trivy counts findings, it does
 // not grade) must still shape the status without dragging the average.
 func TestRollupProject_ScorelessKindAffectsStatusNotScore(t *testing.T) {
+	t.Parallel()
 	got := repo.RollupProject([]repo.ComponentMetric{
 		cm(map[string]repo.KindHeadline{"gitlab": kh("pass", score(80))}),
 		cm(map[string]repo.KindHeadline{"trivy": kh("fail", nil)}),
@@ -75,6 +78,7 @@ func TestRollupProject_ScorelessKindAffectsStatusNotScore(t *testing.T) {
 }
 
 func TestRollupProject_EmptyProjectHasNoScore(t *testing.T) {
+	t.Parallel()
 	got := repo.RollupProject(nil)
 	if got.Score != nil {
 		t.Errorf("Score = %v, want nil for a project with no components", got.Score)

@@ -13,6 +13,7 @@ func floatPtr(f float64) *float64 { return &f }
 func boolPtr(b bool) *bool        { return &b }
 
 func TestBuildGitlabDetailView_NilSnapshotIsEmptyState(t *testing.T) {
+	t.Parallel()
 	v := buildGitlabDetailView(nil)
 	if v.HasData {
 		t.Fatal("HasData = true for a nil snapshot")
@@ -23,6 +24,7 @@ func TestBuildGitlabDetailView_NilSnapshotIsEmptyState(t *testing.T) {
 }
 
 func TestBuildGitlabDetailView_FlattensAndDerivesTone(t *testing.T) {
+	t.Parallel()
 	finished := time.Now().Add(-2 * time.Hour)
 	snap := &repo.GitlabSnapshot{
 		PrimaryLanguage: strPtr("Go"), DefaultBranch: strPtr("main"), WebURL: strPtr("https://gitlab.example.com/x"),
@@ -59,6 +61,7 @@ func TestBuildGitlabDetailView_FlattensAndDerivesTone(t *testing.T) {
 }
 
 func TestBuildGitlabDetailView_PipelineToneForFailedAndRunning(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{"success": "pass", "failed": "fail", "running": "none", "pending": "none", "canceled": "none"}
 	for status, wantTone := range cases {
 		snap := &repo.GitlabSnapshot{LastPipelineStatus: strPtr(status)}
@@ -70,6 +73,7 @@ func TestBuildGitlabDetailView_PipelineToneForFailedAndRunning(t *testing.T) {
 }
 
 func TestBuildGitlabDetailView_Commits30dCappedShowsPlus(t *testing.T) {
+	t.Parallel()
 	snap := &repo.GitlabSnapshot{Commits30d: intPtr(100), Commits30dCapped: boolPtr(true)}
 	v := buildGitlabDetailView(snap)
 	if v.Commits30d != "100+" {
@@ -78,6 +82,7 @@ func TestBuildGitlabDetailView_Commits30dCappedShowsPlus(t *testing.T) {
 }
 
 func TestFmtDuration(t *testing.T) {
+	t.Parallel()
 	cases := map[int]string{0: "–", -5: "–", 47: "47s", 133: "2m 13s", 3725: "1h 2m"}
 	for sec, want := range cases {
 		if got := fmtDuration(sec); got != want {
@@ -87,6 +92,7 @@ func TestFmtDuration(t *testing.T) {
 }
 
 func TestBuildSonarDetailView_NilSnapshotIsEmptyState(t *testing.T) {
+	t.Parallel()
 	v := buildSonarDetailView(nil)
 	if v.HasData {
 		t.Fatal("HasData = true for a nil snapshot")
@@ -97,6 +103,7 @@ func TestBuildSonarDetailView_NilSnapshotIsEmptyState(t *testing.T) {
 }
 
 func TestBuildSonarDetailView_FailureThresholds(t *testing.T) {
+	t.Parallel()
 	snap := &repo.SonarSnapshot{
 		QualityGate: strPtr("ERROR"), Coverage: floatPtr(85.5), Bugs: intPtr(2), Vulnerabilities: intPtr(1),
 		CodeSmells: intPtr(150), DuplicatedLinesDensity: floatPtr(35.0), SecurityHotspots: intPtr(3),
@@ -148,6 +155,7 @@ func TestBuildSonarDetailView_FailureThresholds(t *testing.T) {
 }
 
 func TestBuildSonarDetailView_PassingThresholdsAtTheBoundary(t *testing.T) {
+	t.Parallel()
 	snap := &repo.SonarSnapshot{
 		QualityGate: strPtr("OK"), Coverage: floatPtr(90.0), Bugs: intPtr(0), Vulnerabilities: intPtr(0),
 		CodeSmells: intPtr(100), DuplicatedLinesDensity: floatPtr(30.0),
@@ -162,6 +170,7 @@ func TestBuildSonarDetailView_PassingThresholdsAtTheBoundary(t *testing.T) {
 }
 
 func TestHumanDuration(t *testing.T) {
+	t.Parallel()
 	cases := map[int64]string{500: "500ms", 1500: "1.5s", 65000: "1m 5s"}
 	for ms, want := range cases {
 		if got := humanDuration(ms); got != want {
@@ -171,6 +180,7 @@ func TestHumanDuration(t *testing.T) {
 }
 
 func TestSonarHelpers_NilAndEmptyRenderDash(t *testing.T) {
+	t.Parallel()
 	if got := sonarPct(nil); got != "–" {
 		t.Errorf("sonarPct(nil) = %q", got)
 	}
@@ -190,6 +200,7 @@ func TestSonarHelpers_NilAndEmptyRenderDash(t *testing.T) {
 }
 
 func TestParseTrivyRawJSON_HarborRegistryShape(t *testing.T) {
+	t.Parallel()
 	raw := []byte(`{
 		"severity": "Critical",
 		"vulnerabilities": [
@@ -213,6 +224,7 @@ func TestParseTrivyRawJSON_HarborRegistryShape(t *testing.T) {
 }
 
 func TestParseTrivyRawJSON_TrivyCLIPushShape(t *testing.T) {
+	t.Parallel()
 	raw := []byte(`{
 		"Results": [
 			{"Target":"app","Type":"go-module","Vulnerabilities":[
@@ -233,6 +245,7 @@ func TestParseTrivyRawJSON_TrivyCLIPushShape(t *testing.T) {
 }
 
 func TestParseTrivyRawJSON_UnrecognizedShapeOrEmptyReturnsNil(t *testing.T) {
+	t.Parallel()
 	if rows := parseTrivyRawJSON(nil); rows != nil {
 		t.Errorf("parseTrivyRawJSON(nil) = %v, want nil", rows)
 	}
@@ -245,6 +258,7 @@ func TestParseTrivyRawJSON_UnrecognizedShapeOrEmptyReturnsNil(t *testing.T) {
 }
 
 func TestSeverityRank(t *testing.T) {
+	t.Parallel()
 	cases := map[string]int{"Critical": 4, "High": 3, "Medium": 2, "Low": 1, "Unknown": 0, "": 0}
 	for sev, want := range cases {
 		if got := severityRank(sev); got != want {
@@ -254,6 +268,7 @@ func TestSeverityRank(t *testing.T) {
 }
 
 func TestSentryStatusOptions_OrdersKnownFirstThenAlphabeticalRest(t *testing.T) {
+	t.Parallel()
 	counts := map[string]int{"ongoing": 3, "new": 1, "escalating": 2, "zeta-custom": 1, "alpha-custom": 4}
 	opts := sentryStatusOptions(counts, "ongoing")
 	var order []string
@@ -280,6 +295,7 @@ func TestSentryStatusOptions_OrdersKnownFirstThenAlphabeticalRest(t *testing.T) 
 }
 
 func TestSentryStatusOptions_OmitsCountsAtZero(t *testing.T) {
+	t.Parallel()
 	opts := sentryStatusOptions(map[string]int{}, "")
 	if len(opts) != 0 {
 		t.Errorf("opts = %v, want empty for no issues", opts)
@@ -287,6 +303,7 @@ func TestSentryStatusOptions_OmitsCountsAtZero(t *testing.T) {
 }
 
 func TestSentryGradeTone(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{"A": "pass", "B": "pass", "C": "fail", "D": "fail", "E": "fail", "": "fail"}
 	for grade, want := range cases {
 		if got := sentryGradeTone(grade); got != want {
@@ -296,6 +313,7 @@ func TestSentryGradeTone(t *testing.T) {
 }
 
 func TestRunToneFor(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{"ok": "pass", "partial": "fail", "skipped": "none", "failed": "fail", "queued": "none", "leased": "none", "running": "none"}
 	for status, want := range cases {
 		if got := runToneFor(status); got != want {
@@ -305,6 +323,7 @@ func TestRunToneFor(t *testing.T) {
 }
 
 func TestBuildRunRows_FlattensNullableColumnsAndFormatsDuration(t *testing.T) {
+	t.Parallel()
 	started := time.Date(2026, 1, 2, 3, 4, 0, 0, time.UTC)
 	finished := started.Add(90 * time.Second)
 	errClass := "upstream_5xx"
@@ -329,6 +348,7 @@ func TestBuildRunRows_FlattensNullableColumnsAndFormatsDuration(t *testing.T) {
 }
 
 func TestBuildRunRows_NullWarningsJSONIsNotTreatedAsPresent(t *testing.T) {
+	t.Parallel()
 	runs := []global.SyncRun{{Status: "ok", Trigger: "scheduled", WarningsJSON: []byte(`null`)}}
 	rows := buildRunRows(runs)
 	if rows[0].HasWarnings {
@@ -337,6 +357,7 @@ func TestBuildRunRows_NullWarningsJSONIsNotTreatedAsPresent(t *testing.T) {
 }
 
 func TestRelativeTimeStr(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	cases := []struct {
 		t    time.Time

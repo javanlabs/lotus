@@ -15,6 +15,7 @@ import (
 // the kind). The project's page for the kind is project → kind; picking a
 // component there only puts the component between them.
 func TestMetricTrail_ProjectThenComponentThenKind(t *testing.T) {
+	t.Parallel()
 	p := &repo.Project{ID: uuid.New(), Slug: "alurkerja", Name: "AlurKerja"}
 	c := &repo.Component{ID: uuid.New(), Slug: "authentication-service", Name: "Authentication"}
 
@@ -51,6 +52,7 @@ func TestMetricTrail_ProjectThenComponentThenKind(t *testing.T) {
 // unbound component falls back to its own page and says why, and "All
 // components" leads back to the project's page for the kind.
 func TestTrailMenus_SwitchStaysOnTheKind(t *testing.T) {
+	t.Parallel()
 	ak := repo.Project{ID: uuid.New(), Slug: "alurkerja", Name: "AlurKerja"}
 	sq := repo.Project{ID: uuid.New(), Slug: "syarq", Name: "SyarQ"}
 	auth := repo.Component{ID: uuid.New(), Slug: "auth", Name: "authentication"}

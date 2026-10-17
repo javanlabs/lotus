@@ -13,6 +13,7 @@ import (
 )
 
 func TestQAScenarios_ListCreateEditArchive(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qascen")
 	ctx := context.Background()
 	member, _ := e.session(t, "qa@acme.example", "member")
@@ -66,6 +67,7 @@ func TestQAScenarios_ListCreateEditArchive(t *testing.T) {
 }
 
 func TestQAScenarios_OwnershipAndPermissions(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qascen-perm")
 	ctx := context.Background()
 	viewer, _ := e.session(t, "viewer@acme.example", "viewer")

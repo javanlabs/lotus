@@ -37,6 +37,7 @@ func newQAPICEnv(t *testing.T, sub string) qaPICEnv {
 }
 
 func TestQAPIC_SectionCreateAndEditSetThePIC(t *testing.T) {
+	t.Parallel()
 	e := newQAPICEnv(t, "acme-pic-sec")
 
 	resp, _ := e.post(t, e.ana, e.base+"/sections", url.Values{"name": {"Auth"}, "pic_id": {e.anaID.String()}}, false)
@@ -86,6 +87,7 @@ func TestQAPIC_SectionCreateAndEditSetThePIC(t *testing.T) {
 }
 
 func TestQAPIC_CaseFormAndPage(t *testing.T) {
+	t.Parallel()
 	e := newQAPICEnv(t, "acme-pic-case")
 	ctx := context.Background()
 	repo.SetQASectionPIC(ctx, e.s, e.checkout.ID, &e.anaID)
@@ -134,6 +136,7 @@ func TestQAPIC_CaseFormAndPage(t *testing.T) {
 }
 
 func TestQAPIC_CaseListColumnAndFilter(t *testing.T) {
+	t.Parallel()
 	e := newQAPICEnv(t, "acme-pic-list")
 	ctx := context.Background()
 	repo.SetQASectionPIC(ctx, e.s, e.checkout.ID, &e.anaID)

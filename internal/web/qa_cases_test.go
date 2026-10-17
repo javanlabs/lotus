@@ -11,6 +11,7 @@ import (
 )
 
 func TestQACases_TreeFilterSearchAndEscaping(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qacases")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -57,6 +58,7 @@ func TestQACases_TreeFilterSearchAndEscaping(t *testing.T) {
 }
 
 func TestQACases_ArchivedToggle(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qacases-arch")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -77,6 +79,7 @@ func TestQACases_ArchivedToggle(t *testing.T) {
 }
 
 func TestQACases_Pages(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qacases-page")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -102,6 +105,7 @@ func TestQACases_Pages(t *testing.T) {
 }
 
 func TestQACases_SectionOfAnotherProjectIs404(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qacases-404")
 	ctx := context.Background()
 	p := e.project(t, "Portal")

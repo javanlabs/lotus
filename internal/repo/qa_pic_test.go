@@ -21,6 +21,7 @@ func picUser(t *testing.T, db *sqlx.DB, email string) uuid.UUID {
 }
 
 func TestQAPIC_SectionAndCaseKeepTheirPIC(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	_, s := folderTestOrg(t, db, "acme-pic")
@@ -63,6 +64,7 @@ func TestQAPIC_SectionAndCaseKeepTheirPIC(t *testing.T) {
 }
 
 func TestQAPIC_EffectivePICIsTheNearestOne(t *testing.T) {
+	t.Parallel()
 	ana, budi := uuid.New(), uuid.New()
 	root := repo.QASection{ID: uuid.New(), Name: "Checkout", PicID: &ana}
 	mid := repo.QASection{ID: uuid.New(), ParentID: &root.ID, Name: "Payment"}
@@ -82,6 +84,7 @@ func TestQAPIC_EffectivePICIsTheNearestOne(t *testing.T) {
 }
 
 func TestQAPIC_CaseFilterUsesTheEffectivePIC(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	_, s := folderTestOrg(t, db, "acme-pic-filter")
@@ -130,6 +133,7 @@ func TestQAPIC_CaseFilterUsesTheEffectivePIC(t *testing.T) {
 }
 
 func TestQAPIC_ImportKeepsThePIC(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	_, s := folderTestOrg(t, db, "acme-pic-import")

@@ -57,6 +57,7 @@ func seedTrivyBindingForNotes(t *testing.T, db *sqlx.DB, subdomain string) (orgI
 }
 
 func TestUpsertTrivyFindingNote_SecondCallOnSameKeyEditsNotDuplicates(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, bindingID, userID := seedTrivyBindingForNotes(t, db, "acme")
 	scope := tenant.FromRun(db, orgID)
@@ -93,6 +94,7 @@ func TestUpsertTrivyFindingNote_SecondCallOnSameKeyEditsNotDuplicates(t *testing
 }
 
 func TestListTrivyFindingNotes_ScopedToBinding(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, bindingA, _ := seedTrivyBindingForNotes(t, db, "acme")
 	scope := tenant.FromRun(db, orgID)
@@ -114,6 +116,7 @@ func TestListTrivyFindingNotes_ScopedToBinding(t *testing.T) {
 }
 
 func TestDeleteTrivyFindingNote(t *testing.T) {
+	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, bindingID, _ := seedTrivyBindingForNotes(t, db, "acme")
 	scope := tenant.FromRun(db, orgID)

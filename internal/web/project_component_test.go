@@ -12,6 +12,7 @@ import (
 )
 
 func TestProjectPage_ShowsComponentsViaTheSameDashboardBlock(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-projpage", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -27,7 +28,7 @@ func TestProjectPage_ShowsComponentsViaTheSameDashboardBlock(t *testing.T) {
 		}
 	})
 
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p", raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p", raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -45,6 +46,7 @@ func TestProjectPage_ShowsComponentsViaTheSameDashboardBlock(t *testing.T) {
 }
 
 func TestProjectPage_UnknownIDIs404NotAnotherOrgsProject(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgA, userA := seedMember(t, db, "acme-proj-a", "owner")
 	orgB, _ := seedMember(t, db, "acme-proj-b", "owner")
@@ -58,7 +60,7 @@ func TestProjectPage_UnknownIDIs404NotAnotherOrgsProject(t *testing.T) {
 	})
 
 	host := "acme-proj-a." + dashboardTestDomain
-	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/"+otherProjectID, raw))
+	resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/"+otherProjectID, raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -67,7 +69,7 @@ func TestProjectPage_UnknownIDIs404NotAnotherOrgsProject(t *testing.T) {
 		t.Fatalf("status = %d, want 404 (RLS must hide another org's project, not show it)", resp.StatusCode)
 	}
 	// Nor by its slug: a slug is unique only within an organization.
-	resp, err = app.Test(reqWithSession(http.MethodGet, host, "/projects/p", raw))
+	resp, err = app.Test(reqWithSession(http.MethodGet, host, "/projects/p", raw), -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -77,6 +79,7 @@ func TestProjectPage_UnknownIDIs404NotAnotherOrgsProject(t *testing.T) {
 }
 
 func TestAddComponent_CreatesAndRedirectsToComponentPage(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-addcomp", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -94,7 +97,7 @@ func TestAddComponent_CreatesAndRedirectsToComponentPage(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -108,7 +111,7 @@ func TestAddComponent_CreatesAndRedirectsToComponentPage(t *testing.T) {
 		t.Fatalf("Location = %q, want the component's slug URL", loc)
 	}
 
-	compResp, err := app.Test(reqWithSession(http.MethodGet, host, loc, raw))
+	compResp, err := app.Test(reqWithSession(http.MethodGet, host, loc, raw), -1)
 	if err != nil {
 		t.Fatalf("follow redirect: %v", err)
 	}
@@ -120,6 +123,7 @@ func TestAddComponent_CreatesAndRedirectsToComponentPage(t *testing.T) {
 }
 
 func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-bindwiz", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -137,7 +141,7 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 
 	// First, the GET form for gitlab renders the right external-key label
 	// and connection-field inputs.
-	getResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p/components/c/bind?kind=gitlab", raw))
+	getResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p/components/c/bind?kind=gitlab", raw), -1)
 	if err != nil {
 		t.Fatalf("GET bind form: %v", err)
 	}
@@ -159,7 +163,7 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("POST bind: %v", err)
 	}
@@ -187,7 +191,7 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 
 	// The component now opens on the binding's tab, no longer the empty
 	// state.
-	compResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p/components/c/metrics/gitlab", raw))
+	compResp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p/components/c/metrics/gitlab", raw), -1)
 	if err != nil {
 		t.Fatalf("GET component page: %v", err)
 	}
@@ -210,7 +214,7 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 			t.Fatalf("lookup binding: %v", err)
 		}
 	})
-	again, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p/components/c/bind?kind=gitlab", raw))
+	again, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/p/components/c/bind?kind=gitlab", raw), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +229,7 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 		req.Host = host
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
-		resp, err := app.Test(req)
+		resp, err := app.Test(req, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -256,6 +260,7 @@ func TestBindWizard_CreatesNewConnectionAndBindingTogether(t *testing.T) {
 }
 
 func TestBindWizard_MissingExternalKeyReRendersWithError(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-bindwiz-err", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -279,7 +284,7 @@ func TestBindWizard_MissingExternalKeyReRendersWithError(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, -1)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -304,6 +309,7 @@ func TestBindWizard_MissingExternalKeyReRendersWithError(t *testing.T) {
 }
 
 func TestComponentPage_EnableDisableDeleteBinding(t *testing.T) {
+	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-bindmgmt", "owner")
 	raw := seedSession(t, db, orgID, userID)
@@ -329,7 +335,7 @@ func TestComponentPage_EnableDisableDeleteBinding(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "http://"+host+path, nil)
 		req.Host = host
 		req.AddCookie(&http.Cookie{Name: "lotus_session", Value: raw})
-		resp, err := app.Test(req)
+		resp, err := app.Test(req, -1)
 		if err != nil {
 			t.Fatalf("POST %s: %v", path, err)
 		}

@@ -9,6 +9,7 @@ import (
 )
 
 func TestQASignoffs_LatestPerScopeAndValidation(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-signoff")
 	ctx := context.Background()
 	sign := func(scenario *repo.QAScenario, decision, note string) error {

@@ -12,6 +12,7 @@ import (
 // A plan's progress is where each of its cases stands now: the case's item
 // in the latest cycle that holds it.
 func TestQAPlanProgress_LatestCycleWinsPerCase(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-plan-progress")
 	ctx := context.Background()
 	run, _ := repo.CreateQARun(ctx, f.s, f.plan.ID, repo.QARunInput{Name: "C1"}, nil) // 3 cases
@@ -40,6 +41,7 @@ func TestQAPlanProgress_LatestCycleWinsPerCase(t *testing.T) {
 }
 
 func TestQACaseRefs_KeyAndCurrentVersion(t *testing.T) {
+	t.Parallel()
 	f := newRunFixture(t, "acme-case-refs")
 	ctx := context.Background()
 	in := repo.QACaseInput{SectionID: f.login.SectionID, Title: "Login, reworded", Steps: f.login.Steps}

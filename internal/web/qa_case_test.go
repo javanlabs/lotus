@@ -11,6 +11,7 @@ import (
 )
 
 func TestQACase_CreateAndEditBumpsVersionOnlyOnContent(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qacase")
 	ctx := context.Background()
 	member, _ := e.session(t, "qa@acme.example", "member")
@@ -57,6 +58,7 @@ func TestQACase_CreateAndEditBumpsVersionOnlyOnContent(t *testing.T) {
 }
 
 func TestQACase_RejectsBadInputAndEscapes(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qacase-bad")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -98,6 +100,7 @@ func TestQACase_RejectsBadInputAndEscapes(t *testing.T) {
 }
 
 func TestQACase_ViewerReadsGuestReadsArchiveIsAudited(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-qacase-perm")
 	ctx := context.Background()
 	viewer, _ := e.session(t, "viewer@acme.example", "viewer")

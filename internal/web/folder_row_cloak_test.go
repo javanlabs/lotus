@@ -15,6 +15,7 @@ import (
 // — not only once Alpine starts, or every failing project flashes up a
 // second time, labelled "Top level" or with its folder path.
 func TestFolderViewRow_FailingListHiddenBeforeScripts(t *testing.T) {
+	t.Parallel()
 	r := httpx.NewRenderer(os.DirFS("../../web/templates"), true)
 	row := func(list string) string {
 		var out bytes.Buffer

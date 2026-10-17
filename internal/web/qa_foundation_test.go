@@ -15,6 +15,7 @@ import (
 // must take a request of that size to the handler rather than refusing it
 // as 413 first.
 func TestServer_TakesRequestsLargerThanFiberDefault(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-bodylimit")
 	p := e.project(t, "Portal")
 	big := strings.Repeat("x", 6<<20) // over Fiber's 4 MB default
@@ -26,6 +27,7 @@ func TestServer_TakesRequestsLargerThanFiberDefault(t *testing.T) {
 
 // Runs leave archived cases out; the scenario page says so.
 func TestQAScenario_SaysArchivedCasesAreSkipped(t *testing.T) {
+	t.Parallel()
 	e := newQAEnv(t, "acme-archived-copy")
 	ctx := context.Background()
 	p := e.project(t, "Portal")
@@ -42,6 +44,7 @@ func TestQAScenario_SaysArchivedCasesAreSkipped(t *testing.T) {
 // app still serves: results without files are recorded, anything that
 // needs file storage says it is unavailable.
 func TestQARun_WithoutBlobStoreOnlyFilesAreUnavailable(t *testing.T) {
+	t.Parallel()
 	r := newQARunEnvWith(t, "acme-noblob", func(d *Deps) { d.Blob = nil })
 	run, items := r.firstRun(t)
 	if status, _ := r.get(t, r.member, r.base+"/runs/"+run.ID.String()); status != http.StatusOK {
