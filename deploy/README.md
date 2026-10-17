@@ -211,6 +211,14 @@ the site and a `25m` location for the QA upload routes. Backups:
 `/etc/systemd/system/lotuscheck-web.service.bak-20260927` and
 `/root/nginx-lotuscheck.bak-20260927`.
 
+The GitLab Runner on collab (`/etc/gitlab-runner/config.toml`, shared
+with the other projects there) was set on 2026-10-18 to `cpus = "4"` per
+job (was 2; with `concurrent = 3`, three jobs use the host's 12 cores) and
+`volumes = ["/srv/gitlab-runner/cache:/cache"]` (was an anonymous `/cache`
+volume, discarded after every job: no job ever restored a cache). The
+runner reloads the file by itself. Backup:
+`/etc/gitlab-runner/config.toml.bak-20261018`.
+
 Repository scans (2026-10-17) need, on a server provisioned before them:
 `sudo apt-get install git` and trivy from Aqua's apt repository (the
 commands are in `bootstrap.sh`), then in the unit `CacheDirectory=lotuscheck`,

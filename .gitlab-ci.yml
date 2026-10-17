@@ -18,6 +18,11 @@ variables:
   # job, and twice over in e2e.
   GOCACHE: "$CI_PROJECT_DIR/.go/cache"
   GO_VERSION: "1.26.2"
+  # The runner keeps caches on the host (/srv/gitlab-runner/cache, see
+  # deploy/README.md); archiving them is on every job's critical path, so
+  # compress for speed, not size.
+  FF_USE_FASTZIP: "true"
+  CACHE_COMPRESSION_LEVEL: "fastest"
   POSTGRES_IMAGE: "postgres:17-alpine"
 
 # test, e2e and build share nothing but the commit, so all three start at
@@ -161,8 +166,9 @@ e2e:
     - npx playwright test
   artifacts:
     when: always
+    # The CI reporter is `dot` (no HTML report); test-results holds the
+    # traces and screenshots of anything that failed.
     paths:
-      - e2e/playwright-report/
       - e2e/test-results/
     expire_in: 7 days
   only:
