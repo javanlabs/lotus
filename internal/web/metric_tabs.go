@@ -26,6 +26,9 @@ type metricTab struct {
 	Value, Unit      string
 	// ValueTone colours the number: pass|fail|none, or brand for a score.
 	ValueTone string
+	// Grade is a letter shown as a badge beside the number (Sentry's A–E),
+	// "" for none.
+	Grade string
 	Sub       string
 	// Bar is the MeterBar under the number, nil for none.
 	Bar []barSegment
@@ -143,6 +146,11 @@ func componentTabs(project *repo.Project, comp *repo.Component, bindings []repo.
 				// collector's own phrasing the note under it.
 				tab.Value = statusWord(collector.Status(kh.Status))
 				tab.Sub = headlineText(kh)
+			}
+			// Sentry grades its score A–E; the letter is what people quote,
+			// so it sits beside the number rather than only on the page.
+			if k == "sentry" {
+				tab.Grade = kh.Grade
 			}
 			at := kindSyncedAt(*metric, kh)
 			if note := staleNote(k, at, now); note != "" {

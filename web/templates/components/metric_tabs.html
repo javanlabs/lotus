@@ -32,7 +32,7 @@
         <div class="lotus-mt-tab{{if $on}} is-active{{end}}{{if .Muted}} is-muted{{end}}{{if .Lead}} is-lead{{end}}" data-tab="{{.Key}}">
           {{if .Href}}<a href="{{.Href}}" class="lotus-mt-link"{{if $on}} aria-current="page"{{end}}{{if .Title}} title="{{.Title}}"{{end}}>{{else}}<div class="lotus-mt-link" aria-disabled="true">{{end}}
             <span class="lotus-mt-label">{{.Label}}</span>
-            <span class="lotus-mt-main"><span class="lotus-mt-value {{if eq .ValueTone "brand"}}lotus-mt-value-brand{{else}}lotus-text-{{.ValueTone}}{{end}}"{{if $on}} data-headline{{end}}>{{.Value}}</span>{{if .Unit}}<span class="lotus-mt-unit">{{.Unit}}</span>{{end}}</span>
+            <span class="lotus-mt-main"><span class="lotus-mt-value {{if eq .ValueTone "brand"}}lotus-mt-value-brand{{else}}lotus-text-{{.ValueTone}}{{end}}"{{if $on}} data-headline{{end}}>{{.Value}}</span>{{if .Unit}}<span class="lotus-mt-unit">{{.Unit}}</span>{{end}}{{if .Grade}}<span class="lotus-badge lotus-badge-{{.ValueTone}} lotus-mt-grade" title="Grade {{.Grade}}">{{.Grade}}</span>{{end}}</span>
             <span class="lotus-mt-bar">{{range .Bar}}<span class="lotus-bar-{{.Tone}}" style="flex:{{.Flex}}"></span>{{end}}</span>
             <span class="lotus-mt-sub">{{.Sub}}</span>
           {{if .Href}}</a>{{else}}</div>{{end}}

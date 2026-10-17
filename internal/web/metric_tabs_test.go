@@ -246,6 +246,22 @@ func TestComponentTabs(t *testing.T) {
 		t.Error("a component tab drew an info button")
 	}
 
+	// Sentry's grade sits beside its score; no other kind shows one.
+	sentryHeadlines := map[string]repo.KindHeadline{
+		"sentry":    {Status: "fail", Score: intPtr(17), Grade: "E", UpdatedAt: at(time.Hour)},
+		"sonarqube": {Status: "pass", Score: intPtr(92), Grade: "A", UpdatedAt: at(time.Hour)},
+	}
+	graded := componentTabs(project, comp, []repo.Binding{{Kind: "sentry", Enabled: true}, {Kind: "sonarqube", Enabled: true}},
+		&repo.ComponentMetric{ComponentID: comp.ID, UpdatedAt: now, MetricsJSON: metricsJSON(t, sentryHeadlines)})
+	for _, tab := range graded {
+		if want := map[string]string{"sentry": "E"}[tab.Key]; tab.Grade != want {
+			t.Errorf("%s grade = %q, want %q", tab.Key, tab.Grade, want)
+		}
+	}
+	if html := renderMetricTabs(t, map[string]any{"Active": "sentry", "Tabs": graded}); !strings.Contains(html, `title="Grade E">E</span>`) {
+		t.Errorf("the sentry tab does not show its grade:\n%s", html)
+	}
+
 	// Before any sync, and with nothing bound, the strip keeps its shape —
 	// every tab drawn, none a link.
 	empty := componentTabs(project, comp, nil, nil)

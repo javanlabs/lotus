@@ -660,6 +660,7 @@ body {
 .lotus-mt-value { font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
 .lotus-mt-value-brand { color: var(--text-brand); }
 .lotus-mt-unit { font: 500 10px var(--font-mono); color: var(--text-faint); }
+.lotus-mt-grade { align-self: center; margin-left: 2px; font-weight: 700; }
 /* MeterBar, as the KPI tiles draw it: coloured runs over the --ink-100
    track, 2px apart (the score's healthy/failing split); the unfilled
    remainder is a transparent run. */
