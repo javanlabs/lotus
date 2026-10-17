@@ -170,8 +170,8 @@ func runServe(cfg config.Config) {
 	// Repository scans need trivy and git on this host; without them
 	// they stay off rather than fail on every repository.
 	trivy.ConfigureRepoScan(trivy.RepoScanConfig{TrivyBin: cfg.TrivyBin, CacheDir: cfg.TrivyCacheDir})
-	repoScans := true
-	if err := trivy.RepoScanAvailable(); err != nil {
+	repoScans := cfg.RepoScans
+	if err := trivy.RepoScanAvailable(); err != nil && repoScans {
 		repoScans = false
 		log.Printf("trivy repository scans off: %v", err)
 	}

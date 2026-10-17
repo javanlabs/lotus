@@ -22,7 +22,10 @@ export default defineConfig({
     // LOTUS_FEATURE_QA=1: the QA specs drive QA Tools, which is off by
     // default. Its off state is covered by internal/web/feature_qa_test.go;
     // one server cannot run both ways.
-    command: `cd .. && make css && ADDR=:${PORT} LOTUS_DEV=1 LOTUS_FEATURE_QA=1 go run ./cmd/lotus serve`,
+    // TRIVY_REPO_SCANS=0: the scheduler would otherwise give every seeded
+    // GitLab binding a repository scan, and a spec's Trivy tab would turn
+    // bound under it. A spec that needs one seeds it.
+    command: `cd .. && make css && ADDR=:${PORT} LOTUS_DEV=1 LOTUS_FEATURE_QA=1 TRIVY_REPO_SCANS=0 go run ./cmd/lotus serve`,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

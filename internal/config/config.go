@@ -79,6 +79,11 @@ type Config struct {
 	// default under the service user's cache.
 	TrivyBin      string
 	TrivyCacheDir string
+	// RepoScans lets the scheduler create repository-scan bindings on its
+	// own (TRIVY_REPO_SCANS=0 turns that off; on by default). Scans that
+	// already exist still run. The e2e server turns it off, so a spec's
+	// seeded GitLab binding does not grow a Trivy tab mid-test.
+	RepoScans bool
 
 	// Features switches whole modules that ship in the binary but are not
 	// offered on every instance; see Features.
@@ -256,6 +261,7 @@ func Load() Config {
 		WorkerCount:        envInt("LOTUS_WORKER_COUNT", 4),
 		TrivyBin:           envOr("TRIVY_BIN", "trivy"),
 		TrivyCacheDir:      os.Getenv("TRIVY_CACHE_DIR"),
+		RepoScans:          os.Getenv("TRIVY_REPO_SCANS") != "0",
 		Features:           Features{QA: envFlag("LOTUS_FEATURE_QA")},
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
