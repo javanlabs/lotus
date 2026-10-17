@@ -126,6 +126,15 @@ func (s *repoSession) Collect(ctx context.Context, req collector.CollectRequest)
 		return collector.Result{}, collector.ErrConfig(fmt.Errorf("trivy repository scan: %q is not a GitLab project path", req.ExternalKey))
 	}
 
+	// Ask GitLab's API for the project first, through the connection's
+	// HTTP client: that client carries the SSRF guard, and git does not,
+	// so this is what checks — right before the clone — that the host
+	// still resolves somewhere Lotus may reach. It also tells a missing
+	// project and a bad token apart by status code, not by git's wording.
+	if _, err := s.client.ProjectExists(ctx, path); err != nil {
+		return collector.Result{}, classifyGitlab(err)
+	}
+
 	select {
 	case scanSlot <- struct{}{}:
 		defer func() { <-scanSlot }()

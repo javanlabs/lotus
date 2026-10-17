@@ -3,6 +3,9 @@ package trivy_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/cgi"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,10 +27,13 @@ const fsReport = `{"SchemaVersion":2,"ArtifactType":"filesystem","Results":[{"Ta
   {"VulnerabilityID":"CVE-2022-42889","PkgName":"org.apache.commons:commons-text","InstalledVersion":"1.9","FixedVersion":"1.10.0","Severity":"CRITICAL"},
   {"VulnerabilityID":"CVE-2024-0001","PkgName":"com.example:lib","InstalledVersion":"2.0","Severity":"HIGH"}]}]}`
 
-// repoScanFixture is a GitLab stand-in on disk: a bare repository at
-// <root>/group/app.git holding one commit with a .trivyignore, and a
-// trivy stand-in that writes fsReport to --output and records the
-// directory it ran in. It returns the base URL and that record's path.
+// repoScanFixture is a GitLab stand-in: an HTTP server answering the
+// API's project lookup for group/app and serving a bare repository of it
+// over git's smart HTTP (git http-backend, as a real server runs it), one
+// commit with a .trivyignore; and a
+// trivy stand-in that writes fsReport to --output and records what it
+// saw in the directory it ran in. It returns the base URL and that
+// record's path.
 func repoScanFixture(t *testing.T) (baseURL, ranIn string) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -53,10 +59,39 @@ func repoScanFixture(t *testing.T) (baseURL, ranIn string) {
 	}
 	git(work, "add", ".")
 	git(work, "commit", "-q", "-m", "init")
-	if err := os.MkdirAll(filepath.Join(root, "group"), 0o755); err != nil {
+	served := filepath.Join(root, "served")
+	bare := filepath.Join(served, "group", "app.git")
+	if err := os.MkdirAll(filepath.Dir(bare), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	git(root, "clone", "-q", "--bare", work, filepath.Join(root, "group", "app.git"))
+	git(root, "clone", "-q", "--bare", work, bare)
+
+	execPath, err := exec.Command("git", "--exec-path").Output()
+	if err != nil {
+		t.Fatalf("git --exec-path: %v", err)
+	}
+	backend := &cgi.Handler{
+		Path: filepath.Join(strings.TrimSpace(string(execPath)), "git-http-backend"),
+		Env:  []string{"GIT_PROJECT_ROOT=" + served, "GIT_HTTP_EXPORT_ALL=1"},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rest, ok := strings.CutPrefix(r.URL.Path, "/api/v4/projects/"); ok {
+			if rest != "group/app" {
+				http.NotFound(w, r)
+				return
+			}
+			w.Write([]byte(`{"id":1,"path_with_namespace":"group/app"}`)) //nolint:errcheck
+			return
+		}
+		// Git must present the connection's token, as GitLab requires.
+		if user, pass, ok := r.BasicAuth(); !ok || user != "oauth2" || pass != "glpat-test" {
+			w.Header().Set("WWW-Authenticate", `Basic realm="GitLab"`)
+			http.Error(w, "HTTP Basic: Access denied", http.StatusUnauthorized)
+			return
+		}
+		backend.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
 
 	report := filepath.Join(root, "report.json")
 	if err := os.WriteFile(report, []byte(fsReport), 0o644); err != nil {
@@ -78,7 +113,7 @@ cp "` + report + `" "$out"
 	}
 	trivycollector.ConfigureRepoScan(trivycollector.RepoScanConfig{TrivyBin: script, Timeout: time.Minute})
 	t.Cleanup(func() { trivycollector.ConfigureRepoScan(trivycollector.RepoScanConfig{}) })
-	return "file://" + root, ranIn
+	return srv.URL, ranIn
 }
 
 func openRepoScan(t *testing.T, baseURL string) collector.Session {
