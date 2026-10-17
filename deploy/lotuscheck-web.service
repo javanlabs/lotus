@@ -26,6 +26,13 @@ LimitNOFILE=65535
 # with the database.
 StateDirectory=lotuscheck
 StateDirectoryMode=0750
+# Repository scans' Trivy database (~1.5 GB, refreshed by Trivy itself)
+# lives in /var/cache/lotuscheck — ProtectHome hides the service user's
+# own ~/.cache, so Trivy's default would not be writable. Each scan's
+# clone goes to the private /tmp and is removed when the scan ends.
+CacheDirectory=lotuscheck
+CacheDirectoryMode=0750
+Environment=TRIVY_CACHE_DIR=/var/cache/lotuscheck/trivy
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

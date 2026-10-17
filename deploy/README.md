@@ -208,6 +208,16 @@ the site and a `25m` location for the QA upload routes. Backups:
 `/etc/systemd/system/lotuscheck-web.service.bak-20260927` and
 `/root/nginx-lotuscheck.bak-20260927`.
 
+Repository scans (2026-10-17) need, on a server provisioned before them:
+`sudo apt-get install git` and trivy from Aqua's apt repository (the
+commands are in `bootstrap.sh`), then in the unit `CacheDirectory=lotuscheck`,
+`CacheDirectoryMode=0750` and
+`Environment=TRIVY_CACHE_DIR=/var/cache/lotuscheck/trivy`, then
+`daemon-reload` and a restart. Until trivy is there Lotus starts as before
+and logs `trivy repository scans off: …`. The first scan downloads Trivy's
+vulnerability database (~1.5 GB unpacked) into that cache, so leave room for
+it and let the server reach `mirror.gcr.io` / `ghcr.io`.
+
 Applied on collab on 2026-09-28, for the legacy Lotus migration:
 `ALTER ROLE lotuscheck_migrate BYPASSRLS` — the retention and timeseries
 passes run as that role across organizations, and under FORCE ROW LEVEL

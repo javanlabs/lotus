@@ -45,7 +45,16 @@ ssh -o ConnectTimeout=10 "${REMOTE}" "echo ok" >/dev/null
 
 log "Installing prerequisites..."
 ssh "${REMOTE}" "sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends \
-  nginx certbot python3-certbot-nginx postgresql postgresql-client curl ca-certificates"
+  nginx certbot python3-certbot-nginx postgresql postgresql-client curl ca-certificates git gnupg"
+
+# Trivy, from Aqua's apt repository, for repository scans: a component with
+# no container image is scanned by cloning its GitLab repository and running
+# `trivy fs` over it. Without trivy (or git) on PATH Lotus leaves those scans
+# off and logs why at startup.
+log "Installing trivy..."
+ssh "${REMOTE}" "curl -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo gpg --dearmor --yes -o /usr/share/keyrings/trivy.gpg && \
+  echo 'deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main' | sudo tee /etc/apt/sources.list.d/trivy.list >/dev/null && \
+  sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends trivy"
 
 log "Creating app user + directories..."
 ssh "${REMOTE}" "sudo useradd --system --create-home --shell /usr/sbin/nologin lotuscheck 2>/dev/null || true; \
