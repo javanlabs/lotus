@@ -357,6 +357,13 @@ type ProjectBinding struct {
 	ConnectionName   string          `db:"connection_name"`
 	ConnectionURL    string          `db:"connection_base_url"`
 	ConnectionConfig json.RawMessage `db:"connection_config"`
+	Config           json.RawMessage `db:"config"`
+}
+
+// RepoScan reports whether b is a repository-scan Trivy binding
+// (IsRepoScan): its connection is GitLab and its key a project path.
+func (b ProjectBinding) RepoScan() bool {
+	return IsRepoScan(&Binding{Kind: "trivy", Config: b.Config})
 }
 
 // ListProjectBindingsByKind is every live binding of kind on the project's
@@ -366,7 +373,7 @@ func ListProjectBindingsByKind(ctx context.Context, s tenant.Scope, projectID uu
 	var out []ProjectBinding
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.SelectContext(ctx, &out, `
-			SELECT mb.id AS binding_id, mb.component_id, mb.external_key, mb.enabled,
+			SELECT mb.id AS binding_id, mb.component_id, mb.external_key, mb.enabled, mb.config,
 			       ic.name AS connection_name, ic.base_url AS connection_base_url, ic.config AS connection_config
 			FROM metric_bindings mb
 			JOIN components c ON c.id = mb.component_id

@@ -190,6 +190,20 @@ func TestProjectMetricPage_Sonar(t *testing.T) {
 	}
 }
 
+// A component scanned by repository (no image) links out to its GitLab
+// project, not to a Harbor path built on GitLab's address, and its row
+// names the commit it scanned where an image row lists its tags.
+func TestProjectMetricPage_TrivyRepositoryScan(t *testing.T) {
+	f := seedKindPage(t, "acme-pm-trivy-repo", "trivy")
+	f.exec(t, `UPDATE metric_bindings SET config = '{"source":"repo"}', external_key = 'grp/ledger-api' WHERE id = $1`, f.ledgerBind)
+	ins := `INSERT INTO trivy_snapshots (org_id, binding_id, component_id, source, digest, tags, severity, total, critical, high, medium, low, fixable)
+	        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`
+	f.exec(t, ins, f.e.orgID, f.billingBind, f.billing, "registry", nil, "{v1.4.0}", "None", 0, 0, 0, 0, 0, 0)
+	f.exec(t, ins, f.e.orgID, f.ledgerBind, f.ledger, "repo", "e7ef1359715d57e6ecf3a2503d691154d6bed1c4", "{}", "Critical", 9, 2, 3, 4, 0, 5)
+	f.checkKindPage(t, "trivy", "commit e7ef1359", `href="https://tool.example/grp/ledger-api"`,
+		`href="https://tool.example/harbor/projects/grp/repositories/billing-api"`)
+}
+
 func TestProjectMetricPage_Trivy(t *testing.T) {
 	f := seedKindPage(t, "acme-pm-trivy", "trivy")
 	ins := `INSERT INTO trivy_snapshots (org_id, binding_id, component_id, source, tags, severity, total, critical, high, medium, low, fixable, pulls)

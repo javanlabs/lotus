@@ -198,6 +198,10 @@ func buildTrivyKindPage(b *kindPageBase, snaps []repo.TrivySnapshot, falsePositi
 	for i := range b.page.Rows {
 		row, bd := &b.page.Rows[i], b.bindings[i]
 		row.ProviderURL = harborRepoURL(bd.ConnectionURL, bd.ExternalKey)
+		if bd.RepoScan() {
+			// A repository scan reads a GitLab project, not a Harbor image.
+			row.ProviderURL = strings.TrimRight(bd.ConnectionURL, "/") + "/" + strings.Trim(bd.ExternalKey, "/")
+		}
 		snap, ok := bySnap[bd.BindingID]
 		if !ok {
 			row.Cells = missingCells(b.page.Columns, trivySeverityCol)
@@ -211,6 +215,14 @@ func buildTrivyKindPage(b *kindPageBase, snaps []repo.TrivySnapshot, falsePositi
 		tagCell := kindCell{Text: kindMissing}
 		if tags != "" {
 			tagCell = kindCell{Text: tags, Title: tags, Sort: tags, Mono: true}
+		}
+		// A repository scan has no image tags; what it scanned is a commit.
+		if snap.Source == repo.RepoScanSource && snap.Digest != nil {
+			short := *snap.Digest
+			if len(short) > 8 {
+				short = short[:8]
+			}
+			tagCell = kindCell{Text: "commit " + short, Title: "Repository scan of commit " + *snap.Digest, Sort: short, Mono: true}
 		}
 		sev := badgeCell{Text: kindMissing, Tone: "none"}
 		sevSort := ""
