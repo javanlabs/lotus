@@ -777,6 +777,9 @@ body {
 }
 .lotus-binding-meta h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.02em; color: var(--text-brand); }
 .lotus-binding-key { font: 400 12px var(--font-mono); color: var(--text-muted); overflow-wrap: anywhere; }
+a.lotus-binding-key { display: inline-flex; align-items: center; gap: 4px; color: var(--status-pass); text-decoration: none; }
+a.lotus-binding-key:hover { text-decoration: underline; }
+a.lotus-binding-key svg { flex: none; }
 .lotus-binding-via { font-size: 11.5px; color: var(--text-faint); }
 .lotus-binding-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .lotus-binding-result { max-width: 260px; line-height: 1.4; text-align: right; }

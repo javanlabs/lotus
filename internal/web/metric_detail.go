@@ -12,6 +12,8 @@ package web
 import (
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -60,6 +62,10 @@ type metricChrome struct {
 	// by the pages that draw a header; the fragment and form handlers
 	// leave it empty rather than pay for its queries.
 	Tabs []metricTab
+	// SentryEnvs, set by the Sentry page, lets ProviderURL open the
+	// project's issue stream filtered as the sync filters it, rather than
+	// the project's front page.
+	SentryEnvs []repo.SentryEnvironmentSummary
 }
 
 // loadTabs fills Tabs.
@@ -77,6 +83,35 @@ func (m *metricChrome) loadTabs(c *fiber.Ctx, s tenant.Scope) error {
 // links off this instead of re-formatting slugs and kinds.
 func (m metricChrome) BasePath() string {
 	return metricURL(&m.Project, &m.Component, m.Binding.Kind)
+}
+
+// ProviderURL opens what this binding reads in the integration's own web
+// UI — the metric header links its key there, in a new tab: the SonarQube
+// dashboard, the Harbor repository (or the GitLab project, for a
+// repository scan), the Sentry project's issues, the GitLab project. The
+// same addresses the project's page for the kind opens a row in.
+func (m metricChrome) ProviderURL() string {
+	base := strings.TrimRight(m.Connection.BaseURL, "/")
+	key := m.Binding.ExternalKey
+	if base == "" || key == "" {
+		return ""
+	}
+	switch m.Binding.Kind {
+	case "sonarqube":
+		return base + "/dashboard?id=" + url.QueryEscape(key)
+	case "trivy":
+		if repo.IsRepoScan(&m.Binding) {
+			return base + "/" + strings.Trim(key, "/")
+		}
+		return harborRepoURL(base, key)
+	case "sentry":
+		return sentryIssuesURL(repo.ProjectBinding{
+			ExternalKey: key, ConnectionURL: base, ConnectionConfig: m.Connection.Config,
+		}, m.SentryEnvs)
+	case "gitlab":
+		return base + "/" + strings.Trim(key, "/")
+	}
+	return ""
 }
 
 // ProjectURL and ComponentURL are the metric header's breadcrumb links.

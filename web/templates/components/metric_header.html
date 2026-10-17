@@ -14,7 +14,8 @@
 <div class="lotus-binding-bar">
   <div class="lotus-binding-meta">
     <h2>{{.KindLabel}}</h2>
-    <span class="lotus-binding-key">{{$b.ExternalKey}}</span>
+    {{with .Chrome.ProviderURL}}<a href="{{.}}" target="_blank" rel="noopener" class="lotus-binding-key" title="Open in {{$.Chrome.Connection.Name}}">{{$b.ExternalKey}}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M14 4h6v6m0-6l-9 9M10 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-4"></path></svg></a>
+    {{else}}<span class="lotus-binding-key">{{$b.ExternalKey}}</span>{{end}}
     <span class="lotus-binding-via">via {{.Chrome.Connection.Name}}{{if not $b.Enabled}} · disabled{{end}}</span>
   </div>
   {{$syncs := eq (printf "%v" .Section) "syncs"}}
