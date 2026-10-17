@@ -113,3 +113,75 @@ func seriesBucketed(ctx context.Context, s tenant.Scope, table string, bucketWid
 	}
 	return out, nil
 }
+
+// DailySeries is key's value on each of the last `days` calendar days up
+// to and including now's: one Point per day, in order, the day's last
+// reading. A day with no reading carries the previous day's value
+// forward — the integrations report a state, and a state with no new
+// reading has not changed — starting from the last reading before the
+// window when there is one. Only days before the very first reading
+// have no value. Days are the database's calendar days, the same buckets
+// metric_facts_daily rolls up into; a day still in raw metric_facts
+// (kept for 14) reads from there, an older one from the rollup.
+func DailySeries(ctx context.Context, s tenant.Scope, bindingID uuid.UUID, key string, days int, now time.Time) ([]Point, error) {
+	if days < 1 {
+		days = 1
+	}
+	var rows []struct {
+		Day   time.Time `db:"day"`
+		Value *float64  `db:"value"`
+	}
+	var seed *float64
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		if err := tx.SelectContext(ctx, &rows, `
+			WITH bounds AS (
+			    SELECT date_trunc('day', $3::timestamptz) - ($4::int - 1) * interval '1 day' AS first_day,
+			           $3::timestamptz AS until
+			), grid AS (
+			    SELECT generate_series(b.first_day, date_trunc('day', b.until), interval '1 day') AS day FROM bounds b
+			), raw AS (
+			    SELECT DISTINCT ON (date_trunc('day', f.collected_at)) date_trunc('day', f.collected_at) AS day, f.value_num AS value
+			    FROM metric_facts f, bounds b
+			    WHERE f.binding_id = $1 AND f.key = $2 AND f.value_num IS NOT NULL
+			      AND f.collected_at >= b.first_day AND f.collected_at <= b.until
+			    ORDER BY date_trunc('day', f.collected_at), f.collected_at DESC
+			), rolled AS (
+			    SELECT d.bucket AS day, d.value_last AS value
+			    FROM metric_facts_daily d, bounds b
+			    WHERE d.binding_id = $1 AND d.key = $2 AND d.value_last IS NOT NULL AND d.bucket >= b.first_day
+			)
+			SELECT g.day, COALESCE(raw.value, rolled.value) AS value
+			FROM grid g LEFT JOIN raw ON raw.day = g.day LEFT JOIN rolled ON rolled.day = g.day
+			ORDER BY g.day`, bindingID, key, now, days); err != nil {
+			return err
+		}
+		// The value going into the window: the newest reading before it,
+		// raw or rolled up, whichever is later.
+		return tx.GetContext(ctx, &seed, `
+			SELECT value FROM (
+			    (SELECT collected_at AS at, value_num AS value FROM metric_facts
+			     WHERE binding_id = $1 AND key = $2 AND value_num IS NOT NULL AND collected_at < $3
+			     ORDER BY collected_at DESC LIMIT 1)
+			    UNION ALL
+			    (SELECT bucket AS at, value_last AS value FROM metric_facts_daily
+			     WHERE binding_id = $1 AND key = $2 AND value_last IS NOT NULL AND bucket < $3
+			     ORDER BY bucket DESC LIMIT 1)
+			) prior ORDER BY at DESC LIMIT 1`, bindingID, key, rows[0].Day)
+	})
+	if err != nil && !isNoRows(err) {
+		return nil, err
+	}
+	out := make([]Point, 0, len(rows))
+	carry := seed
+	for _, r := range rows {
+		if r.Value != nil {
+			carry = r.Value
+		}
+		p := Point{At: r.Day}
+		if carry != nil {
+			p.Value, p.HasValue, p.Min, p.Max = *carry, true, *carry, *carry
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}

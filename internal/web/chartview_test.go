@@ -377,3 +377,74 @@ func TestEaseChanges(t *testing.T) {
 		t.Errorf("xs = %v, want the held reading halfway back to the one before, 45", xs2)
 	}
 }
+
+// dailyPoints is one point per day, oldest first, ending today; nil
+// values are days before the first reading.
+func dailyPoints(values ...*float64) []repo.Point {
+	today := time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC)
+	out := make([]repo.Point, len(values))
+	for i, v := range values {
+		out[i].At = today.AddDate(0, 0, i-len(values)+1)
+		if v != nil {
+			out[i].Value, out[i].HasValue = *v, true
+		}
+	}
+	return out
+}
+
+func f(v float64) *float64 { return &v }
+
+// The x axis is the window's days, evenly spaced: seven days are seven
+// positions, each a dot and a hover point, the curve through all of them.
+func TestBuildDailyChartSVG_OnePositionPerDay(t *testing.T) {
+	got := buildDailyChartSVG(dailyPoints(f(10), f(10), f(12), f(12), f(12), f(15), f(15)), "higher_better", "count", 560, 130)
+	var hover []struct {
+		X    float64
+		V, T string
+	}
+	if err := json.Unmarshal([]byte(got.Hover), &hover); err != nil || len(hover) != 7 {
+		t.Fatalf("hover = %s (%v), want 7 days", got.Hover, err)
+	}
+	step := hover[1].X - hover[0].X
+	for i := 1; i < len(hover); i++ {
+		if d := hover[i].X - hover[i-1].X; math.Abs(d-step) > 0.15 {
+			t.Errorf("day %d is %.1f%% from the one before, want an even %.1f%%", i, d, step)
+		}
+	}
+	if hover[6].T != "18 Oct" || hover[0].T != "12 Oct" || hover[6].V != "15" {
+		t.Errorf("hover ends = %+v … %+v", hover[0], hover[6])
+	}
+	svg := string(got.SVG)
+	if n := strings.Count(svg, " h0\""); n != 7 {
+		t.Errorf("%d day dots, want 7", n)
+	}
+	if d := linePath(t, svg); strings.Count(d, "M") != 1 || strings.Count(d, "C") != 6 {
+		t.Errorf("want one unbroken curve of six segments:\n%s", d)
+	}
+	if got.Tone != "pass" || got.Latest != "15" {
+		t.Errorf("tone %q latest %q", got.Tone, got.Latest)
+	}
+}
+
+// Days before the first reading are left empty and the curve starts at
+// the first that has one, each of those ten days a dot.
+func TestBuildDailyChartSVG_StartsAtTheFirstReading(t *testing.T) {
+	values := make([]*float64, 30)
+	for i := 20; i < 30; i++ {
+		values[i] = f(90)
+	}
+	got := buildDailyChartSVG(dailyPoints(values...), "higher_better", "%", 560, 130)
+	var hover []struct{ X float64 }
+	if err := json.Unmarshal([]byte(got.Hover), &hover); err != nil || len(hover) != 10 {
+		t.Fatalf("hover = %s, want the ten days with a value", got.Hover)
+	}
+	if hover[0].X < 60 {
+		t.Errorf("the curve starts at %.1f%%, want two thirds of the way in", hover[0].X)
+	}
+	if n := strings.Count(string(got.SVG), " h0\""); n != 10 {
+		t.Errorf("%d dots for ten days, want one per day", n)
+	}
+	if got := buildDailyChartSVG(dailyPoints(make([]*float64, 7)...), "neutral", "count", 560, 130); got.HasData {
+		t.Error("a window with no reading at all has data")
+	}
+}

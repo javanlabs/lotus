@@ -40,6 +40,16 @@ func resolveChartRange(rangeKey string) (from, to time.Time, label string) {
 	}
 }
 
+// chartRangeDays is how many calendar days a range's chart spans, one
+// value per day (repo.DailySeries): 7d is seven, 30d thirty — today and
+// the days before it.
+func chartRangeDays(rangeKey string) int {
+	if rangeKey == "30d" {
+		return 30
+	}
+	return 7
+}
+
 // metricChartCard is one metric_keys row rendered as a chart — the
 // "satu grafik buat tiap key aktif" unit task 4.6's spec describes.
 type metricChartCard struct {
@@ -70,14 +80,15 @@ func buildMetricChartCards(ctx context.Context, s tenant.Scope, bindingID uuid.U
 	if err != nil {
 		return nil, err
 	}
-	from, to, _ := resolveChartRange(rangeKey)
+	days := chartRangeDays(rangeKey)
+	now := time.Now()
 
 	cards := make([]metricChartCard, 0, len(keys))
 	for _, k := range keys {
 		if k.ValueType != "number" {
 			continue
 		}
-		points, err := repo.Series(ctx, s, bindingID, k.Key, from, to)
+		points, err := repo.DailySeries(ctx, s, bindingID, k.Key, days, now)
 		if err != nil {
 			return nil, err
 		}
@@ -85,7 +96,7 @@ func buildMetricChartCards(ctx context.Context, s tenant.Scope, bindingID uuid.U
 		if !k.Active {
 			card.InactiveSince = k.LastSeenAt.Local().Format("2006-01-02")
 		}
-		card.Chart = buildChartSVG(points, k.Direction, k.Unit, from, to, 560, 130)
+		card.Chart = buildDailyChartSVG(points, k.Direction, k.Unit, 560, 130)
 		cards = append(cards, card)
 	}
 	return cards, nil

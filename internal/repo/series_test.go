@@ -313,3 +313,73 @@ func TestBackfillDaily_MatchesDirectAggregationFromRaw(t *testing.T) {
 		}
 	}
 }
+
+// DailySeries gives one value per calendar day: the day's last reading,
+// from raw facts or, once those are gone, the daily rollup; a day with
+// none carries the day before forward, starting from the last reading
+// before the window.
+func TestDailySeries_OneValuePerDayCarriedForward(t *testing.T) {
+	db := dbtest.Open(t)
+	orgID, componentID, bindingID := seedMFFixture(t, db, "acme-daily", "gitlab")
+	scope := tenant.FromRun(db, orgID)
+
+	var today time.Time
+	if err := db.Get(&today, `SELECT date_trunc('day', now())`); err != nil {
+		t.Fatal(err)
+	}
+	day := func(n int) time.Time { return today.AddDate(0, 0, -n) }
+	withOrgTxMF(t, db, orgID, func(tx *sqlx.Tx) {
+		raw := func(at time.Time, v float64) {
+			if _, err := tx.Exec(`INSERT INTO metric_facts (org_id, binding_id, component_id, key, value_num, unit, collected_at)
+				VALUES ($1,$2,$3,'gitlab.coverage',$4,'%',$5)`, orgID, bindingID, componentID, v, at); err != nil {
+				t.Fatalf("raw: %v", err)
+			}
+		}
+		raw(day(10).Add(9*time.Hour), 5) // before the window: the value going in
+		raw(day(3).Add(8*time.Hour), 7)
+		raw(day(3).Add(20*time.Hour), 8) // the day's last reading wins
+		if _, err := tx.Exec(`INSERT INTO metric_facts_daily (org_id, binding_id, component_id, key, bucket, value_min, value_max, value_avg, value_last, sample_count)
+			VALUES ($1,$2,$3,'gitlab.coverage',$4, 6, 6, 6, 6, 1)`, orgID, bindingID, componentID, day(5)); err != nil {
+			t.Fatalf("daily: %v", err)
+		}
+	})
+
+	points, err := repo.DailySeries(context.Background(), scope, bindingID, "gitlab.coverage", 7, time.Now())
+	if err != nil {
+		t.Fatalf("DailySeries: %v", err)
+	}
+	want := []float64{5, 6, 6, 8, 8, 8, 8} // days 6..0 ago
+	if len(points) != len(want) {
+		t.Fatalf("%d points, want 7: %+v", len(points), points)
+	}
+	for i, p := range points {
+		if !p.At.Equal(day(6-i)) || !p.HasValue || p.Value != want[i] {
+			t.Errorf("day %d ago = %+v, want %v", 6-i, p, want[i])
+		}
+	}
+}
+
+func TestDailySeries_DaysBeforeTheFirstReadingAreEmpty(t *testing.T) {
+	db := dbtest.Open(t)
+	orgID, componentID, bindingID := seedMFFixture(t, db, "acme-daily-first", "gitlab")
+	scope := tenant.FromRun(db, orgID)
+	var today time.Time
+	if err := db.Get(&today, `SELECT date_trunc('day', now())`); err != nil {
+		t.Fatal(err)
+	}
+	withOrgTxMF(t, db, orgID, func(tx *sqlx.Tx) {
+		if _, err := tx.Exec(`INSERT INTO metric_facts (org_id, binding_id, component_id, key, value_num, unit, collected_at)
+			VALUES ($1,$2,$3,'gitlab.coverage',90,'%',$4)`, orgID, bindingID, componentID, today.AddDate(0, 0, -2).Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	})
+	points, err := repo.DailySeries(context.Background(), scope, bindingID, "gitlab.coverage", 7, time.Now())
+	if err != nil {
+		t.Fatalf("DailySeries: %v", err)
+	}
+	for i, p := range points {
+		if wantValue := i >= 4; p.HasValue != wantValue || (wantValue && p.Value != 90) {
+			t.Errorf("point %d = %+v, want HasValue=%v", i, p, wantValue)
+		}
+	}
+}

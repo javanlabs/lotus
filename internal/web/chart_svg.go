@@ -131,15 +131,7 @@ func buildChartSVG(points []repo.Point, direction, unit string, from, to time.Ti
 	// 94.6% filled the chart top to bottom and read as a collapse. A
 	// perfectly flat series centres its line (still a real chart —
 	// coverage steady at 90% all week — not an empty state).
-	const minSpanFrac = 0.05
-	lo, hi := minV, maxV
-	if span := math.Max(math.Abs(lo+hi)/2*minSpanFrac, 1e-9); hi-lo < span {
-		mid := (lo + hi) / 2
-		lo, hi = mid-span/2, mid+span/2
-		if minV >= 0 && lo < 0 { // a count or a percentage never dips below zero
-			lo, hi = 0, span
-		}
-	}
+	lo, hi := yDomain(minV, maxV)
 	valRange := hi - lo
 
 	if from.IsZero() || to.IsZero() {
@@ -507,5 +499,122 @@ func easeChanges(xs, ys []float64, minW float64) {
 		if want < xs[i] {
 			xs[i] = math.Max(want, xs[i-1]+(xs[i]-xs[i-1])/2)
 		}
+	}
+}
+
+// yDomain is the y axis for readings between minV and maxV: their range,
+// but never narrower than 5% of their size, centred on them — see
+// buildChartSVG.
+func yDomain(minV, maxV float64) (lo, hi float64) {
+	const minSpanFrac = 0.05
+	lo, hi = minV, maxV
+	if span := math.Max(math.Abs(lo+hi)/2*minSpanFrac, 1e-9); hi-lo < span {
+		mid := (lo + hi) / 2
+		lo, hi = mid-span/2, mid+span/2
+		if minV >= 0 && lo < 0 { // a count or a percentage never dips below zero
+			lo, hi = 0, span
+		}
+	}
+	return lo, hi
+}
+
+// buildDailyChartSVG draws one value per calendar day (repo.DailySeries)
+// as a smooth curve: the x axis is exactly the window's days, evenly
+// spaced, oldest left and today right, so a 7-day chart has seven
+// positions and a 30-day one thirty. Days before the first reading have
+// no value and the curve starts at the first that does; every later day
+// has one, carried forward over days without a reading, so the line has
+// no gaps. Each day is a dot when there are few enough to tell apart.
+//
+// Tone, labels and Hover follow buildChartSVG.
+func buildDailyChartSVG(days []repo.Point, direction, unit string, width, height float64) chartSVG {
+	n := len(days)
+	first := -1
+	minV, maxV := 0.0, 0.0
+	for i, p := range days {
+		if !p.HasValue {
+			continue
+		}
+		if first < 0 {
+			first, minV, maxV = i, p.Value, p.Value
+		}
+		minV, maxV = math.Min(minV, p.Value), math.Max(maxV, p.Value)
+	}
+	if first < 0 {
+		return chartSVG{HasData: false}
+	}
+	lo, hi := yDomain(minV, maxV)
+	const marginFrac = 0.1
+	plotTop, plotHeight := height*marginFrac, height*(1-2*marginFrac)
+	// A dot's radius of room at each end, so the first and last day are
+	// not half cut off by the card.
+	const pad = 4.0
+	x := func(i int) float64 {
+		if n == 1 {
+			return width / 2
+		}
+		return pad + float64(i)/float64(n-1)*(width-2*pad)
+	}
+	y := func(v float64) float64 { return plotTop + plotHeight - (v-lo)/(hi-lo)*plotHeight }
+
+	firstVal, lastVal := days[first].Value, days[n-1].Value
+	tone := "none"
+	switch delta := lastVal - firstVal; {
+	case direction == "higher_better" && delta > 0, direction == "lower_better" && delta < 0:
+		tone = "pass"
+	case direction == "higher_better" && delta < 0, direction == "lower_better" && delta > 0:
+		tone = "fail"
+	}
+	color := chartToneColor[tone]
+
+	type hoverPoint struct {
+		X float64 `json:"x"`
+		Y float64 `json:"y"`
+		V string  `json:"v"`
+		T string  `json:"t"`
+	}
+	var xs, ys []float64
+	var hover []hoverPoint
+	var dots strings.Builder
+	showDots := n-first <= 10
+	for i := first; i < n; i++ {
+		px, py := x(i), y(days[i].Value)
+		xs, ys = append(xs, px), append(ys, py)
+		hover = append(hover, hoverPoint{
+			X: math.Round(px/width*1000) / 10, Y: math.Round(py/height*1000) / 10,
+			V: formatMetricValue(days[i].Value, unit), T: days[i].At.Format("02 Jan"),
+		})
+		if showDots || i == n-1 {
+			// A zero-length stroke with round caps: the SVG is stretched to
+			// the card, and a <circle> would stretch into an ellipse with
+			// it; a non-scaling stroke stays round.
+			w := 4.0
+			if i == n-1 {
+				w = 5.5
+			}
+			fmt.Fprintf(&dots, `<path d="M%.2f,%.2f h0" stroke="%s" stroke-width="%.1f" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`, px, py, color, w)
+		}
+	}
+	var line, area string
+	if len(xs) > 1 {
+		line = monotonePath(xs, ys)
+		area = fmt.Sprintf("%s L%.2f,%.2f L%.2f,%.2f Z", line, xs[len(xs)-1], height, xs[0], height)
+	} else {
+		line = fmt.Sprintf("M%.2f,%.2f", xs[0], ys[0])
+	}
+	hoverJSON, _ := json.Marshal(hover)
+
+	svg := fmt.Sprintf(
+		`<svg viewBox="0 0 %.0f %.0f" preserveAspectRatio="none" style="width:100%%;height:100%%;display:block;overflow:visible">`+
+			`<path data-area d="%s" fill="%s" fill-opacity=".08" stroke="none"/>`+
+			`<path data-line d="%s" fill="none" stroke="%s" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`+
+			`%s</svg>`,
+		width, height, area, color, line, color, dots.String())
+
+	return chartSVG{
+		HasData: true, SVG: template.HTML(svg), Tone: tone, //nolint:gosec // built entirely from numeric formatting above, no user input
+		MinLabel: formatMetricValue(minV, unit), MaxLabel: formatMetricValue(maxV, unit),
+		Latest: formatMetricValue(lastVal, unit),
+		Hover:  string(hoverJSON),
 	}
 }
