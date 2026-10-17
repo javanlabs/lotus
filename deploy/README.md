@@ -72,7 +72,8 @@ migration `00003` creates, which is what lets `internal/db.OpenApp`'s
 
 ## Deploying
 
-Push to `main`, then run the manual `deploy_prod` job. Or from your laptop,
+Push to `main`: once test and e2e pass and the binary builds, `deploy_prod`
+runs on its own. Or from your laptop,
 reading the secrets back out of GitLab so they exist in exactly one place:
 
 ```bash
@@ -87,9 +88,11 @@ PROD_SERVER_HOST=collab ./deploy/deploy.sh
 Credentials go through the environment, never command-line flags: a flag
 lands in shell history and is visible in `ps(1)` to every user on the box.
 
-`deploy_prod` is `when: manual` on purpose. A green pipeline is not by
-itself a reason to restart a live instance under whoever is reading the
-dashboard.
+`deploy_prod` runs automatically on every green pipeline on `main` (since
+2026-10-18; it was manual before). `update.sh`'s health check and rollback
+keep a binary that does not come up from staying up. To push without
+deploying, put `[skip ci]` in the commit message — that skips the whole
+pipeline, tests included.
 
 ### What `update.sh` does
 

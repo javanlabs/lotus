@@ -183,10 +183,11 @@ build:
 # Optional: APP_ADDR, LOTUS_BASE_DOMAIN, LOTUS_WORKER_COUNT, LOTUS_FEATURE_QA, GITHUB_*,
 #   GOOGLE_*, SMTP_*.
 #
-# Manual (`when: manual`) rather than automatic on main. Lotus is a
-# single-tenant install today holding one organization's live metrics; a
-# green pipeline is not on its own a reason to restart it under whoever
-# happens to be looking at the dashboard.
+# Automatic on main (2026-10-18): every push to main that passes test and
+# e2e and builds goes to production. build has no `needs`, so it waits for
+# both earlier stages; deploy needs only build's artifact. update.sh's
+# health check and rollback are what keep a bad binary from staying up.
+# To hold a push back, put [skip ci] in its commit message.
 # ---------------------------------------------------------------------------
 deploy_prod:
   stage: deploy
@@ -201,7 +202,7 @@ deploy_prod:
       - main
     variables:
       - $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
-  when: manual
+  when: on_success
   before_script:
     - eval $(ssh-agent -s)
     - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
