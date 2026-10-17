@@ -25,7 +25,13 @@ export default defineConfig({
     // TRIVY_REPO_SCANS=0: the scheduler would otherwise give every seeded
     // GitLab binding a repository scan, and a spec's Trivy tab would turn
     // bound under it. A spec that needs one seeds it.
-    command: `cd .. && make css && ADDR=:${PORT} LOTUS_DEV=1 LOTUS_FEATURE_QA=1 TRIVY_REPO_SCANS=0 go run ./cmd/lotus serve`,
+    //
+    // LOTUS_E2E_BIN runs an already-built binary instead (CI builds one and
+    // migrates with it, rather than compiling twice through `go run`); the
+    // stylesheet must then already be built too.
+    command: process.env.LOTUS_E2E_BIN
+      ? `cd .. && ADDR=:${PORT} LOTUS_DEV=1 LOTUS_FEATURE_QA=1 TRIVY_REPO_SCANS=0 ${process.env.LOTUS_E2E_BIN} serve`
+      : `cd .. && make css && ADDR=:${PORT} LOTUS_DEV=1 LOTUS_FEATURE_QA=1 TRIVY_REPO_SCANS=0 go run ./cmd/lotus serve`,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

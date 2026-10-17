@@ -13,6 +13,25 @@ variables:
   GIT_DEPTH: "20"
   GOPATH: "$CI_PROJECT_DIR/.go"
   GOMODCACHE: "$CI_PROJECT_DIR/.go/pkg/mod"
+  # The compiled-package cache. Without it every job compiled the whole
+  # tree from nothing — about a minute and a half of each test and build
+  # job, and twice over in e2e.
+  GOCACHE: "$CI_PROJECT_DIR/.go/cache"
+  GO_VERSION: "1.26.2"
+  POSTGRES_IMAGE: "postgres:17-alpine"
+
+# test, e2e and build share nothing but the commit, so all three start at
+# once (`needs: []`); deploy waits for all of them. The stages only order
+# the graph's display.
+#
+# Each job keeps its own cache: test binaries, the linux release build and
+# e2e's toolchain compile different things, and three parallel jobs
+# writing one key would overwrite each other. A branch's first pipeline
+# starts from main's.
+.go_cache: &go_cache
+  paths:
+    - .go/pkg/mod/
+    - .go/cache/
 
 # ---------------------------------------------------------------------------
 # Test — full suite against a real Postgres service, plus the two static
@@ -25,19 +44,24 @@ variables:
 # ---------------------------------------------------------------------------
 test:
   stage: test
+  needs: []
+  # A newer push to the same ref makes this run moot; GitLab may cancel it.
+  interruptible: true
   tags:
     - product
   image: golang:1.26-bookworm
   services:
-    - name: postgres:17-alpine
+    - name: $POSTGRES_IMAGE
       alias: postgres
       # One schema per test, and migration 00018 builds 60 partitions plus
       # their policies in a single transaction. `go test ./...` runs
       # packages in parallel, so the concurrent schema builds exhaust the
       # default 64-entry lock table and Postgres answers "out of shared
       # memory (SQLSTATE 53200)" — random-looking failures in whichever
-      # package lost the race, with nothing wrong in the code.
-      command: ["postgres", "-c", "max_locks_per_transaction=512"]
+      # package lost the race, with nothing wrong in the code. fsync and
+      # synchronous_commit off: a test database is thrown away with the
+      # job, and every one of those schema builds otherwise waits on disk.
+      command: ["postgres", "-c", "max_locks_per_transaction=512", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
   variables:
     POSTGRES_USER: lotus
     POSTGRES_PASSWORD: lotus
@@ -53,23 +77,34 @@ test:
     variables:
       - $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
   cache:
-    key: lotus-${CI_COMMIT_REF_SLUG}
-    paths:
-      - .go/pkg/mod/
+    <<: *go_cache
+    key: lotus-test-${CI_COMMIT_REF_SLUG}
+    fallback_keys:
+      - lotus-test-main
 
 # ---------------------------------------------------------------------------
 # E2E — Playwright drives a real build of the app against a real Postgres.
-# Same webServer command as local (`make css` + `go run ./cmd/lotus serve`),
-# so this exercises the exact dev-mode boot path contributors use.
+#
+# Runs in Playwright's own image, pinned to the version e2e/package-lock.json
+# installs: Node, Chromium and every library it needs are already there,
+# where the golang image spent a minute and a half on apt, NodeSource and
+# `playwright install --with-deps` on every run. Go comes in as a tarball,
+# kept in the cache with Tailwind. The app is built once and that binary
+# both migrates and serves (LOTUS_E2E_BIN, e2e/playwright.config.ts), where
+# `go run` used to compile it twice. Bump the image tag with the lockfile.
 # ---------------------------------------------------------------------------
 e2e:
   stage: e2e
+  needs: []
+  # A newer push to the same ref makes this run moot; GitLab may cancel it.
+  interruptible: true
   tags:
     - product
-  image: golang:1.26-bookworm
+  image: mcr.microsoft.com/playwright:v1.62.1-noble
   services:
-    - name: postgres:17-alpine
+    - name: $POSTGRES_IMAGE
       alias: postgres
+      command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
   variables:
     POSTGRES_USER: lotus
     POSTGRES_PASSWORD: lotus
@@ -79,6 +114,10 @@ e2e:
     # take effect.
     DATABASE_URL: "postgres://lotus:lotus@postgres:5432/lotus?sslmode=disable"
     MIGRATE_DATABASE_URL: "postgres://lotus:lotus@postgres:5432/lotus?sslmode=disable"
+    LOTUS_E2E_BIN: "./bin/lotus"
+    # npm ci empties node_modules every run; its download cache is what
+    # is worth keeping.
+    npm_config_cache: "$CI_PROJECT_DIR/.npm"
   before_script:
     # Neutralize the deploy-only project variables before anything reads
     # them. Project CI/CD variables OUTRANK a job's own `variables:` block,
@@ -98,21 +137,27 @@ e2e:
       export DATABASE_URL="postgres://lotus:lotus@postgres:5432/lotus?sslmode=disable"
       export MIGRATE_DATABASE_URL="$DATABASE_URL"
       export LOTUS_BASE_DOMAIN="lotus.localhost"
+    # Go and Tailwind, from the cache when they are there.
+    - command -v curl >/dev/null || (apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates)
+    - |
+      if [ ! -x .go/sdk/go/bin/go ]; then
+        mkdir -p .go/sdk
+        curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -C .go/sdk -xz
+      fi
+      export PATH="$CI_PROJECT_DIR/.go/sdk/go/bin:$PATH"
+      go version
+    - |
+      if [ ! -x .go/tailwindcss ]; then
+        curl -fsSL -o .go/tailwindcss https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
+        chmod +x .go/tailwindcss
+      fi
+    - .go/tailwindcss -i web/static/css/app.css -o web/static/css/app.built.css --minify
+    - CGO_ENABLED=0 go build -o bin/lotus ./cmd/lotus
     - for i in $(seq 1 30); do (echo > /dev/tcp/postgres/5432) >/dev/null 2>&1 && break; sleep 1; done
-    # Debian bookworm packages Node 18; Playwright 1.48 refuses to run on
-    # anything below Node 20 ("Please update your version of Node.js") and
-    # exits before installing a browser. NodeSource gives a supported LTS
-    # on the same golang image, which is cheaper than adding a second
-    # image and installing Go into it.
-    - apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates gnupg
-    - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-    - apt-get install -y --no-install-recommends nodejs
-    - node --version
-    - go run ./cmd/lotus migrate up
+    - ./bin/lotus migrate up
   script:
     - cd e2e
-    - npm install
-    - npx playwright install --with-deps chromium
+    - npm ci
     - npx playwright test
   artifacts:
     when: always
@@ -124,27 +169,39 @@ e2e:
     variables:
       - $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
   cache:
-    key: lotus-${CI_COMMIT_REF_SLUG}
+    key: lotus-e2e-${CI_COMMIT_REF_SLUG}
+    fallback_keys:
+      - lotus-e2e-main
     paths:
       - .go/pkg/mod/
+      - .go/cache/
+      - .go/sdk/
+      - .go/tailwindcss
+      - .npm/
 
 # ---------------------------------------------------------------------------
 # Build — produces the self-contained Linux binary as an artifact. Lotus
 # embeds its templates + static assets, uses the standalone Tailwind CLI (no
 # Node), and pure-Go pgx for Postgres (CGO_ENABLED=0), so the build is a
-# single static binary with no runtime dependencies.
+# single static binary with no runtime dependencies. It does not wait for
+# the tests: deploy does.
 # ---------------------------------------------------------------------------
 build:
   stage: build
+  needs: []
+  # A newer push to the same ref makes this run moot; GitLab may cancel it.
+  interruptible: true
   tags:
     - product
   image: golang:1.26-bookworm
-  before_script:
-    - apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates
-    - curl -fsSL -o /usr/local/bin/tailwindcss https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
-    - chmod +x /usr/local/bin/tailwindcss
   script:
-    - tailwindcss -i web/static/css/app.css -o web/static/css/app.built.css --minify
+    - |
+      if [ ! -x .go/tailwindcss ]; then
+        mkdir -p .go
+        curl -fsSL -o .go/tailwindcss https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
+        chmod +x .go/tailwindcss
+      fi
+    - .go/tailwindcss -i web/static/css/app.css -o web/static/css/app.built.css --minify
     - mkdir -p bin
     - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/lotus ./cmd/lotus
     - ls -la bin/lotus
@@ -161,9 +218,13 @@ build:
     variables:
       - $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
   cache:
-    key: lotus-${CI_COMMIT_REF_SLUG}
+    key: lotus-build-${CI_COMMIT_REF_SLUG}
+    fallback_keys:
+      - lotus-build-main
     paths:
       - .go/pkg/mod/
+      - .go/cache/
+      - .go/tailwindcss
 
 # ---------------------------------------------------------------------------
 # Deploy — ships the built binary and renders the runtime config from GitLab
@@ -184,19 +245,27 @@ build:
 #   GOOGLE_*, SMTP_*.
 #
 # Automatic on main (2026-10-18): every push to main that passes test and
-# e2e and builds goes to production. build has no `needs`, so it waits for
-# both earlier stages; deploy needs only build's artifact. update.sh's
+# e2e and builds goes to production; deploy needs all three. update.sh's
 # health check and rollback are what keep a bad binary from staying up.
 # To hold a push back, put [skip ci] in its commit message.
 # ---------------------------------------------------------------------------
 deploy_prod:
   stage: deploy
+  # One deploy at a time: two pushes close together queue their deploys
+  # rather than swap the binary under each other.
+  resource_group: production
   tags:
     - product
   image: javanlabs/ssh-client:latest
+  # Deploys only what passed: the build's binary, once test and e2e are
+  # green — they no longer gate build itself.
   needs:
     - job: build
       artifacts: true
+    - job: test
+      artifacts: false
+    - job: e2e
+      artifacts: false
   only:
     refs:
       - main
