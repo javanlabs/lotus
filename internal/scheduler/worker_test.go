@@ -231,3 +231,60 @@ func TestPool_NoClaimableRunReturnsFalseNotError(t *testing.T) {
 		t.Fatal("expected claimed=false on an empty queue")
 	}
 }
+
+// A binding with its own sync_interval_seconds (a daily repository
+// scan) is next due a day out, not at the scheduler's 15-minute default.
+func TestPool_BindingIntervalSetsNextSync(t *testing.T) {
+	db := dbtest.Open(t)
+	orgID, connID, bindingID := seedFixture(t, db, "acme-interval")
+	ctx := context.Background()
+	withOrgTxSchedTest(t, db, orgID, func(tx *sqlx.Tx) {
+		if _, err := tx.Exec(`UPDATE metric_bindings SET sync_interval_seconds = 86400 WHERE id = $1`, bindingID); err != nil {
+			t.Fatalf("set interval: %v", err)
+		}
+	})
+	if _, _, err := global.EnqueueRun(ctx, db, global.NewSyncRun{OrgID: orgID, ConnectionID: connID, BindingID: bindingID, Kind: "gitlab", Trigger: "manual", ScheduledFor: time.Now()}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	pool := &scheduler.Pool{DB: db, WorkerID: "w1", LeaseDuration: 10 * time.Minute, Execute: func(ctx context.Context, run *global.SyncRun) (collector.Result, error) {
+		return collector.Result{Facts: []collector.Fact{numFact("gitlab.commits_30d", 5)}}, nil
+	}}
+	if _, err := pool.ClaimAndRun(ctx); err != nil {
+		t.Fatalf("ClaimAndRun: %v", err)
+	}
+	binding, err := repo.BindingByID(ctx, tenant.FromRun(db, orgID), bindingID)
+	if err != nil {
+		t.Fatalf("BindingByID: %v", err)
+	}
+	if d := time.Until(*binding.NextSyncAt); d < 20*time.Hour || d > 28*time.Hour {
+		t.Fatalf("next sync in %v, want about a day", d)
+	}
+}
+
+// A collect that outlasts its lease keeps it: the worker renews the
+// lease while Execute runs, so the reaper never requeues a run that is
+// still in progress.
+func TestPool_LongCollectKeepsItsLease(t *testing.T) {
+	db := dbtest.Open(t)
+	orgID, connID, bindingID := seedFixture(t, db, "acme-lease")
+	ctx := context.Background()
+	if _, _, err := global.EnqueueRun(ctx, db, global.NewSyncRun{OrgID: orgID, ConnectionID: connID, BindingID: bindingID, Kind: "gitlab", Trigger: "manual", ScheduledFor: time.Now()}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	reaped := -1
+	pool := &scheduler.Pool{DB: db, WorkerID: "w1", LeaseDuration: 3 * time.Second, Execute: func(ctx context.Context, run *global.SyncRun) (collector.Result, error) {
+		time.Sleep(4500 * time.Millisecond) // longer than one lease
+		n, err := global.ReapExpiredLeases(ctx, db)
+		if err != nil {
+			t.Errorf("reap: %v", err)
+		}
+		reaped = n
+		return collector.Result{Facts: []collector.Fact{numFact("gitlab.commits_30d", 5)}}, nil
+	}}
+	if _, err := pool.ClaimAndRun(ctx); err != nil {
+		t.Fatalf("ClaimAndRun: %v", err)
+	}
+	if reaped != 0 {
+		t.Fatalf("reaper took back %d run(s) mid-collect, want 0", reaped)
+	}
+}

@@ -58,8 +58,48 @@ func (p *Pool) ClaimAndRun(ctx context.Context) (claimed bool, err error) {
 		return true, err
 	}
 
+	stop := p.keepLeased(ctx, run.ID)
 	result, execErr := p.Execute(ctx, run)
+	stop()
 	return true, p.handleResult(ctx, run, result, execErr)
+}
+
+// keepLeased renews run's lease every third of LeaseDuration until the
+// returned stop is called. Most collects finish in seconds, well inside
+// one lease; a repository scan can outlast it, and without renewal the
+// reaper would requeue the run mid-scan and a second worker would start
+// the same scan over.
+func (p *Pool) keepLeased(ctx context.Context, runID int64) (stop func()) {
+	every := p.LeaseDuration / 3
+	if every <= 0 {
+		return func() {}
+	}
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				_ = global.ExtendLease(ctx, p.DB, runID, p.LeaseDuration)
+			}
+		}
+	}()
+	return func() { close(done) }
+}
+
+// syncInterval is how long binding waits between runs: its own
+// sync_interval_seconds when set (a repository scan runs daily), the
+// scheduler's default otherwise.
+func syncInterval(b *repo.Binding) time.Duration {
+	if b.SyncIntervalSeconds != nil && *b.SyncIntervalSeconds > 0 {
+		return time.Duration(*b.SyncIntervalSeconds) * time.Second
+	}
+	return DefaultSyncInterval
 }
 
 func (p *Pool) handleResult(ctx context.Context, run *global.SyncRun, result collector.Result, execErr error) error {
@@ -118,7 +158,7 @@ func (p *Pool) handleResult(ctx context.Context, run *global.SyncRun, result col
 		return err
 	}
 
-	nextSyncAt := time.Now().Add(EnqueueJitter(DefaultSyncInterval))
+	nextSyncAt := time.Now().Add(EnqueueJitter(syncInterval(binding)))
 	return repo.UpdateBindingAfterRun(ctx, scope, run.BindingID, nextSyncAt, status, 0)
 }
 
@@ -149,7 +189,7 @@ func (p *Pool) handleError(ctx context.Context, scope tenant.Scope, run *global.
 		if failures >= brokenAfterConsecutiveNotFound {
 			lastStatus = "broken"
 		}
-		if err := repo.UpdateBindingAfterRun(ctx, scope, run.BindingID, time.Now().Add(EnqueueJitter(DefaultSyncInterval)), lastStatus, failures); err != nil {
+		if err := repo.UpdateBindingAfterRun(ctx, scope, run.BindingID, time.Now().Add(EnqueueJitter(syncInterval(binding))), lastStatus, failures); err != nil {
 			return err
 		}
 		return global.FinishRun(ctx, p.DB, run.ID, global.FinishRunParams{Status: "failed", ErrorClass: &classStr, Error: &msg})

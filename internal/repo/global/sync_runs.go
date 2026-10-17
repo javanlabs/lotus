@@ -130,6 +130,18 @@ func ClaimRun(ctx context.Context, db *sqlx.DB, workerID string, excludedOrgIDs 
 	return &run, nil
 }
 
+// ExtendLease pushes a still-running run's lease out to leaseDuration
+// from now. A worker calls it while a long collect (a repository scan)
+// is in progress, so the reaper does not take the run back and hand it
+// to a second worker while the first is still on it.
+func ExtendLease(ctx context.Context, db *sqlx.DB, id int64, leaseDuration time.Duration) error {
+	_, err := db.ExecContext(ctx, `
+		UPDATE sync_runs SET lease_expires_at = now() + ($2::text || ' seconds')::interval
+		WHERE id = $1 AND status IN ('leased', 'running')`,
+		id, strconv.Itoa(int(leaseDuration.Seconds())))
+	return err
+}
+
 // MarkRunStarted transitions a leased run to running, right before the
 // worker actually calls the collector — kept distinct from the claim
 // itself so a run's status can tell "claimed but not yet dispatched" (a
