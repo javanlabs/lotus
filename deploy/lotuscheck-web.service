@@ -33,6 +33,9 @@ StateDirectoryMode=0750
 CacheDirectory=lotuscheck
 CacheDirectoryMode=0750
 Environment=TRIVY_CACHE_DIR=/var/cache/lotuscheck/trivy
+# git (a repository scan's clone) reads its config from $HOME, and
+# ProtectHome hides the service user's real one.
+Environment=HOME=/var/lib/lotuscheck
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
