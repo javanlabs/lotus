@@ -596,7 +596,7 @@ body {
    - the tabs are the SegmentedControl, value for value the one qa_subnav
      draws: the sunken plum track, 3px padding, 2px gaps, and the white
      thumb on the open tab;
-   - each tab carries a KPI tile's anatomy (mono label, number, MeterBar,
+   - each tab carries a KPI tile's anatomy (mono label, number, verdict chip,
      note) at stat_card's 22px number;
    - the open tab's other numbers sit in the same card under the track, in
      stat_card's typography.
@@ -660,12 +660,28 @@ body {
 .lotus-mt-value { font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
 .lotus-mt-value-brand { color: var(--text-brand); }
 .lotus-mt-unit { font: 500 10px var(--font-mono); color: var(--text-faint); }
-/* MeterBar, as the KPI tiles draw it: coloured runs over the --ink-100
-   track, 2px apart (the score's healthy/failing split); the unfilled
-   remainder is a transparent run. */
-.lotus-mt-bar { display: flex; gap: 2px; height: 4px; border-radius: 2px; background: var(--ink-100); overflow: hidden; }
-.lotus-mt-bar > span { display: block; height: 100%; border-radius: 2px; }
-.lotus-mt-bar > .lotus-bar-rest { background: transparent; }
+/* The verdict chip under the number: status_badge's pill and tones with a
+   check or cross glyph, so a verdict never rests on colour alone. The slot
+   holds its height when empty (nothing to judge yet), so the strip is one
+   height whichever tabs carry a chip. Stale dashes it, as a stale table
+   cell is dashed. It replaced a MeterBar filled to the number above it. */
+.lotus-mt-verdict-slot { display: flex; height: 17px; min-width: 0; }
+.lotus-mt-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 6px 0 5px;
+  border-radius: var(--radius-petal-xs);
+  font: 500 10px / 17px var(--font-mono);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lotus-mt-verdict > svg { flex: none; }
+.lotus-mt-verdict-pass { color: var(--status-pass); background: var(--status-pass-bg); }
+.lotus-mt-verdict-fail { color: var(--status-fail); background: var(--status-fail-bg); }
+.lotus-mt-verdict.is-stale { outline: 1px dashed currentColor; outline-offset: -1px; }
 /* A tab with nothing to show yet (an unbound kind): read as absent, the
    way "no data" is grey everywhere, but still a link to bind it. */
 .lotus-mt-tab.is-muted .lotus-mt-label,

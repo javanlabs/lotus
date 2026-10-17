@@ -476,7 +476,7 @@ func buildScoreCard(statuses []collector.Status, score *int) scoreCard {
 	total := healthy + failing
 	sc := scoreCard{
 		HealthyN: healthy, FailingN: failing,
-		Info: "Each tool averaged across the components reporting it, then those averages combined — one vote per tool. Unreported tools are skipped, not zeroed. The bar splits components by status.",
+		Info: "Each tool averaged across the components reporting it, then those averages combined — one vote per tool. Unreported tools are skipped, not zeroed. The chip under it counts the failing components the average can hide.",
 	}
 	if score != nil {
 		sc.HasScore = true
@@ -574,9 +574,14 @@ func buildKPIs(kindStatuses map[string][]collector.Status, measured map[string]i
 	return kpis
 }
 
+// passRateTarget is the pass rate, in percent, at which a share of
+// passing components reads as passing: a KPI tab, a folder row's bar. The
+// metric strip names it in its chip ("Meets 80% target").
+const passRateTarget = 80
+
 func rateTone(pct int) string {
 	switch {
-	case pct >= 80:
+	case pct >= passRateTarget:
 		return "pass"
 	default:
 		return "fail"

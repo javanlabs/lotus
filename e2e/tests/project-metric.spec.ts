@@ -169,6 +169,13 @@ test('the metric tabs stay put while switching between the project and its integ
   await tabs.getByRole('link').first().click();
   await expect(page).toHaveURL(`${origin}/projects/payments`);
   await expect(open).toContainText('LOTUS SCORE');
+
+  // Every tab is the same height, chip or no chip, and a tab with a
+  // verdict says it in words.
+  const heights = await tabs.locator('.lotus-mt-tab').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+  expect(new Set(heights).size).toBe(1);
+  await expect(tabs.locator('[data-verdict]').first()).toHaveText(/failing|healthy/);
+  await tabs.screenshot({ path: 'test-results/project-strip.png' });
 });
 
 test('every kind page fits a phone and a laptop without the page scrolling sideways', async ({ page, context }) => {

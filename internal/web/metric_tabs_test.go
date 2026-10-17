@@ -274,18 +274,123 @@ func TestFirstBoundKind(t *testing.T) {
 	}
 }
 
-func TestMeter(t *testing.T) {
+// A pass rate's chip says whether it meets the target, and by how much it
+// misses — the same line rateTone colours the number by.
+func TestRateVerdict(t *testing.T) {
 	for _, c := range []struct {
 		pct  int
-		want []barSegment
+		want tabVerdict
 	}{
-		{0, []barSegment{{"rest", 100}}},
-		{50, []barSegment{{"pass", 50}, {"rest", 50}}},
-		{100, []barSegment{{"pass", 100}}},
-		{140, []barSegment{{"pass", 100}}},
+		{100, tabVerdict{Tone: "pass", Text: "Meets 80% target"}},
+		{80, tabVerdict{Tone: "pass", Text: "Meets 80% target"}},
+		{79, tabVerdict{Tone: "fail", Text: "1 pt below 80%"}},
+		{50, tabVerdict{Tone: "fail", Text: "30 pts below 80%"}},
+		{0, tabVerdict{Tone: "fail", Text: "80 pts below 80%"}},
 	} {
-		if got := meter("pass", c.pct); !reflect.DeepEqual(got, c.want) {
-			t.Errorf("meter(%d) = %v, want %v", c.pct, got, c.want)
+		got := rateVerdict(c.pct)
+		if *got != c.want {
+			t.Errorf("rateVerdict(%d) = %+v, want %+v", c.pct, *got, c.want)
 		}
+		if got.Tone != rateTone(c.pct) {
+			t.Errorf("rateVerdict(%d) tone %s, but the number is %s", c.pct, got.Tone, rateTone(c.pct))
+		}
+	}
+}
+
+// The project strip's chips: the score counts its failing components, each
+// pass rate measures itself against the target, and a kind with no data
+// draws an empty slot rather than a verdict.
+func TestProjectTabs_Verdicts(t *testing.T) {
+	kpis := []kpiCard{
+		{Key: "sonarqube", Value: "50", Unit: "%", Tone: "fail"},
+		{Key: "trivy", Value: "100", Unit: "%", Tone: "pass"},
+		{Key: "sentry", Value: "–", Tone: "none"},
+		{Key: "gitlab", Value: "80", Unit: "%", Tone: "pass"},
+	}
+	for _, c := range []struct {
+		name  string
+		score scoreCard
+		want  *tabVerdict
+		sub   string
+	}{
+		{"failing", scoreCard{HealthyN: 5, FailingN: 2}, &tabVerdict{Tone: "fail", Text: "2 failing"}, "5 of 7 components healthy"},
+		{"healthy", scoreCard{HealthyN: 3}, &tabVerdict{Tone: "pass", Text: "All healthy"}, "3 of 3 components healthy"},
+		{"empty", scoreCard{}, nil, "no data yet"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			tabs := projectTabs(c.score, kpis)
+			if !reflect.DeepEqual(tabs[0].Verdict, c.want) || tabs[0].Sub != c.sub {
+				t.Errorf("score tab verdict %+v sub %q, want %+v %q", tabs[0].Verdict, tabs[0].Sub, c.want, c.sub)
+			}
+			want := map[string]*tabVerdict{
+				"sonarqube": {Tone: "fail", Text: "30 pts below 80%"},
+				"trivy":     {Tone: "pass", Text: "Meets 80% target"},
+				"sentry":    nil,
+				"gitlab":    {Tone: "pass", Text: "Meets 80% target"},
+			}
+			for _, tab := range tabs[1:] {
+				if !reflect.DeepEqual(tab.Verdict, want[tab.Key]) {
+					t.Errorf("%s verdict %+v, want %+v", tab.Key, tab.Verdict, want[tab.Key])
+				}
+			}
+		})
+	}
+}
+
+// A component tab's chip carries the verdict of a scored kind — dashed
+// once stale — and every tab, chip or not, draws the slot so the strip
+// keeps one height.
+func TestComponentTabs_Verdicts(t *testing.T) {
+	now := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	dashboardNow = func() time.Time { return now }
+	t.Cleanup(func() { dashboardNow = time.Now })
+
+	project := &repo.Project{ID: uuid.New(), Slug: "alurkerja"}
+	comp := &repo.Component{ID: uuid.New(), Slug: "app"}
+	at := func(d time.Duration) *time.Time { v := now.Add(-d); return &v }
+	headlines := map[string]repo.KindHeadline{
+		"sonarqube": {Status: "pass", Score: intPtr(96), UpdatedAt: at(time.Hour)},
+		"trivy":     {Status: "fail", Score: intPtr(17), UpdatedAt: at(18 * 24 * time.Hour)},
+		"sentry":    {Status: "fail", CountValue: int64Ptr(86), CountLabel: "issue", UpdatedAt: at(time.Hour)},
+	}
+	metric := &repo.ComponentMetric{ComponentID: comp.ID, Status: "fail", UpdatedAt: now, MetricsJSON: metricsJSON(t, headlines)}
+	bindings := []repo.Binding{{Kind: "sonarqube", Enabled: true}, {Kind: "trivy", Enabled: false}, {Kind: "sentry", Enabled: true}}
+
+	tabs := componentTabs(project, comp, bindings, metric)
+	want := map[string]*tabVerdict{
+		"sonarqube": {Tone: "pass", Text: "Passing"},
+		"trivy":     {Tone: "fail", Text: "Failing", Stale: true},
+		"sentry":    nil, // no score: the status word is already the number
+		"gitlab":    nil, // unbound
+	}
+	for _, tab := range tabs {
+		if !reflect.DeepEqual(tab.Verdict, want[tab.Key]) {
+			t.Errorf("%s verdict %+v, want %+v", tab.Key, tab.Verdict, want[tab.Key])
+		}
+	}
+	if tv := tabs[1]; tv.Sub != "Disabled · Stale · synced 18 days ago" {
+		t.Errorf("trivy sub %q", tv.Sub)
+	}
+	// SonarQube said nothing but its status, which the chip already says:
+	// the line under it says when it synced instead.
+	if s := tabs[0]; s.Sub != "Synced 1 hr ago" {
+		t.Errorf("sonarqube sub %q, want when it synced", s.Sub)
+	}
+
+	html := renderMetricTabs(t, map[string]any{"Active": "sonarqube", "Tabs": tabs})
+	if n := strings.Count(html, `class="lotus-mt-verdict-slot"`); n != len(tabs) {
+		t.Errorf("%d verdict slots, want one per tab (%d)", n, len(tabs))
+	}
+	for _, s := range []string{
+		`lotus-mt-verdict lotus-mt-verdict-pass" data-verdict="pass">`,
+		`lotus-mt-verdict lotus-mt-verdict-fail is-stale" data-verdict="fail">`,
+		"Passing</span>", "Failing</span>",
+	} {
+		if !strings.Contains(html, s) {
+			t.Errorf("strip lacks %q", s)
+		}
+	}
+	if strings.Contains(html, "lotus-mt-bar") {
+		t.Error("the strip still draws a MeterBar")
 	}
 }

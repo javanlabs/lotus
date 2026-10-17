@@ -129,6 +129,14 @@ test('a component opens on SonarQube, its bound metrics are tabs one click apart
   await expect(tabs.getByRole('link')).toHaveCount(2);
   await expect(tabs.locator('.lotus-mt-tab', { hasText: 'SENTRY' }).locator('a')).toHaveCount(0);
   await expect(page.getByText('Quality gate passed')).toBeVisible();
+  // Each scored kind says its verdict in words, not only in colour; a kind
+  // with nothing to judge draws no chip, yet every tab is the same height.
+  await expect(open.locator('[data-verdict="pass"]')).toHaveText('Passing');
+  await expect(tabs.locator('.lotus-mt-tab', { hasText: 'GITLAB' }).locator('[data-verdict="fail"]')).toHaveText('Failing');
+  await expect(tabs.locator('.lotus-mt-tab', { hasText: 'SENTRY' }).locator('[data-verdict]')).toHaveCount(0);
+  const heights = await tabs.locator('.lotus-mt-tab').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+  expect(new Set(heights).size).toBe(1);
+  await tabs.screenshot({ path: 'test-results/component-strip.png' });
   await page.screenshot({ path: 'test-results/component-tabs-sonarqube.png', fullPage: true });
 
   await tabs.getByRole('link', { name: /GITLAB/ }).click();
