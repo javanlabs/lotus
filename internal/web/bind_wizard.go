@@ -61,7 +61,7 @@ func (h bindWizardHandlers) get(c *fiber.Ctx) error {
 		kind = bindableKinds[0]
 	}
 	data := bindWizardData{
-		ComponentURL: componentURL(project, comp), ComponentName: comp.Name, Kind: kind, Kinds: bindableKinds, KindLabels: kindLabels,
+		ComponentURL: componentURL(project, comp), ComponentName: comp.Name, Kind: kind, Kinds: bindableKinds, KindLabels: connectionLabels,
 		ConnectionID: "new",
 	}
 	if data.Existing, err = existingBinding(c, s, comp.ID, kind); err != nil {
@@ -94,7 +94,7 @@ func (h bindWizardHandlers) post(c *fiber.Ctx) error {
 	externalKey := strings.TrimSpace(c.FormValue("external_key"))
 
 	data := bindWizardData{
-		ComponentURL: componentURL(project, comp), ComponentName: comp.Name, Kind: kind, Kinds: bindableKinds, KindLabels: kindLabels,
+		ComponentURL: componentURL(project, comp), ComponentName: comp.Name, Kind: kind, Kinds: bindableKinds, KindLabels: connectionLabels,
 		ConnectionID: connectionID, ExternalKey: externalKey,
 		NewConnectionName: strings.TrimSpace(c.FormValue("new_connection_name")),
 	}

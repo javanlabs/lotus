@@ -1289,3 +1289,45 @@ a.lotus-dash-figure:focus-visible { outline: none; box-shadow: var(--shadow-focu
 .lotus-crumb-item-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .lotus-crumb-item-hint { margin-left: auto; font: 400 10px var(--font-mono); color: var(--text-faint); }
 .lotus-crumb-sep { height: 1px; margin: 4px 6px; background: var(--border-subtle); }
+
+/* A repository scan's bar on the Trivy page (components/trivy_scan_status
+   .html): an icon, what the scan is doing, and Scan now. While a scan is
+   in flight the icon is a spinner and the bar takes the brand tint. */
+.lotus-scan {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-petal-sm);
+  background: #FFFFFF;
+}
+.lotus-scan.is-waiting,
+.lotus-scan.is-scanning { border-color: var(--plum-a16); background: var(--plum-a04); }
+.lotus-scan-icon { display: inline-flex; flex: none; color: var(--text-faint); }
+.lotus-scan.is-scanning .lotus-scan-icon,
+.lotus-scan.is-waiting .lotus-scan-icon { color: var(--text-brand); }
+.lotus-scan-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--plum-a16);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: lotus-spin .8s linear infinite;
+}
+.lotus-scan.is-waiting .lotus-scan-spinner { animation-duration: 1.6s; opacity: .7; }
+@keyframes lotus-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .lotus-scan-spinner { animation: none; } }
+.lotus-scan-text { flex: 1; min-width: 0; }
+.lotus-scan-title { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.lotus-scan-sub { margin-top: 2px; font-size: 11px; color: var(--text-muted); }
+.lotus-scan-error {
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 10.5px var(--font-mono);
+  color: var(--status-fail);
+}
+.lotus-scan .btn-lotus { flex: none; }

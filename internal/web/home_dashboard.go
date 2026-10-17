@@ -343,7 +343,7 @@ func ternary(cond bool, yes, no string) string {
 // serves is named everywhere else.
 func integrationProviderLabel(provider string) string {
 	if provider == "harbor_trivy" {
-		return kindLabels["trivy"]
+		return connectionLabels["trivy"]
 	}
 	if l, ok := kindLabels[provider]; ok {
 		return l

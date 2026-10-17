@@ -39,7 +39,7 @@ type connectionRow struct {
 }
 
 func providerLabel(provider string) string {
-	for kind, label := range kindLabels {
+	for kind, label := range connectionLabels {
 		if providerForKind(kind) == provider {
 			return label
 		}
@@ -159,7 +159,7 @@ func buildConnectionForm(kind, name string, values map[string]string, errMsg str
 		kind = bindableKinds[0]
 	}
 	return connectionFormView{
-		Kinds: bindableKinds, KindLabels: kindLabels, SelectedKind: kind,
+		Kinds: bindableKinds, KindLabels: connectionLabels, SelectedKind: kind,
 		Fields: connectionFieldViews(connectionFieldsFor(kind), values),
 		Name:   name, NamePlaceholder: connectionNamePlaceholder(kind), Error: errMsg,
 	}

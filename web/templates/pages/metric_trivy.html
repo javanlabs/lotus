@@ -1,15 +1,21 @@
 {{define "content"}}
 {{template "shell_open" .}}
-{{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" "Trivy (Harbor)")}}
+{{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" "Trivy")}}
+
+{{with .Data.Scan}}{{template "trivy_scan_status" .}}{{end}}
 
 {{if not .Data.Header.HasData}}
 {{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
-  No Trivy scan collected for this repository yet.
+  {{if .Data.Scan}}This repository has not been scanned yet.{{else}}No Trivy scan collected for this repository yet.{{end}}
 {{template "lotus_card_section_close" .}}
 {{else}}
 <p style="margin:0 0 14px;font-size:11px;color:#9CA3AF">
+  {{if .Data.Header.Commit}}repository scan · commit {{if .Data.Header.CommitURL}}<a href="{{.Data.Header.CommitURL}}" target="_blank" rel="noopener" style="font-family:'IBM Plex Mono',monospace;color:#23808F">{{.Data.Header.Commit}}</a>{{else}}<span style="font-family:'IBM Plex Mono',monospace">{{.Data.Header.Commit}}</span>{{end}}
+  · scanned {{.Data.Header.ScanFinishedAt}} · captured {{.Data.Header.CapturedAt}}
+  {{else}}
   source: {{.Data.Header.Source}}{{if .Data.Header.Digest}} · digest <span style="font-family:'IBM Plex Mono',monospace">{{.Data.Header.Digest}}</span>{{end}}{{if .Data.Header.Tags}} · tags {{.Data.Header.Tags}}{{end}}
   · pushed {{.Data.Header.ImagePushedAt}} · scanned {{.Data.Header.ScanFinishedAt}} · captured {{.Data.Header.CapturedAt}}
+  {{end}}
 </p>
 
 <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px">

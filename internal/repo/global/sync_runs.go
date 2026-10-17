@@ -142,6 +142,17 @@ func ExtendLease(ctx context.Context, db *sqlx.DB, id int64, leaseDuration time.
 	return err
 }
 
+// RunQueuedNow moves a binding's queued run (one at most, uq_run_inflight)
+// to the front: due now, at a manual run's priority. Someone asking for a
+// scan should not wait out the daily schedule or a retry's backoff just
+// because that run already holds the binding's place in the queue.
+func RunQueuedNow(ctx context.Context, db *sqlx.DB, orgID, bindingID uuid.UUID) error {
+	_, err := db.ExecContext(ctx, `
+		UPDATE sync_runs SET scheduled_for = LEAST(scheduled_for, now()), priority = LEAST(priority, 10), trigger = 'manual'
+		WHERE org_id = $1 AND binding_id = $2 AND status = 'queued'`, orgID, bindingID)
+	return err
+}
+
 // MarkRunStarted transitions a leased run to running, right before the
 // worker actually calls the collector — kept distinct from the claim
 // itself so a run's status can tell "claimed but not yet dispatched" (a

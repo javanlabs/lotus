@@ -329,7 +329,7 @@ func TestStaleCells_MarkEachIntegrationNotSyncedForADay(t *testing.T) {
 	if !strings.Contains(stale["sonarqube"], "SonarQube has not synced") || !strings.Contains(stale["sonarqube"], "Last synced 3 days ago") {
 		t.Fatalf("sonarqube cell note:\n%s", stale["sonarqube"])
 	}
-	if !strings.Contains(stale["trivy"], "Trivy (Harbor) has not synced") || !strings.Contains(stale["trivy"], "Last synced 1 day ago") {
+	if !strings.Contains(stale["trivy"], "Trivy has not synced") || !strings.Contains(stale["trivy"], "Last synced 1 day ago") {
 		t.Fatalf("trivy cell note:\n%s", stale["trivy"])
 	}
 	if stale["gitlab"] != "" || stale["sentry"] != "" {

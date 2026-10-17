@@ -365,6 +365,7 @@ func registerMetricDetailRoutes(app *fiber.App, d Deps, requireSession, loadPrin
 	app.Get(metricBase+"/runs", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("dashboard.read"), canonicalMetricURL("/runs"), runHistoryPage(d))
 	registerTrivyNoteRoutes(app, metricBase, requireSession, loadPrincipal)
+	registerRepoScanRoutes(app, metricBase, d, requireSession, loadPrincipal)
 	registerMetricChartRoutes(app, metricBase, d, requireSession, loadPrincipal)
 
 	// The old addresses: a GET moves to the slug URL; a Trivy note posted

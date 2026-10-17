@@ -1,0 +1,33 @@
+{{/* trivy_scan_status is a repository scan's bar on the Trivy page
+     (internal/web/trivy_scan.go): waiting or scanning while a scan is in
+     flight, otherwise how the last one went and when the next runs, and
+     "Scan now". While a scan is in flight it re-fetches itself every few
+     seconds; when that scan is done the server answers with HX-Refresh
+     and the page reloads with the new findings. Registered as a
+     component, so the page and the htmx swaps draw the same markup.
+     Takes a scanStatus. */}}
+{{define "trivy_scan_status"}}
+<div id="trivy-scan" class="lotus-scan is-{{.State}}" data-scan-state="{{.State}}" role="status" aria-live="polite"
+     {{if .Active}}hx-get="{{.BasePath}}/scan-status?was=active" hx-trigger="every 3s" hx-swap="outerHTML"{{end}}>
+  <span class="lotus-scan-icon" aria-hidden="true">
+    {{if .Active}}<span class="lotus-scan-spinner"></span>
+    {{else}}<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M4 7V5.5A1.5 1.5 0 0 1 5.5 4H7m10 0h1.5A1.5 1.5 0 0 1 20 5.5V7m0 10v1.5a1.5 1.5 0 0 1-1.5 1.5H17M7 20H5.5A1.5 1.5 0 0 1 4 18.5V17"></path><path d="M4 12h16"></path></g></svg>{{end}}
+  </span>
+  <div class="lotus-scan-text">
+    <div class="lotus-scan-title">
+      {{if eq .State "scanning"}}Scanning the repository…
+      {{else if eq .State "waiting"}}Waiting for a worker…
+      {{else}}Repository scan{{end}}
+    </div>
+    <div class="lotus-scan-sub">
+      {{if .Active}}started {{.Since}} · the page refreshes when it is done
+      {{else}}{{if .Last}}<span{{if .LastFailed}} class="lotus-text-fail"{{end}}>{{.Last}}</span>{{else}}Not scanned yet{{end}}{{if .Next}} · {{.Next}}{{end}}{{end}}
+    </div>
+    {{if and (not .Active) .LastFailed .Error}}<div class="lotus-scan-error" title="{{.Error}}">{{.Error}}</div>{{end}}
+  </div>
+  {{if .CanScan}}
+  <button type="button" class="btn-lotus btn-lotus-secondary btn-lotus-sm" hx-post="{{.BasePath}}/scan" hx-target="#trivy-scan" hx-swap="outerHTML"
+          {{if .Active}}disabled{{end}}>{{if eq .State "waiting"}}Queued…{{else if .Active}}Scanning…{{else}}Scan now{{end}}</button>
+  {{end}}
+</div>
+{{end}}

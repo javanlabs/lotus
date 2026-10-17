@@ -112,6 +112,9 @@ type trivyDetailHeader struct {
 	ImagePushedAt                                        string
 	ScanFinishedAt                                       string
 	CapturedAt                                           string
+	// Commit and CommitURL are a repository scan's: the short SHA it
+	// scanned, linking to that commit on GitLab.
+	Commit, CommitURL string
 }
 
 func buildTrivyHeader(snap *repo.TrivySnapshot) trivyDetailHeader {
@@ -121,7 +124,14 @@ func buildTrivyHeader(snap *repo.TrivySnapshot) trivyDetailHeader {
 	}
 	h.HasData = true
 	h.Source = snap.Source
-	if snap.Digest != nil {
+	if snap.Source == repo.RepoScanSource {
+		if snap.Digest != nil {
+			h.Commit = *snap.Digest
+			if len(h.Commit) > 8 {
+				h.Commit = h.Commit[:8]
+			}
+		}
+	} else if snap.Digest != nil {
 		d := *snap.Digest
 		if len(d) > 19 { // "sha256:" + 12 hex chars, matching the legacy shortDigest
 			d = d[:19]
@@ -153,6 +163,17 @@ func renderTrivyDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 		snap = nil
 	}
 	header := buildTrivyHeader(snap)
+	var scan *scanStatus
+	if repo.IsRepoScan(&chrome.Binding) {
+		if snap != nil && snap.Digest != nil {
+			header.CommitURL = strings.TrimRight(chrome.Connection.BaseURL, "/") + "/" + strings.Trim(chrome.Binding.ExternalKey, "/") + "/-/commit/" + *snap.Digest
+		}
+		st, err := loadScanStatus(c.Context(), d, &chrome, canTriggerSync(c))
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+		scan = &st
+	}
 
 	var rows []trivyCVERow
 	if snap != nil {
@@ -198,7 +219,9 @@ func renderTrivyDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 			RawDetailMissing bool
 			Flash            string
 			Charts           chartGridData
-		}{Chrome: chrome, Header: header, Rows: rows, RawDetailMissing: rawDetailMissing, Flash: flash, Charts: newChartGridData(cards, "7d", chrome.BasePath())},
+			// Scan is the repository scan's bar; nil for an image.
+			Scan *scanStatus
+		}{Chrome: chrome, Header: header, Rows: rows, RawDetailMissing: rawDetailMissing, Flash: flash, Charts: newChartGridData(cards, "7d", chrome.BasePath()), Scan: scan},
 	})
 }
 

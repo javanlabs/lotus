@@ -382,7 +382,8 @@ func ListProjectBindingsByKind(ctx context.Context, s tenant.Scope, projectID uu
 // repository instead of a container image: it sits on the component's
 // GitLab connection, its external_key is the GitLab project path, and
 // its config says {"source":"repo"}. internal/collector/trivy tells it
-// apart from a Harbor binding by the connection's provider.
+// apart from a Harbor binding by the connection's provider. Its
+// snapshots carry the same word as their trivy_snapshots.source.
 const RepoScanSource = "repo"
 
 // RepoScanInterval is how often a repository scan runs: a clone and a

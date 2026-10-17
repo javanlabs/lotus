@@ -24,6 +24,14 @@ import (
 var bindableKinds = []string{"sonarqube", "trivy", "sentry", "gitlab"}
 
 var kindLabels = map[string]string{
+	"gitlab": "GitLab", "sonarqube": "SonarQube", "trivy": "Trivy", "sentry": "Sentry",
+}
+
+// connectionLabels name each kind's connection: kindLabels, except that a
+// Trivy connection is a Harbor registry. A Trivy binding may instead scan
+// a GitLab repository (a repository scan, on the GitLab connection), so
+// the kind is plain "Trivy" while its own connection says Harbor.
+var connectionLabels = map[string]string{
 	"gitlab": "GitLab", "sonarqube": "SonarQube", "trivy": "Trivy (Harbor)", "sentry": "Sentry",
 }
 

@@ -56,7 +56,7 @@ test('a metric that has not synced for a day is drawn dashed, with a note saying
   await staleCells.first().hover();
   const tip = page.getByRole('tooltip');
   await expect(tip).toBeVisible();
-  await expect(tip).toContainText('Trivy (Harbor) has not synced in more than 24 hours');
+  await expect(tip).toContainText('Trivy has not synced in more than 24 hours');
   await expect(tip).toContainText('Last synced 3 days ago');
   await page.screenshot({ path: 'test-results/project-last-updated.png', fullPage: true });
 

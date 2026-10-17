@@ -229,7 +229,7 @@ func TestComponentTabs(t *testing.T) {
 	// No score: the status word leads, the collector's phrasing under it —
 	// until it is stale, which the note says and the hover explains.
 	if tv := byKey["trivy"]; tv.Value != "Fail" || tv.ValueTone != "fail" || !strings.HasPrefix(tv.Sub, "Stale · synced 3 days ago") ||
-		!strings.Contains(tv.Title, "Trivy (Harbor) has not synced") {
+		!strings.Contains(tv.Title, "Trivy has not synced") {
 		t.Errorf("trivy = %+v", tv)
 	}
 	if g := byKey["gitlab"]; g.Value != "–" || g.Sub != "Disabled · Not synced yet" || g.Muted {

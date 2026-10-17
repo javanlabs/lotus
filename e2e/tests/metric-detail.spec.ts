@@ -119,7 +119,7 @@ test('a component opens on SonarQube, its bound metrics are tabs one click apart
   await expect(page).toHaveURL(`${origin}/projects/p/components/c/metrics/sonarqube`);
   const tabs = page.getByRole('navigation', { name: 'Metrics' });
   const open = tabs.locator('[aria-current="page"]');
-  const labels = ['SONARQUBE', 'TRIVY (HARBOR)', 'SENTRY', 'GITLAB'];
+  const labels = ['SONARQUBE', 'TRIVY', 'SENTRY', 'GITLAB'];
   for (const [i, label] of labels.entries()) {
     await expect(tabs.locator('.lotus-mt-tab').nth(i)).toContainText(label);
   }
