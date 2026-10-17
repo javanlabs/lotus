@@ -2,43 +2,50 @@
 {{template "shell_open" .}}
 {{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" "GitLab")}}
 
-{{if not .Data.View.HasData}}
-{{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
-  No GitLab data collected for this repository yet.
+{{$v := .Data.View}}
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel")}}
+  <div class="lotus-panel-head">
+    <span class="lotus-panel-title">Repository</span>
+    {{if $v.HasData}}
+    <span class="lotus-panel-note">
+      snapshot captured <span title="{{$v.CapturedAtFull}}">{{$v.CapturedAt}}</span>
+      · last synced <span title="{{$v.SyncedAtFull}}">{{$v.SyncedAt}}</span>
+    </span>
+    {{end}}
+  </div>
+  {{if not $v.HasData}}
+  <div class="lotus-panel-empty">No GitLab data collected for this repository yet.</div>
+  {{else}}
+  <div class="lotus-panel-figures">
+    {{template "panel_figure" (dict "Label" "LANGUAGE" "Value" (or $v.Language "–") "Tone" "none")}}
+    {{template "panel_figure" (dict "Label" "DEFAULT BRANCH" "Value" (or $v.DefaultBranch "–") "Tone" "none")}}
+    {{template "panel_figure" (dict "Label" "BRANCHES" "Value" (printf "%d" $v.BranchesTotal) "Tone" "none"
+      "Sub" (printf "%d active · %d stale" $v.BranchesActive $v.BranchesStale))}}
+    {{template "panel_figure" (dict "Label" "COMMITS (30D)" "Value" $v.Commits30d "Tone" "none")}}
+  </div>
+  <div class="lotus-panel-split">
+    <section>
+      <div class="lotus-panel-section-title">LAST PIPELINE</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        {{template "status_badge" (dict "Text" (or $v.PipelineStatus "no data") "Tone" $v.PipelineTone)}}
+        {{if $v.PipelineWebURL}}<a href="{{$v.PipelineWebURL}}" target="_blank" rel="noopener" style="font-size:11px;color:var(--status-pass)">open in GitLab ↗</a>{{end}}
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">duration {{$v.LastDuration}} · finished {{$v.PipelineFinished}}</div>
+      <div style="margin-top:4px;font-size:11px;color:var(--text-muted)">success rate (recent sample): {{$v.SuccessRate}}</div>
+    </section>
+    <section>
+      <div class="lotus-panel-section-title">GOVERNANCE</div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+        {{if $v.Protected}}{{template "status_badge" (dict "Text" "default branch protected" "Tone" "pass")}}
+        {{else}}{{template "status_badge" (dict "Text" "default branch not protected" "Tone" "fail")}}{{end}}
+        {{if $v.Visibility}}<span class="lotus-badge lotus-badge-none">{{$v.Visibility}}</span>{{end}}
+        {{if $v.Archived}}<span class="lotus-badge lotus-badge-fail">archived</span>{{end}}
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">last activity {{$v.LastActivity}}{{if $v.LastCommitter}} by {{$v.LastCommitter}}{{end}}</div>
+    </section>
+  </div>
+  {{end}}
 {{template "lotus_card_section_close" .}}
-{{else}}
-<p style="margin:0 0 14px;font-size:11px;color:#9CA3AF">
-  snapshot captured <span title="{{.Data.View.CapturedAtFull}}">{{.Data.View.CapturedAt}}</span>
-  · last synced <span title="{{.Data.View.SyncedAtFull}}">{{.Data.View.SyncedAt}}</span>
-</p>
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
-  {{template "stat_card" dict "Label" "LANGUAGE" "Value" (or .Data.View.Language "–") "Tone" "none"}}
-  {{template "stat_card" dict "Label" "DEFAULT BRANCH" "Value" .Data.View.DefaultBranch "Tone" "none"}}
-  {{template "stat_card" dict "Label" "BRANCHES" "Value" (printf "%d" .Data.View.BranchesTotal) "Tone" "none" "Sub" (printf "%d active · %d stale" .Data.View.BranchesActive .Data.View.BranchesStale)}}
-  {{template "stat_card" dict "Label" "COMMITS (30D)" "Value" .Data.View.Commits30d "Tone" "none"}}
-</div>
-
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-  {{template "lotus_card_open" (dict "Padding" "16px")}}
-    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:10px">LAST PIPELINE</div>
-    <div style="display:flex;align-items:center;gap:10px">
-      {{template "status_badge" (dict "Text" (or .Data.View.PipelineStatus "no data") "Tone" .Data.View.PipelineTone)}}
-      {{if .Data.View.PipelineWebURL}}<a href="{{.Data.View.PipelineWebURL}}" target="_blank" style="font-size:11px;color:#23808F">open in GitLab ↗</a>{{end}}
-    </div>
-    <div style="margin-top:8px;font-size:11px;color:#6B7280">duration {{.Data.View.LastDuration}} · finished {{.Data.View.PipelineFinished}}</div>
-    <div style="margin-top:4px;font-size:11px;color:#6B7280">success rate (recent sample): {{.Data.View.SuccessRate}}</div>
-  {{template "lotus_card_close" .}}
-  {{template "lotus_card_open" (dict "Padding" "16px")}}
-    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:10px">GOVERNANCE</div>
-    <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px;color:#111827">
-      <div>{{if .Data.View.Protected}}🔒 default branch protected{{else}}🔓 default branch NOT protected{{end}}</div>
-      <div>visibility: {{or .Data.View.Visibility "–"}}{{if .Data.View.Archived}} · archived{{end}}</div>
-      <div style="color:#6B7280">last activity {{.Data.View.LastActivity}}{{if .Data.View.LastCommitter}} by {{.Data.View.LastCommitter}}{{end}}</div>
-      {{if .Data.View.WebURL}}<a href="{{.Data.View.WebURL}}" target="_blank" style="color:#23808F;font-size:11px">open repository ↗</a>{{end}}
-    </div>
-  {{template "lotus_card_close" .}}
-</div>
-{{end}}
 
 {{/* Outside the HasData branch — see metric_sonar.html's own comment:
      charts read metric_facts/metric_keys, a different source than the

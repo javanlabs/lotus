@@ -28,14 +28,14 @@
   <div class="lotus-panel-empty">{{if .Data.SelectedDate}}No SonarQube snapshot exists for this repository on {{.Data.SelectedDate}}.{{else}}No SonarQube data collected for this repository yet.{{end}}</div>
   {{else}}
   <div class="lotus-panel-figures">
-    {{template "sonar_figure" (dict "Label" "COVERAGE" "Value" $v.Coverage "Tone" (ternary $v.CoverageFailed "fail" "pass"))}}
-    {{template "sonar_figure" (dict "Label" "BUGS" "Value" $v.Bugs "Tone" (ternary $v.BugsFailed "fail" "pass"))}}
-    {{template "sonar_figure" (dict "Label" "VULNERABILITIES" "Value" $v.Vulnerabilities "Tone" (ternary $v.VulnerabilitiesFailed "fail" "pass"))}}
-    {{template "sonar_figure" (dict "Label" "CODE SMELLS" "Value" $v.CodeSmells "Tone" (ternary $v.CodeSmellsFailed "fail" "pass"))}}
-    {{template "sonar_figure" (dict "Label" "SECURITY HOTSPOTS" "Value" $v.SecurityHotspots "Tone" "none")}}
-    {{template "sonar_figure" (dict "Label" "DUPLICATIONS" "Value" $v.Duplications "Tone" (ternary $v.DuplicationsFailed "fail" "pass"))}}
-    {{template "sonar_figure" (dict "Label" "LINES OF CODE" "Value" $v.NCLOC "Tone" "none")}}
-    {{template "sonar_figure" (dict "Label" "COMPLEXITY" "Value" $v.Complexity "Tone" "none")}}
+    {{template "panel_figure" (dict "Label" "COVERAGE" "Value" $v.Coverage "Tone" (ternary $v.CoverageFailed "fail" "pass"))}}
+    {{template "panel_figure" (dict "Label" "BUGS" "Value" $v.Bugs "Tone" (ternary $v.BugsFailed "fail" "pass"))}}
+    {{template "panel_figure" (dict "Label" "VULNERABILITIES" "Value" $v.Vulnerabilities "Tone" (ternary $v.VulnerabilitiesFailed "fail" "pass"))}}
+    {{template "panel_figure" (dict "Label" "CODE SMELLS" "Value" $v.CodeSmells "Tone" (ternary $v.CodeSmellsFailed "fail" "pass"))}}
+    {{template "panel_figure" (dict "Label" "SECURITY HOTSPOTS" "Value" $v.SecurityHotspots "Tone" "none")}}
+    {{template "panel_figure" (dict "Label" "DUPLICATIONS" "Value" $v.Duplications "Tone" (ternary $v.DuplicationsFailed "fail" "pass"))}}
+    {{template "panel_figure" (dict "Label" "LINES OF CODE" "Value" $v.NCLOC "Tone" "none")}}
+    {{template "panel_figure" (dict "Label" "COMPLEXITY" "Value" $v.Complexity "Tone" "none")}}
   </div>
   <div class="lotus-panel-foot">
     {{range $v.Ratings}}<dl><dt>{{.Label}}</dt><dd>{{template "status_badge" .Badge}}</dd></dl>{{end}}
@@ -55,15 +55,4 @@
 {{template "metric_charts" .Data.Charts}}
 
 {{template "shell_close" .}}
-{{end}}
-
-{{/* sonar_figure is one number of the snapshot panel, in the type the
-     metric strip's panel uses; a figure with no verdict (lines of code)
-     reads as a plain number, grey being for "–". Takes (dict "Label"
-     "Value" "Tone"). */}}
-{{define "sonar_figure"}}
-<div class="lotus-mt-stat">
-  <div class="lotus-mt-stat-label" title="{{.Label}}">{{.Label}}</div>
-  <div class="lotus-mt-stat-value {{if eq .Value "–"}}lotus-text-none{{else if eq .Tone "none"}}lotus-mt-stat-neutral{{else}}lotus-text-{{.Tone}}{{end}}">{{.Value}}</div>
-</div>
 {{end}}

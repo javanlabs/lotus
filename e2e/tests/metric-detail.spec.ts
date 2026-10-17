@@ -223,6 +223,7 @@ test('Trivy false-positive annotation saves and deletes, real browser round-trip
   await page.goto(`${origin}${detailPath(ids)}`);
 
   await expect(page.getByText('CVE-2024-7777')).toBeVisible();
+  await page.screenshot({ path: 'test-results/metric-detail-trivy.png', fullPage: true });
   await page.getByTitle('Annotate').click();
   await page.locator('textarea[name="comment"]').fill('not reachable from our entrypoint');
   await page.getByRole('button', { name: 'Save' }).click();
@@ -244,7 +245,7 @@ test('Trivy false-positive annotation saves and deletes, real browser round-trip
   await expect(page.getByText('FP', { exact: true })).not.toBeVisible();
 });
 
-test('Sentry detail page shows the score explainer panel and filters issues by status', async ({ page, context }) => {
+test('Sentry detail page shows the score and its grade, and filters issues by status', async ({ page, context }) => {
   const { sessionToken, orgId, subdomain } = await seedOwnerSession('metric-sentry-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   const ids = await seedComponentWithBinding(orgId, 'sentry', 'sentry', 'billing-api');
@@ -267,7 +268,12 @@ test('Sentry detail page shows the score explainer panel and filters issues by s
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
   await page.goto(`${origin}${detailPath(ids)}`);
 
-  await expect(page.getByText('HOW THIS SCORE IS CALCULATED')).toBeVisible();
+  // The score and its grade lead one panel with the issue counts; how the
+  // score is computed lives on /scoring, not here.
+  await expect(page.locator('.lotus-panel-figures')).toContainText('SCORE');
+  await expect(page.locator('.lotus-panel-figures')).toContainText('UNRESOLVED ISSUES');
+  await expect(page.getByText('HOW THIS SCORE IS CALCULATED')).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/metric-detail-sentry.png', fullPage: true });
   await expect(page.getByText('NullPointerException in checkout')).toBeVisible();
   await page.getByRole('button', { name: /new \(1\)/ }).click();
   await expect(page.getByText('NullPointerException in checkout')).toBeVisible();

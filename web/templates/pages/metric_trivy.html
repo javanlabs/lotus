@@ -4,30 +4,39 @@
 
 {{with .Data.Scan}}{{template "trivy_scan_status" .}}{{end}}
 
-{{if not .Data.Header.HasData}}
-{{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
-  {{if .Data.Scan}}This repository has not been scanned yet.{{else}}No Trivy scan collected for this repository yet.{{end}}
-{{template "lotus_card_section_close" .}}
-{{else}}
-<p style="margin:0 0 14px;font-size:11px;color:#9CA3AF">
-  {{if .Data.Header.Commit}}repository scan · commit {{if .Data.Header.CommitURL}}<a href="{{.Data.Header.CommitURL}}" target="_blank" rel="noopener" style="font-family:'IBM Plex Mono',monospace;color:#23808F">{{.Data.Header.Commit}}</a>{{else}}<span style="font-family:'IBM Plex Mono',monospace">{{.Data.Header.Commit}}</span>{{end}}
-  · scanned {{.Data.Header.ScanFinishedAt}} · captured {{.Data.Header.CapturedAt}}
+{{$h := .Data.Header}}
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel")}}
+  <div class="lotus-panel-head">
+    <span class="lotus-panel-title">{{if .Data.Scan}}Repository scan{{else}}Image scan{{end}}</span>
+    {{if $h.HasData}}
+    <span class="lotus-panel-note">
+      {{if $h.Commit}}commit {{if $h.CommitURL}}<a href="{{$h.CommitURL}}" target="_blank" rel="noopener" style="font-family:'IBM Plex Mono',monospace;color:var(--status-pass)">{{$h.Commit}}</a>{{else}}<span style="font-family:'IBM Plex Mono',monospace">{{$h.Commit}}</span>{{end}}
+      {{else}}source {{$h.Source}}{{if $h.Digest}} · digest <span style="font-family:'IBM Plex Mono',monospace">{{$h.Digest}}</span>{{end}}{{if $h.Tags}} · tags {{$h.Tags}}{{end}} · pushed {{$h.ImagePushedAt}}{{end}}
+      · scanned {{$h.ScanFinishedAt}} · captured {{$h.CapturedAt}}
+    </span>
+    {{end}}
+  </div>
+  {{if not $h.HasData}}
+  <div class="lotus-panel-empty">{{if .Data.Scan}}This repository has not been scanned yet.{{else}}No Trivy scan collected for this repository yet.{{end}}</div>
   {{else}}
-  source: {{.Data.Header.Source}}{{if .Data.Header.Digest}} · digest <span style="font-family:'IBM Plex Mono',monospace">{{.Data.Header.Digest}}</span>{{end}}{{if .Data.Header.Tags}} · tags {{.Data.Header.Tags}}{{end}}
-  · pushed {{.Data.Header.ImagePushedAt}} · scanned {{.Data.Header.ScanFinishedAt}} · captured {{.Data.Header.CapturedAt}}
+  <div class="lotus-panel-figures is-six">
+    {{template "panel_figure" (dict "Label" "TOTAL CVE" "Value" (printf "%d" $h.Total) "Tone" "none")}}
+    {{template "panel_figure" (dict "Label" "CRITICAL" "Value" (printf "%d" $h.Critical) "Tone" (ternary (gt $h.Critical 0) "fail" "pass"))}}
+    {{template "panel_figure" (dict "Label" "HIGH" "Value" (printf "%d" $h.High) "Tone" (ternary (gt $h.High 0) "fail" "pass"))}}
+    {{template "panel_figure" (dict "Label" "MEDIUM" "Value" (printf "%d" $h.Medium) "Tone" "none")}}
+    {{template "panel_figure" (dict "Label" "LOW" "Value" (printf "%d" $h.Low) "Tone" "none")}}
+    {{template "panel_figure" (dict "Label" "FIXABLE" "Value" (printf "%d" $h.Fixable) "Tone" "none")}}
+  </div>
   {{end}}
-</p>
+{{template "lotus_card_section_close" .}}
 
-<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px">
-  {{template "stat_card" dict "Label" "TOTAL CVE" "Value" (printf "%d" .Data.Header.Total) "Tone" "none"}}
-  {{template "stat_card" dict "Label" "CRITICAL" "Value" (printf "%d" .Data.Header.Critical) "Tone" (ternary (gt .Data.Header.Critical 0) "fail" "pass")}}
-  {{template "stat_card" dict "Label" "HIGH" "Value" (printf "%d" .Data.Header.High) "Tone" (ternary (gt .Data.Header.High 0) "fail" "pass")}}
-  {{template "stat_card" dict "Label" "MEDIUM" "Value" (printf "%d" .Data.Header.Medium) "Tone" "none"}}
-  {{template "stat_card" dict "Label" "LOW" "Value" (printf "%d" .Data.Header.Low) "Tone" "none"}}
-  {{template "stat_card" dict "Label" "FIXABLE" "Value" (printf "%d" .Data.Header.Fixable) "Tone" "none"}}
-</div>
+{{/* Trends sit between the figures and the findings: the numbers, how
+     they have moved, then each CVE behind them. Outside the HasData
+     branch — charts read metric_facts, and a metric with no current scan
+     still has its history. */}}
+{{template "metric_charts" .Data.Charts}}
 
-<div style="height:14px"></div>
+{{if $h.HasData}}
 
 {{if .Data.Rows}}
 {{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden" "Attrs" `x-data="{openRow:null}"`)}}
@@ -77,11 +86,7 @@
 {{end}}
 {{end}}
 
-{{/* Outside the Header.HasData branch — see metric_sonar.html's own
-     comment: severity charts read metric_facts/metric_keys, a different
-     source than the "current scan" summary above, and an inactive
-     metric must still show its own history even with no current scan. */}}
-{{template "metric_charts" .Data.Charts}}
+
 
 {{template "shell_close" .}}
 {{end}}

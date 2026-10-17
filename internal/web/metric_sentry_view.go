@@ -30,6 +30,8 @@ type sentryStatusOption struct {
 	Value    string
 	Count    int
 	Selected bool
+	// Label is Value as a figure's heading: "ARCHIVED UNTIL ESCALATING".
+	Label string
 }
 
 // sentryStatusOptions turns a substatus→count map into a stable, sorted
@@ -45,7 +47,8 @@ func sentryStatusOptions(counts map[string]int, selected string) []sentryStatusO
 			return
 		}
 		if n, ok := counts[k]; ok {
-			out = append(out, sentryStatusOption{Value: k, Count: n, Selected: k == selected})
+			out = append(out, sentryStatusOption{Value: k, Count: n, Selected: k == selected,
+				Label: strings.ToUpper(strings.ReplaceAll(k, "_", " "))})
 			seen[k] = true
 		}
 	}
@@ -62,14 +65,6 @@ func sentryStatusOptions(counts map[string]int, selected string) []sentryStatusO
 	}
 	return out
 }
-
-// sentryScoreExplainer is the formula-explanation panel the task 4.4
-// spec explicitly says to keep ("dia udah ada dan bagus") — the prose
-// half of internal/scoring/sentry.go's own doc comment, reworded for a
-// UI reader rather than a source-reading engineer. The formula itself
-// stays in one place (the scoring package's comment); this is a display
-// copy, not a second source of truth for what it computes.
-const sentryScoreExplainer = `Score = 100 · e^(−load / 25), where load sums weight(substatus) × log₁₀(1 + events) × 0.5^(days since last seen ÷ 7) over every unresolved issue in this environment. Escalating issues weigh 5×, regressed 4×, new 2×, ongoing 1× — costlier triage states pull the score down harder. Event counts are compressed logarithmically so a handful of chatty issues can't drown out a rare crash, and an issue's contribution halves every 7 days it goes quiet. Grade bands follow the common 90/80/70/60 scale.`
 
 func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome, org *httpx.Org, user *httpx.User, nav *httpx.Nav) error {
 	// ?date= reads the history as SonarQube's page does: the state at the
@@ -129,14 +124,13 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 		ScoreText      string
 		Grade          string
 		Tone           string
-		Explainer      string
 		Statuses       []sentryStatusOption
 		SelectedStatus string
 		Rows           []sentryIssueRow
 		Charts         chartGridData
 		Dates          []string
 		SelectedDate   string
-	}{Chrome: chrome, Explainer: sentryScoreExplainer, Charts: newChartGridData(cards, "7d", chrome.BasePath()),
+	}{Chrome: chrome, Charts: newChartGridData(cards, "7d", chrome.BasePath()),
 		Dates: dates, SelectedDate: selectedDate}
 
 	if selectedEnv == "" {
@@ -147,6 +141,7 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 	}
 
 	snap := byEnv[selectedEnv]
+	data.Chrome.SentryEnvs = []repo.SentryEnvironmentSummary{{SentrySnapshot: snap}}
 	data.HasData = true
 	data.Environments = envs
 	data.SelectedEnv = selectedEnv

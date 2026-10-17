@@ -2,55 +2,48 @@
 {{template "shell_open" .}}
 {{template "metric_header" (dict "Chrome" .Data.Chrome "KindLabel" "Sentry")}}
 
-{{if .Data.Dates}}
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-  {{if .Data.SelectedDate}}
-  <span style="font-size:11px;padding:4px 9px;border-radius:5px 2px 5px 2px;background:#E6F2F4;color:#23808F">Snapshot as of {{.Data.SelectedDate}} · not the latest</span>
-  {{end}}
-  <form method="get" style="margin-left:auto">
-    {{if .Data.SelectedEnv}}<input type="hidden" name="env" value="{{.Data.SelectedEnv}}">{{end}}
-    {{template "lotus_select" (dict
-      "Name" "date" "Value" .Data.SelectedDate "Size" "sm" "AutoSubmit" true "Label" "Snapshot date"
-      "Options" (selectOptions (dict "Value" "" "Label" "Latest") .Data.Dates))}}
-  </form>
-</div>
-{{end}}
-
-{{if not .Data.HasData}}
-{{template "lotus_card_section_open" (dict "Padding" "40px 32px" "Style" "text-align:center;color:#6B7280;font-size:12.5px")}}
-  {{if .Data.SelectedDate}}No Sentry snapshot for this binding on {{.Data.SelectedDate}}.{{else}}No Sentry data collected for this binding yet.{{end}}
-{{template "lotus_card_section_close" .}}
-{{else}}
-
-<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px">
-  {{if gt (len .Data.Environments) 1}}
-  <form method="get">
-    {{if .Data.SelectedDate}}<input type="hidden" name="date" value="{{.Data.SelectedDate}}">{{end}}
-    {{template "lotus_select" (dict
-      "Name" "env" "Value" .Data.SelectedEnv "Size" "sm" "AutoSubmit" true "Label" "Environment"
-      "Options" (selectOptions .Data.Environments))}}
-  </form>
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel")}}
+  <div class="lotus-panel-head">
+    {{if gt (len .Data.Environments) 1}}
+    <form method="get">
+      {{if .Data.SelectedDate}}<input type="hidden" name="date" value="{{.Data.SelectedDate}}">{{end}}
+      {{template "lotus_select" (dict
+        "Name" "env" "Value" .Data.SelectedEnv "Size" "sm" "AutoSubmit" true "Label" "Environment"
+        "Options" (selectOptions .Data.Environments))}}
+    </form>
+    {{else if .Data.SelectedEnv}}<span class="lotus-badge lotus-badge-none">{{.Data.SelectedEnv}}</span>
+    {{else}}<span class="lotus-panel-title">Snapshot</span>{{end}}
+    <span class="lotus-panel-note">
+      {{if .Data.SelectedDate}}As of {{.Data.SelectedDate}}, not the latest{{if .Data.HasData}} · {{end}}{{end}}
+      {{if .Data.HasData}}{{.Data.ProjectSlug}}{{if .Data.Platform}} · {{.Data.Platform}}{{end}} · captured {{.Data.CapturedAt}}{{end}}
+    </span>
+    {{if .Data.Dates}}
+    <form method="get" class="lotus-panel-tools">
+      {{if .Data.SelectedEnv}}<input type="hidden" name="env" value="{{.Data.SelectedEnv}}">{{end}}
+      {{template "lotus_select" (dict
+        "Name" "date" "Value" .Data.SelectedDate "Size" "sm" "AutoSubmit" true "Label" "Snapshot date"
+        "Options" (selectOptions (dict "Value" "" "Label" "Latest") .Data.Dates))}}
+    </form>
+    {{end}}
+  </div>
+  {{if not .Data.HasData}}
+  <div class="lotus-panel-empty">{{if .Data.SelectedDate}}No Sentry snapshot for this binding on {{.Data.SelectedDate}}.{{else}}No Sentry data collected for this binding yet.{{end}}</div>
   {{else}}
-  <span class="lotus-badge lotus-badge-none">{{.Data.SelectedEnv}}</span>
+  <div class="lotus-panel-figures">
+    {{template "panel_figure" (dict "Label" "SCORE" "Value" .Data.ScoreText "Tone" .Data.Tone "Sub" "out of 100"
+      "Badge" (dict "Text" .Data.Grade "Tone" .Data.Tone))}}
+    {{template "panel_figure" (dict "Label" "UNRESOLVED ISSUES" "Value" (printf "%d" .Data.TotalIssues) "Tone" "none")}}
+    {{range .Data.Statuses}}{{template "panel_figure" (dict "Label" .Label "Value" (printf "%d" .Count) "Tone" "none")}}{{end}}
+  </div>
   {{end}}
-  <span style="font-size:11px;color:#9CA3AF">{{.Data.ProjectSlug}}{{if .Data.Platform}} · {{.Data.Platform}}{{end}} · captured {{.Data.CapturedAt}}</span>
-</div>
+{{template "lotus_card_section_close" .}}
 
-<div style="display:grid;grid-template-columns:auto 1fr;gap:10px;margin-bottom:14px">
-  {{template "lotus_card_open" (dict "Variant" "inverse"
-    "Padding" "16px 20px"
-    "Style" "display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:120px")}}
-    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:var(--text-on-dark-accent)">SCORE</div>
-    <div style="font-size:34px;font-weight:700;line-height:1;margin-top:6px">{{.Data.ScoreText}}</div>
-    <div class="lotus-text-{{.Data.Tone}}" style="font-size:16px;font-weight:700;margin-top:2px;background:rgba(255,255,255,.15);padding:1px 8px;border-radius:4px 1px 4px 1px">{{.Data.Grade}}</div>
-  {{template "lotus_card_close" .}}
-  {{template "lotus_card_open" (dict "Padding" "14px 16px")}}
-    <div style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#9CA3AF;margin-bottom:6px">HOW THIS SCORE IS CALCULATED</div>
-    <p style="margin:0;font-size:11px;line-height:1.6;color:var(--ink-700)">{{.Data.Explainer}}</p>
-  {{template "lotus_card_close" .}}
-</div>
+{{/* Trends between the figures and the issues behind them; outside the
+     HasData branch — charts read metric_facts, and an environment with
+     no current snapshot still has its history. */}}
+{{template "metric_charts" .Data.Charts}}
 
-<div style="height:14px"></div>
+{{if .Data.HasData}}
 
 {{template "lotus_card_section_open" (dict "Padding" "4px" "Style" "overflow:hidden")}}
   <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F4F6">
@@ -89,11 +82,7 @@
 {{template "lotus_card_section_close" .}}
 {{end}}
 
-{{/* Outside the HasData branch — see metric_sonar.html's own comment:
-     charts read metric_facts/metric_keys, a different source than the
-     "current snapshot" view above, and an inactive metric must still
-     show its own history even with no environment currently selected. */}}
-{{template "metric_charts" .Data.Charts}}
+
 
 {{template "shell_close" .}}
 {{end}}

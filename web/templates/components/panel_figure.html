@@ -1,0 +1,16 @@
+{{/* panel_figure is one number of a metric page's panel
+     (.lotus-panel-figures), in the type the metric strip's panel uses. A
+     figure with no verdict (lines of code, a branch name) reads as a plain
+     number, grey being for "–"; Badge, when set, puts a status badge
+     beside the value (a Sentry grade). Takes (dict "Label" "Value" "Tone"
+     pass|fail|none, optional "Sub" and "Badge" (status_badge's dict)). */}}
+{{define "panel_figure"}}
+<div class="lotus-mt-stat">
+  <div class="lotus-mt-stat-label" title="{{.Label}}">{{.Label}}</div>
+  <div class="lotus-panel-figure-value">
+    <span class="lotus-mt-stat-value {{if eq .Value "–"}}lotus-text-none{{else if eq .Tone "none"}}lotus-mt-stat-neutral{{else}}lotus-text-{{.Tone}}{{end}}">{{.Value}}</span>
+    {{with .Badge}}{{if ne .Text "–"}}{{template "status_badge" .}}{{end}}{{end}}
+  </div>
+  {{with .Sub}}<div class="lotus-mt-stat-sub">{{.}}</div>{{end}}
+</div>
+{{end}}

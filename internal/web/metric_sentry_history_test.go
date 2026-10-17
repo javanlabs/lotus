@@ -54,7 +54,7 @@ func TestSentryDetail_DatePicker(t *testing.T) {
 	if status != http.StatusOK || !strings.Contains(body, `id="lotus-combobox-date"`) || !strings.Contains(body, `data-value="`+today+`"`) {
 		t.Fatalf("sentry page = %d; no snapshot date picker", status)
 	}
-	if status, body := getPage(t, app, host, page+"?date="+today, raw); status != http.StatusOK || !strings.Contains(body, "as of "+today) {
+	if status, body := getPage(t, app, host, page+"?date="+today, raw); status != http.StatusOK || !strings.Contains(body, "As of "+today) {
 		t.Errorf("sentry page ?date= = %d; no as-of note", status)
 	} else {
 		// Filtering the issues by substatus stays on the chosen day.

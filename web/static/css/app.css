@@ -812,7 +812,22 @@ a.lotus-binding-key svg { flex: none; }
   gap: 16px 18px;
   padding: 14px 14px 16px;
 }
-@media (max-width: 900px) { .lotus-panel-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Six figures (Trivy's severities) sit in one row where there is room. */
+.lotus-panel-figures.is-six { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .lotus-panel-figures.is-six { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .lotus-panel-figures, .lotus-panel-figures.is-six { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.lotus-panel-figure-value { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.lotus-panel-figure-value .lotus-badge { align-self: center; margin-top: 7px; }
+/* Two sections side by side under the figures (GitLab's pipeline and
+   governance), each with its own small heading; one column on a phone. */
+.lotus-panel-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--border-hairline); }
+.lotus-panel-split > section { min-width: 0; padding: 12px 14px 14px; }
+.lotus-panel-split > section + section { border-left: 1px solid var(--border-hairline); }
+@media (max-width: 700px) {
+  .lotus-panel-split { grid-template-columns: minmax(0, 1fr); }
+  .lotus-panel-split > section + section { border-left: none; border-top: 1px solid var(--border-hairline); }
+}
+.lotus-panel-section-title { margin-bottom: 8px; font: 600 9.5px var(--font-mono); letter-spacing: .09em; color: var(--text-faint); }
 .lotus-panel-foot {
   display: flex;
   flex-wrap: wrap;
