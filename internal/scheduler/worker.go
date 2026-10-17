@@ -229,6 +229,17 @@ func (p *Pool) handleError(ctx context.Context, scope tenant.Scope, run *global.
 		return err
 
 	default: // config, internal — never retried, not the tenant's problem to see as "flaky"
+		// Not retried, but due again after the binding's interval: left
+		// due, the next enqueuer tick would run it again within seconds,
+		// forever — a repository scan on a host that cannot run it would
+		// start over every 30 seconds.
+		binding, err := repo.BindingByID(ctx, scope, run.BindingID)
+		if err != nil {
+			return err
+		}
+		if err := repo.UpdateBindingAfterRun(ctx, scope, run.BindingID, time.Now().Add(EnqueueJitter(syncInterval(binding))), "fail", binding.ConsecutiveFailures+1); err != nil {
+			return err
+		}
 		return global.FinishRun(ctx, p.DB, run.ID, global.FinishRunParams{Status: "failed", ErrorClass: &classStr, Error: &msg})
 	}
 }

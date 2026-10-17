@@ -163,11 +163,15 @@ func (s *repoSession) Collect(ctx context.Context, req collector.CollectRequest)
 	if repoScan.CacheDir != "" {
 		args = append(args, "--cache-dir", repoScan.CacheDir)
 	}
+	// Trivy failing — its database download, a timeout, a crash — is this
+	// host's problem, not GitLab's: an internal error, which backs off
+	// nothing, rather than an upstream one, which would hold back the
+	// GitLab connection's own syncs.
 	if _, err := s.run(ctx, src, []string{"TRIVY_NO_PROGRESS=true"}, repoScan.TrivyBin, append(args, ".")...); err != nil {
 		if ctx.Err() != nil {
-			return collector.Result{}, collector.ErrTimeout(fmt.Errorf("trivy repository scan: %w", ctx.Err()))
+			err = fmt.Errorf("trivy repository scan: %w", ctx.Err())
 		}
-		return collector.Result{}, collector.ErrUpstream(err)
+		return collector.Result{}, collector.ErrInternal(err)
 	}
 	raw, err := os.ReadFile(report)
 	if err != nil {

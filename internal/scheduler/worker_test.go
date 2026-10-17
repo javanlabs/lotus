@@ -288,3 +288,28 @@ func TestPool_LongCollectKeepsItsLease(t *testing.T) {
 		t.Fatalf("reaper took back %d run(s) mid-collect, want 0", reaped)
 	}
 }
+
+// A run that fails for a reason retrying will not fix (config, internal)
+// is not retried, but the binding comes due again after its interval —
+// not on the enqueuer's next tick, which would rerun it every 30 seconds.
+func TestPool_ConfigErrorWaitsOutTheInterval(t *testing.T) {
+	db := dbtest.Open(t)
+	orgID, connID, bindingID := seedFixture(t, db, "acme-config-error")
+	ctx := context.Background()
+	if _, _, err := global.EnqueueRun(ctx, db, global.NewSyncRun{OrgID: orgID, ConnectionID: connID, BindingID: bindingID, Kind: "gitlab", Trigger: "manual", ScheduledFor: time.Now()}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	pool := &scheduler.Pool{DB: db, WorkerID: "w1", LeaseDuration: 10 * time.Minute, Execute: func(ctx context.Context, run *global.SyncRun) (collector.Result, error) {
+		return collector.Result{}, collector.ErrInternal(errors.New("trivy: not installed"))
+	}}
+	if _, err := pool.ClaimAndRun(ctx); err != nil {
+		t.Fatalf("ClaimAndRun: %v", err)
+	}
+	due, err := repo.ListDueBindings(ctx, tenant.FromRun(db, orgID), time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(due) != 0 {
+		t.Fatalf("the failed binding is due again right away: %+v", due)
+	}
+}
