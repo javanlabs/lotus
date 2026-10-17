@@ -377,3 +377,57 @@ func ListProjectBindingsByKind(ctx context.Context, s tenant.Scope, projectID uu
 	})
 	return out, err
 }
+
+// RepoScanSource marks a Trivy binding that scans a component's source
+// repository instead of a container image: it sits on the component's
+// GitLab connection, its external_key is the GitLab project path, and
+// its config says {"source":"repo"}. internal/collector/trivy tells it
+// apart from a Harbor binding by the connection's provider.
+const RepoScanSource = "repo"
+
+// RepoScanInterval is how often a repository scan runs: a clone and a
+// full `trivy fs` are far heavier than an API read, and a dependency's
+// new CVE is news on the scale of days.
+const RepoScanInterval = 24 * time.Hour
+
+// IsRepoScan reports whether b is a repository-scan Trivy binding.
+func IsRepoScan(b *Binding) bool {
+	if b == nil || b.Kind != "trivy" {
+		return false
+	}
+	var cfg struct {
+		Source string `json:"source"`
+	}
+	_ = json.Unmarshal(b.Config, &cfg)
+	return cfg.Source == RepoScanSource
+}
+
+// EnsureRepoScanBindings gives every component that has a GitLab binding
+// but no container image to scan a repository-scan Trivy binding — the
+// fallback for "no image set". A component that has any live Trivy
+// binding keeps it (an image scan wins), and one whose repository scan
+// was deleted is left alone: removing it is how a person turns it off.
+// Idempotent; returns how many it created.
+func EnsureRepoScanBindings(ctx context.Context, s tenant.Scope) (int, error) {
+	var n int64
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		res, err := tx.ExecContext(ctx, `
+			INSERT INTO metric_bindings (org_id, component_id, connection_id, kind, external_key, config, sync_interval_seconds)
+			SELECT g.org_id, g.component_id, g.connection_id, 'trivy', g.external_key,
+			       jsonb_build_object('source', $1::text), $2
+			FROM metric_bindings g
+			JOIN components c ON c.id = g.component_id AND c.archived_at IS NULL
+			WHERE g.kind = 'gitlab' AND g.deleted_at IS NULL
+			  AND NOT EXISTS (
+			      SELECT 1 FROM metric_bindings t
+			      WHERE t.component_id = g.component_id AND t.kind = 'trivy'
+			        AND (t.deleted_at IS NULL OR t.config->>'source' = $1::text))
+			ON CONFLICT DO NOTHING`, RepoScanSource, int(RepoScanInterval.Seconds()))
+		if err != nil {
+			return err
+		}
+		n, err = res.RowsAffected()
+		return err
+	})
+	return int(n), err
+}

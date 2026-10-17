@@ -60,7 +60,7 @@ func DefaultExecute(db *sqlx.DB, kek *crypto.KEK, netguardCfg netguard.Config, l
 		client := netguard.NewClient(netguardCfg)
 		client.Transport = WrapTransport(client.Transport, limiters.For(run.ConnectionID))
 
-		session, err := c.Open(ctx, collector.ConnConfig{BaseURL: conn.BaseURL, Secret: secret, Client: client, Config: conn.Config})
+		session, err := c.Open(ctx, collector.ConnConfig{BaseURL: conn.BaseURL, Secret: secret, Client: client, Config: conn.Config, Provider: conn.Provider})
 		if err != nil {
 			return collector.Result{}, err
 		}
@@ -82,6 +82,10 @@ type Options struct {
 	EnqueueEvery  time.Duration
 	ReapEvery     time.Duration
 	PollEvery     time.Duration // how often an idle worker checks for new work
+	// RepoScans turns on repository scans: the enqueuer gives components
+	// with GitLab and no container image a Trivy binding that scans the
+	// repository. Off where the host cannot run Trivy.
+	RepoScans bool
 }
 
 func (o *Options) setDefaults() {
@@ -111,7 +115,7 @@ func (o *Options) setDefaults() {
 func Run(ctx context.Context, opts Options) {
 	opts.setDefaults()
 
-	go runEnqueuer(ctx, opts.DB, opts.EnqueueEvery)
+	go runEnqueuer(ctx, opts.DB, opts.EnqueueEvery, opts.RepoScans)
 	go runReaper(ctx, opts.DB, opts.ReapEvery)
 
 	for i := 0; i < opts.WorkerCount; i++ {
@@ -121,7 +125,7 @@ func Run(ctx context.Context, opts Options) {
 	<-ctx.Done()
 }
 
-func runEnqueuer(ctx context.Context, db *sqlx.DB, every time.Duration) {
+func runEnqueuer(ctx context.Context, db *sqlx.DB, every time.Duration, repoScans bool) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
 	for {
@@ -136,6 +140,13 @@ func runEnqueuer(ctx context.Context, db *sqlx.DB, every time.Duration) {
 			}
 			if !acquired {
 				continue
+			}
+			if repoScans {
+				if n, err := EnsureRepoScanBindingsAllOrgs(ctx, db); err != nil {
+					log.Printf("scheduler: repository scan bindings: %v", err)
+				} else if n > 0 {
+					log.Printf("scheduler: added %d repository scan binding(s)", n)
+				}
 			}
 			n, err := EnqueueDueBindingsAllOrgs(ctx, db)
 			release()

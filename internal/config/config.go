@@ -72,6 +72,14 @@ type Config struct {
 
 	WorkerCount int
 
+	// TrivyBin and TrivyCacheDir run repository scans: Trivy over a
+	// component's cloned GitLab repository when it has no container image
+	// (internal/collector/trivy/repo_scan.go). Scans are off on a host
+	// where TrivyBin is not found. An empty cache dir uses Trivy's own
+	// default under the service user's cache.
+	TrivyBin      string
+	TrivyCacheDir string
+
 	// Features switches whole modules that ship in the binary but are not
 	// offered on every instance; see Features.
 	Features Features
@@ -246,6 +254,8 @@ func Load() Config {
 		URL:                strings.TrimSuffix(os.Getenv("LOTUS_URL"), "/"),
 		KEK:                envOr("LOTUS_KEK", devOnlyKEK),
 		WorkerCount:        envInt("LOTUS_WORKER_COUNT", 4),
+		TrivyBin:           envOr("TRIVY_BIN", "trivy"),
+		TrivyCacheDir:      os.Getenv("TRIVY_CACHE_DIR"),
 		Features:           Features{QA: envFlag("LOTUS_FEATURE_QA")},
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),

@@ -170,7 +170,13 @@ func testBindingUI(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		client := netguard.NewClient(netguard.Config{AllowHTTP: d.Cfg.Dev, Resolver: d.NetguardResolver, IsBlocked: d.NetguardIsBlocked})
-		result, testErr := integrations.TestBinding(c.Context(), client, binding.Kind, conn.BaseURL, secret, binding.ExternalKey)
+		// A repository scan reads a GitLab project: testing it is testing
+		// that project, on that connection.
+		kind := binding.Kind
+		if repo.IsRepoScan(binding) {
+			kind = "gitlab"
+		}
+		result, testErr := integrations.TestBinding(c.Context(), client, kind, conn.BaseURL, secret, binding.ExternalKey)
 		secret = "" //nolint:ineffassign // best-effort scrub once no longer needed
 
 		c.Type("html")

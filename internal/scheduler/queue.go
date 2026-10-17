@@ -78,3 +78,25 @@ func EnqueueDueBindingsAllOrgs(ctx context.Context, db *sqlx.DB) (int, error) {
 	}
 	return total, nil
 }
+
+// EnsureRepoScanBindingsAllOrgs gives every organization's components
+// with a GitLab repository and no container image a repository-scan
+// Trivy binding (repo.EnsureRepoScanBindings), so a GitLab binding made
+// any way — the wizard, discovery, the seeder — is scanned without
+// anyone asking. The enqueuer runs it before each tick when repository
+// scans are on; the next due-bindings pass then picks the new ones up.
+func EnsureRepoScanBindingsAllOrgs(ctx context.Context, db *sqlx.DB) (int, error) {
+	var orgIDs []uuid.UUID
+	if err := db.SelectContext(ctx, &orgIDs, `SELECT id FROM organizations WHERE deleted_at IS NULL`); err != nil {
+		return 0, err
+	}
+	total := 0
+	for _, orgID := range orgIDs {
+		n, err := repo.EnsureRepoScanBindings(ctx, tenant.FromRun(db, orgID))
+		if err != nil {
+			return total, err
+		}
+		total += n
+	}
+	return total, nil
+}

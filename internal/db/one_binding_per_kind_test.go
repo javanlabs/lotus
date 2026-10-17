@@ -16,7 +16,7 @@ import (
 // only then create the key, or the deploy stops on a unique violation.
 func TestOneBindingPerKind_RetiresLegacyDuplicatesBeforeTheKey(t *testing.T) {
 	dsn := dbtest.DSN(t)
-	if err := db.MigrateDown(dsn); err != nil { // back to before 00035
+	if err := db.MigrateDownTo(dsn, 34); err != nil { // back to before 00035
 		t.Fatalf("migrate down: %v", err)
 	}
 	conn, err := db.Open(dsn)

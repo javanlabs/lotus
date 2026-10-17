@@ -101,6 +101,23 @@ func MigrateDown(dsn string) error {
 	return goose.Down(sqlDB.DB, "migrations")
 }
 
+// MigrateDownTo rolls back every migration after version. A test of one
+// migration goes back to just before it this way, however many have
+// landed since.
+func MigrateDownTo(dsn string, version int64) error {
+	sqlDB, err := Open(dsn)
+	if err != nil {
+		return err
+	}
+	defer sqlDB.Close()
+
+	goose.SetBaseFS(migrationsFS)
+	if err := goose.SetDialect("postgres"); err != nil {
+		return err
+	}
+	return goose.DownTo(sqlDB.DB, "migrations", version)
+}
+
 // MigrationsChecksum fingerprints the embedded migration set.
 //
 // It exists for the test harness (internal/dbtest), which builds one

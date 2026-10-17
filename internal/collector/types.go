@@ -61,6 +61,11 @@ type ConnConfig struct {
 	// slug isn't a credential, so it belongs here rather than folded into
 	// Secret the way Harbor's "username:password" is.
 	Config json.RawMessage
+	// Provider is integration_connections.provider. A collector reads
+	// it when one kind can sit on more than one kind of connection: a
+	// Trivy binding on a GitLab connection is a repository scan, not a
+	// Harbor pull (internal/collector/trivy/repo_scan.go).
+	Provider string
 }
 
 type DiscoverQuery struct {

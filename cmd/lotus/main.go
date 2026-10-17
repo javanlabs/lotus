@@ -38,7 +38,7 @@ import (
 	_ "github.com/uyab/lotus/internal/collector/gitlab"
 	_ "github.com/uyab/lotus/internal/collector/sentry"
 	_ "github.com/uyab/lotus/internal/collector/sonarqube"
-	_ "github.com/uyab/lotus/internal/collector/trivy"
+	"github.com/uyab/lotus/internal/collector/trivy"
 )
 
 func main() {
@@ -167,10 +167,19 @@ func runServe(cfg config.Config) {
 	// construction. Runs until the process exits; no graceful-shutdown
 	// signal wiring yet (systemd just SIGKILLs on redeploy today — a
 	// run this kills mid-lease is exactly what the reaper exists for).
+	// Repository scans need trivy and git on this host; without them
+	// they stay off rather than fail on every repository.
+	trivy.ConfigureRepoScan(trivy.RepoScanConfig{TrivyBin: cfg.TrivyBin, CacheDir: cfg.TrivyCacheDir})
+	repoScans := true
+	if err := trivy.RepoScanAvailable(); err != nil {
+		repoScans = false
+		log.Printf("trivy repository scans off: %v", err)
+	}
 	go scheduler.Run(context.Background(), scheduler.Options{
 		DB:          sqlDB,
 		Execute:     scheduler.DefaultExecute(sqlDB, kek, netguard.Config{AllowHTTP: cfg.Dev}, scheduler.NewLimiters(2, 5)),
 		WorkerCount: cfg.WorkerCount,
+		RepoScans:   repoScans,
 	})
 
 	// Retention (task 3.6) needs DDL — CREATE TABLE ... PARTITION OF,

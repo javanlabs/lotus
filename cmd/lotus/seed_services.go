@@ -154,7 +154,7 @@ func runSeedServices(cfg config.Config, args []string) {
 			fmt.Printf("note: no %s connection in this organization — those bindings were skipped. Add it in Settings → Connections and run this again.\n", kind)
 		}
 	}
-	fmt.Println("note: services.yaml carries no Harbor/Trivy image data, so no trivy bindings were created.")
+	fmt.Println("note: services.yaml carries no Harbor/Trivy image data; a component with GitLab is scanned by repository instead, once the server adds its Trivy binding.")
 }
 
 type importedComponent struct{ Name, Kind string }

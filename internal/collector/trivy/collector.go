@@ -63,6 +63,9 @@ func (Collector) Descriptor() collector.Descriptor {
 }
 
 func (Collector) Open(ctx context.Context, conn collector.ConnConfig) (collector.Session, error) {
+	if conn.Provider == "gitlab" {
+		return openRepoSession(conn)
+	}
 	if conn.BaseURL == "" || conn.Secret == "" {
 		return nil, collector.ErrConfig(fmt.Errorf("trivy: base_url and username:password are required"))
 	}

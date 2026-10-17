@@ -31,7 +31,7 @@ type Counts struct {
 // trivyDetail is what gets marshaled into Result.Detail and, on the
 // persistence path, unmarshaled straight into a trivy_snapshots row.
 type trivyDetail struct {
-	Source         string // "registry" | "push"
+	Source         string // "registry" | "push" | "repo"
 	Digest         string
 	Tags           []string
 	Severity       string
