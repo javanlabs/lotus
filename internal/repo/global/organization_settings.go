@@ -3,6 +3,7 @@ package global
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -34,4 +35,17 @@ func UpdateOrgSettingsKey(ctx context.Context, db *sqlx.DB, orgID uuid.UUID, key
 		UPDATE organizations SET settings = jsonb_set(settings, $2::text[], $3::jsonb, true) WHERE id = $1`,
 		orgID, "{"+key+"}", string(valueJSON))
 	return err
+}
+
+// OrgDefaultSyncInterval is organizations.default_sync_interval_seconds
+// (Settings → Organization), 0 when unset.
+func OrgDefaultSyncInterval(ctx context.Context, db *sqlx.DB, orgID uuid.UUID) (time.Duration, error) {
+	var secs *int
+	if err := db.GetContext(ctx, &secs, `SELECT default_sync_interval_seconds FROM organizations WHERE id = $1`, orgID); err != nil {
+		return 0, err
+	}
+	if secs == nil || *secs <= 0 {
+		return 0, nil
+	}
+	return time.Duration(*secs) * time.Second, nil
 }

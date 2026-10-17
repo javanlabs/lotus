@@ -12,12 +12,13 @@ import (
 	"github.com/uyab/lotus/internal/tenant"
 )
 
-// DefaultSyncInterval is used whenever a binding has no
-// sync_interval_seconds of its own — real collectors (task 3.3+) are
-// expected to set one from their Descriptor.DefaultInterval when a
-// binding is created; this is only the floor for bindings that predate
-// that wiring or a kind that never overrides it.
-const DefaultSyncInterval = 15 * time.Minute
+// DefaultSyncInterval is how long a binding waits between runs when
+// neither it (sync_interval_seconds) nor its organization (Settings →
+// Organization's default sync interval) says otherwise. An hour: every
+// integration Lotus reads changes on the scale of hours — a SonarQube
+// analysis, a Harbor scan, a day's commits — and polling four of them
+// per component every 15 minutes mostly re-read unchanged data.
+const DefaultSyncInterval = time.Hour
 
 // EnqueueImmediate enqueues a manual-trigger run right away — task 3.2's
 // deliberate behavior change from every prior scheduler: a binding gets

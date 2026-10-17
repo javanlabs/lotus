@@ -92,14 +92,25 @@ func (p *Pool) keepLeased(ctx context.Context, runID int64) (stop func()) {
 	return func() { close(done) }
 }
 
-// syncInterval is how long binding waits between runs: its own
-// sync_interval_seconds when set (a repository scan runs daily), the
-// scheduler's default otherwise.
-func syncInterval(b *repo.Binding) time.Duration {
+// syncInterval is how long b waits between runs: its own
+// sync_interval_seconds when set (a repository scan runs daily), else its
+// organization's default sync interval — never below what the kind's
+// collector declares as its floor (MinInterval) — else
+// DefaultSyncInterval.
+func (p *Pool) syncInterval(ctx context.Context, b *repo.Binding) time.Duration {
 	if b.SyncIntervalSeconds != nil && *b.SyncIntervalSeconds > 0 {
 		return time.Duration(*b.SyncIntervalSeconds) * time.Second
 	}
-	return DefaultSyncInterval
+	org, err := global.OrgDefaultSyncInterval(ctx, p.DB, b.OrgID)
+	if err != nil || org <= 0 {
+		return DefaultSyncInterval
+	}
+	if c, ok := collector.Get(collector.Kind(b.Kind)); ok {
+		if floor := c.Descriptor().MinInterval; org < floor {
+			return floor
+		}
+	}
+	return org
 }
 
 func (p *Pool) handleResult(ctx context.Context, run *global.SyncRun, result collector.Result, execErr error) error {
@@ -158,7 +169,7 @@ func (p *Pool) handleResult(ctx context.Context, run *global.SyncRun, result col
 		return err
 	}
 
-	nextSyncAt := time.Now().Add(EnqueueJitter(syncInterval(binding)))
+	nextSyncAt := time.Now().Add(EnqueueJitter(p.syncInterval(ctx, binding)))
 	return repo.UpdateBindingAfterRun(ctx, scope, run.BindingID, nextSyncAt, status, 0)
 }
 
@@ -189,7 +200,7 @@ func (p *Pool) handleError(ctx context.Context, scope tenant.Scope, run *global.
 		if failures >= brokenAfterConsecutiveNotFound {
 			lastStatus = "broken"
 		}
-		if err := repo.UpdateBindingAfterRun(ctx, scope, run.BindingID, time.Now().Add(EnqueueJitter(syncInterval(binding))), lastStatus, failures); err != nil {
+		if err := repo.UpdateBindingAfterRun(ctx, scope, run.BindingID, time.Now().Add(EnqueueJitter(p.syncInterval(ctx, binding))), lastStatus, failures); err != nil {
 			return err
 		}
 		return global.FinishRun(ctx, p.DB, run.ID, global.FinishRunParams{Status: "failed", ErrorClass: &classStr, Error: &msg})
@@ -237,7 +248,7 @@ func (p *Pool) handleError(ctx context.Context, scope tenant.Scope, run *global.
 		if err != nil {
 			return err
 		}
-		if err := repo.UpdateBindingAfterRun(ctx, scope, run.BindingID, time.Now().Add(EnqueueJitter(syncInterval(binding))), "fail", binding.ConsecutiveFailures+1); err != nil {
+		if err := repo.UpdateBindingAfterRun(ctx, scope, run.BindingID, time.Now().Add(EnqueueJitter(p.syncInterval(ctx, binding))), "fail", binding.ConsecutiveFailures+1); err != nil {
 			return err
 		}
 		return global.FinishRun(ctx, p.DB, run.ID, global.FinishRunParams{Status: "failed", ErrorClass: &classStr, Error: &msg})

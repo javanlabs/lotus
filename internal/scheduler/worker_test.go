@@ -313,3 +313,73 @@ func TestPool_ConfigErrorWaitsOutTheInterval(t *testing.T) {
 		t.Fatalf("the failed binding is due again right away: %+v", due)
 	}
 }
+
+// runOnceAndNextSync runs bindingID's one queued run to success and
+// returns how far out its next sync was put.
+func runOnceAndNextSync(t *testing.T, db *sqlx.DB, orgID, connID, bindingID uuid.UUID) time.Duration {
+	t.Helper()
+	ctx := context.Background()
+	if _, _, err := global.EnqueueRun(ctx, db, global.NewSyncRun{OrgID: orgID, ConnectionID: connID, BindingID: bindingID, Kind: "gitlab", Trigger: "manual", ScheduledFor: time.Now()}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	pool := &scheduler.Pool{DB: db, WorkerID: "w1", LeaseDuration: 10 * time.Minute, Execute: func(ctx context.Context, run *global.SyncRun) (collector.Result, error) {
+		return collector.Result{Facts: []collector.Fact{numFact("gitlab.commits_30d", 5)}}, nil
+	}}
+	if _, err := pool.ClaimAndRun(ctx); err != nil {
+		t.Fatalf("ClaimAndRun: %v", err)
+	}
+	binding, err := repo.BindingByID(ctx, tenant.FromRun(db, orgID), bindingID)
+	if err != nil {
+		t.Fatalf("BindingByID: %v", err)
+	}
+	return time.Until(*binding.NextSyncAt)
+}
+
+// floorCollector stands in for a kind's collector in the floor test: only
+// its Descriptor is read. Registered for sonarqube, which no other test in
+// this package registers, so no persister comes with it.
+type floorCollector struct{}
+
+func (floorCollector) Descriptor() collector.Descriptor {
+	return collector.Descriptor{Kind: collector.KindSonarQube, MinInterval: 5 * time.Minute}
+}
+
+func (floorCollector) Open(context.Context, collector.ConnConfig) (collector.Session, error) {
+	return nil, errors.New("not used")
+}
+
+func init() { collector.Register(collector.KindSonarQube, floorCollector{}) }
+
+// With nothing set, a binding syncs hourly; an organization's default
+// sync interval replaces that, but never below the collector's floor
+// (MinInterval, 5 minutes here).
+func TestPool_IntervalFallsBackToTheOrgDefaultThenAnHour(t *testing.T) {
+	db := dbtest.Open(t)
+	near := func(got, want time.Duration) bool { return got > want*85/100 && got < want*115/100 }
+
+	orgID, connID, bindingID := seedFixture(t, db, "acme-default-interval")
+	if d := runOnceAndNextSync(t, db, orgID, connID, bindingID); !near(d, time.Hour) {
+		t.Errorf("unset: next sync in %v, want about an hour", d)
+	}
+
+	orgID, connID, bindingID = seedFixture(t, db, "acme-org-interval")
+	if _, err := db.Exec(`UPDATE organizations SET default_sync_interval_seconds = 1800 WHERE id = $1`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	if d := runOnceAndNextSync(t, db, orgID, connID, bindingID); !near(d, 30*time.Minute) {
+		t.Errorf("org default 30m: next sync in %v, want about 30 minutes", d)
+	}
+
+	orgID, connID, bindingID = seedFixture(t, db, "acme-org-floor")
+	if _, err := db.Exec(`UPDATE organizations SET default_sync_interval_seconds = 60 WHERE id = $1`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	withOrgTxSchedTest(t, db, orgID, func(tx *sqlx.Tx) {
+		if _, err := tx.Exec(`UPDATE metric_bindings SET kind = 'sonarqube' WHERE id = $1`, bindingID); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if d := runOnceAndNextSync(t, db, orgID, connID, bindingID); !near(d, 5*time.Minute) {
+		t.Errorf("org default 1m: next sync in %v, want the collector's 5-minute floor", d)
+	}
+}
