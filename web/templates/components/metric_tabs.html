@@ -33,7 +33,10 @@
           {{if .Href}}<a href="{{.Href}}" class="lotus-mt-link"{{if $on}} aria-current="page"{{end}}{{if .Title}} title="{{.Title}}"{{end}}>{{else}}<div class="lotus-mt-link" aria-disabled="true">{{end}}
             <span class="lotus-mt-label">{{.Label}}</span>
             <span class="lotus-mt-main"><span class="lotus-mt-value {{if eq .ValueTone "brand"}}lotus-mt-value-brand{{else}}lotus-text-{{.ValueTone}}{{end}}"{{if $on}} data-headline{{end}}>{{.Value}}</span>{{if .Unit}}<span class="lotus-mt-unit">{{.Unit}}</span>{{end}}{{if .Grade}}<span class="lotus-badge lotus-badge-{{.ValueTone}} lotus-mt-grade" title="Grade {{.Grade}}">{{.Grade}}</span>{{end}}</span>
-            <span class="lotus-mt-bar">{{range .Bar}}<span class="lotus-bar-{{.Tone}}" style="flex:{{.Flex}}"></span>{{end}}</span>
+            {{/* The verdict chip: a glyph and a word, never colour alone. The
+                 slot is drawn empty when there is no verdict, so every tab
+                 is the same height. Dashed when the verdict is stale. */}}
+            <span class="lotus-mt-verdict-slot">{{with .Verdict}}<span class="lotus-mt-verdict lotus-mt-verdict-{{.Tone}}{{if .Stale}} is-stale{{end}}" data-verdict="{{.Tone}}"><svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="{{if eq .Tone "pass"}}M2.5 6.4 4.9 8.7 9.5 3.6{{else}}M3.3 3.3l5.4 5.4M8.7 3.3 3.3 8.7{{end}}" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>{{.Text}}</span>{{end}}</span>
             <span class="lotus-mt-sub">{{.Sub}}</span>
           {{if .Href}}</a>{{else}}</div>{{end}}
           {{if .Info}}<button type="button" class="lotus-mt-info" @click.stop="toggle('{{.Key}}', $event)" :class="{ 'is-open': key === '{{.Key}}' }" :aria-expanded="key === '{{.Key}}'" aria-label="How this number is calculated"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8v.01"></path></g></svg></button>{{end}}
