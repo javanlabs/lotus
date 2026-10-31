@@ -84,6 +84,9 @@ type homeInsight struct {
 type homeTrend struct {
 	Label, Delta, DeltaTone string
 	Chart                   chartSVG
+	// change is the move relative to where it started, so trends in different
+	// units can be compared: losing 37 of 82 points outranks losing 1% of 93%.
+	change float64
 }
 
 type homeViz struct {
@@ -319,14 +322,17 @@ func homeInsights(totalFails int, kindFails map[string]int, kindProjectFails map
 			Title: name + " is the weakest project", Detail: fmt.Sprintf("Only %d%% of its checks pass.", pct)})
 	}
 
-	// The trend moving most in the wrong direction.
-	for _, t := range trends {
-		if t.DeltaTone == "fail" {
-			out = append(out, homeInsight{Figure: t.Delta, Tone: "fail",
-				Title:  capitalize(strings.ToLower(t.Label)) + " got worse",
-				Detail: fmt.Sprintf("Over the last %d days. Catch it before it reaches a quality gate.", homeTrendDays)})
-			break
+	// The trend that got worst, relative to where it started.
+	var worst *homeTrend
+	for i := range trends {
+		if t := &trends[i]; t.DeltaTone == "fail" && (worst == nil || t.change > worst.change) {
+			worst = t
 		}
+	}
+	if worst != nil {
+		out = append(out, homeInsight{Figure: worst.Delta, Tone: "fail",
+			Title:  capitalize(strings.ToLower(worst.Label)) + " got worse",
+			Detail: fmt.Sprintf("Over the last %d days. Catch it before it reaches a quality gate.", homeTrendDays)})
 	}
 	return out
 }
@@ -361,6 +367,10 @@ func homeTrends(in homeInputs) []homeTrend {
 					shown = "+" + shown
 				}
 				t.Delta, t.DeltaTone = shown, chart.Tone
+				t.change = math.Abs(delta)
+				if start := math.Abs(points[first].Value); start > 0 {
+					t.change /= start
+				}
 			}
 		}
 		out = append(out, t)

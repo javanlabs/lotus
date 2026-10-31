@@ -109,3 +109,18 @@ func TestHomeTrends_DeltaFollowsTheMetricsDirection(t *testing.T) {
 		t.Errorf("more findings: Delta=%q tone=%q", got.Delta, got.DeltaTone)
 	}
 }
+
+func TestHomeInsights_NamesTheTrendThatGotWorstRelativeToItsStart(t *testing.T) {
+	in := homeInputs{Now: time.Now()}
+	vizComponent(t, &in, "bad", "alpha", "fail", map[string]string{"sonarqube": "fail"})
+	v := buildHomeDashboard(in).Viz
+	trends := append(v.Trends[:0:0], homeTrend{Label: "AVG COVERAGE", Delta: "-0.9%", DeltaTone: "fail", change: 0.01},
+		homeTrend{Label: "AVG HEALTH SCORE", Delta: "-37", DeltaTone: "fail", change: 0.45},
+		homeTrend{Label: "AVG PIPELINE SUCCESS", Delta: "+2.9%", DeltaTone: "pass", change: 0.9})
+	ins := homeInsights(1, map[string]int{"sonarqube": 1}, map[string]map[string]int{}, nil, nil,
+		func() (string, int, bool) { return "", 0, false }, trends)
+	last := ins[len(ins)-1]
+	if last.Title != "Avg health score got worse" || last.Figure != "-37" {
+		t.Errorf("worst trend insight = %+v", last)
+	}
+}
