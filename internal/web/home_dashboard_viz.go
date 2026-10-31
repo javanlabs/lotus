@@ -107,6 +107,8 @@ type homeViz struct {
 // Trivy's finding count, else a letter grade, else the score, else a mark.
 func homeMapCellLabel(kind string, kh repo.KindHeadline) string {
 	switch {
+	case kh.StateLabel != "":
+		return kh.StateLabel
 	case kind == "trivy" && kh.CountValue != nil:
 		return strconv.FormatInt(*kh.CountValue, 10)
 	case kh.Grade != "":

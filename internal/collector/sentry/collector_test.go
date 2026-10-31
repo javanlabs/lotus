@@ -34,6 +34,8 @@ func fakeSentryServer(t *testing.T, projectHits *int) *httptest.Server {
 		case r.URL.Path == "/api/0/projects/javan/frontend/":
 			fmt.Fprint(w, `{"id":"210","slug":"frontend","name":"Frontend","platform":"javascript",
 				"teams":[{"id":"57","slug":"platform"}],"organization":{"slug":"javan"}}`)
+		case r.URL.Path == "/api/0/projects/javan/backend/tags/service_name/values/":
+			fmt.Fprint(w, `[{"value":"reported-before"},{"value":"bpm-service"}]`)
 		case r.URL.Path == "/api/0/projects/javan/does-not-exist/":
 			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprint(w, `{"detail":"not found"}`)
@@ -241,5 +243,51 @@ func TestOpen_RejectsMissingCredential(t *testing.T) {
 	_, err := c.Open(context.Background(), collector.ConnConfig{BaseURL: "https://sentry.io"})
 	if collector.ClassOf(err) != collector.ErrClassConfig {
 		t.Fatalf("ClassOf = %q, want config", collector.ClassOf(err))
+	}
+}
+
+func TestCollect_ZeroIssuesSeparatesCleanFromNoSignal(t *testing.T) {
+	srv := fakeSentryServer(t, nil)
+	defer srv.Close()
+	session := openSession(t, srv, "javan")
+	defer session.Close()
+
+	for _, tc := range []struct {
+		name, service string
+		prior         bool
+		wantStatus    collector.Status
+		wantScore     bool
+	}{
+		{"tag seen", "reported-before", false, collector.StatusPass, true},
+		{"history only", "gone-from-tags", true, collector.StatusPass, true},
+		{"no evidence", "never-reported", false, collector.StatusUnknown, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, _ := json.Marshal(map[string]any{"mode": "shared", "service_tag_key": "service_name", "service_tag_value": tc.service})
+			result, err := session.Collect(context.Background(), collector.CollectRequest{ExternalKey: "backend", Config: cfg, PriorSignal: tc.prior})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := collector.ValidateResult(result); err != nil {
+				t.Fatal(err)
+			}
+			h := result.Headline
+			if h.Status != tc.wantStatus || (h.Score != nil) != tc.wantScore {
+				t.Fatalf("headline = %+v, want status %s, score present %v", h, tc.wantStatus, tc.wantScore)
+			}
+			if !tc.wantScore && h.StateLabel != "no signal" {
+				t.Errorf("state label = %q, want no signal", h.StateLabel)
+			}
+			if tc.wantScore && *h.Score != 100 {
+				t.Errorf("score = %d, want 100", *h.Score)
+			}
+			hasScoreFact := false
+			for _, f := range result.Children[0].Facts {
+				hasScoreFact = hasScoreFact || f.Key == "sentry.score"
+			}
+			if hasScoreFact != tc.wantScore {
+				t.Errorf("score fact present = %v, want %v", hasScoreFact, tc.wantScore)
+			}
+		})
 	}
 }

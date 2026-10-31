@@ -309,6 +309,8 @@ func badgeFor(metrics map[string]repo.KindHeadline, kind string) badgeCell {
 // internal/collector/*/result.go).
 func headlineText(kh repo.KindHeadline) string {
 	switch {
+	case kh.StateLabel != "":
+		return kh.StateLabel
 	case kh.CountValue != nil:
 		unit := kh.CountLabel
 		if *kh.CountValue != 1 && unit != "" {

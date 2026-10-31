@@ -45,6 +45,7 @@ type KindHeadline struct {
 	Grade      string `json:"grade,omitempty"`
 	CountValue *int64 `json:"count_value,omitempty"`
 	CountLabel string `json:"count_label,omitempty"`
+	StateLabel string `json:"state_label,omitempty"`
 	Summary    string `json:"summary,omitempty"`
 	DeepLink   string `json:"deep_link,omitempty"`
 	// UpdatedAt is when this kind was last collected successfully — set by
@@ -59,7 +60,7 @@ type KindHeadline struct {
 func kindHeadlineFrom(h collector.Headline) KindHeadline {
 	return KindHeadline{
 		Status: string(h.Status), Score: h.Score, Grade: h.Grade,
-		CountValue: h.CountValue, CountLabel: h.CountLabel, Summary: h.Summary, DeepLink: h.DeepLink,
+		CountValue: h.CountValue, CountLabel: h.CountLabel, StateLabel: h.StateLabel, Summary: h.Summary, DeepLink: h.DeepLink,
 	}
 }
 

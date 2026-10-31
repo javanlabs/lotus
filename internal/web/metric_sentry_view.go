@@ -120,6 +120,7 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 		Platform       string
 		TeamSlug       string
 		TotalIssues    int
+		NoSignal       bool
 		CapturedAt     string
 		ScoreText      string
 		Grade          string
@@ -150,6 +151,8 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 	data.Platform = snap.Platform
 	data.TeamSlug = snap.TeamSlug
 	data.TotalIssues = snap.TotalIssues
+	// No issues and no grade: nothing was measured, as opposed to a clean A.
+	data.NoSignal = snap.TotalIssues == 0 && snap.Grade == nil
 	data.CapturedAt = relativeTimeStr(snap.CapturedAt)
 	data.ScoreText, data.Grade, data.Tone = "–", "–", "none"
 	if snap.Score != nil {

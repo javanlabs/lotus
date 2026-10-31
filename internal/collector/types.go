@@ -105,6 +105,12 @@ type CollectRequest struct {
 	Config      json.RawMessage
 	State       json.RawMessage
 
+	// PriorSignal is whether this binding's stored history shows the source
+	// has reported before. A Collector has no DB access of its own, so the
+	// scheduler reads it: Sentry uses it to tell a clean service from one
+	// that has never sent an event.
+	PriorSignal bool
+
 	// OrgSettings is organizations.settings (already a generic jsonb
 	// column, task 0.2) — the org-level policy knobs a Collect needs but
 	// that don't belong on the binding itself. First use: task 3.4's
@@ -138,6 +144,9 @@ type Headline struct {
 	Grade      string
 	CountValue *int64
 	CountLabel string
+	// StateLabel names a state with nothing measured ("no signal"), for a
+	// short cell where a count of zero would read as a result.
+	StateLabel string
 	Summary    string
 	DeepLink   string
 }

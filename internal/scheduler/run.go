@@ -66,9 +66,17 @@ func DefaultExecute(db *sqlx.DB, kek *crypto.KEK, netguardCfg netguard.Config, l
 		}
 		defer session.Close()
 
+		var priorSignal bool
+		if binding.Kind == string(collector.KindSentry) {
+			if priorSignal, err = repo.SentryBindingEverHadIssues(ctx, scope, binding.ID); err != nil {
+				return collector.Result{}, collector.ErrInternal(err)
+			}
+		}
+
 		return session.Collect(ctx, collector.CollectRequest{
 			OrgID: run.OrgID, ComponentID: binding.ComponentID, BindingID: binding.ID,
 			ExternalKey: binding.ExternalKey, Config: binding.Config, OrgSettings: orgSettings,
+			PriorSignal: priorSignal,
 		})
 	}
 }

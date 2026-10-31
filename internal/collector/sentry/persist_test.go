@@ -326,3 +326,30 @@ func TestPersist_CrossOrgSnapshotsNeverMixDespiteIdenticalExternalKey(t *testing
 		t.Fatal("expected org A's scope to not see org B's snapshot")
 	}
 }
+
+func TestSentryBindingEverHadIssues(t *testing.T) {
+	db := dbtest.Open(t)
+	orgID, componentID, bindingID := seedSentryFixture(t, db, "acme-signal")
+	scope := tenant.FromRun(db, orgID)
+	ctx := context.Background()
+	write := func(hash string, total int) {
+		t.Helper()
+		snap := repo.NewSentrySnapshot{ComponentID: componentID, ContentHash: hash, Environment: "all", ProjectSlug: "backend", TotalIssues: total}
+		if err := repo.ReplaceSentrySnapshots(ctx, scope, componentID, bindingID, collector.Headline{Status: collector.StatusPass}, []repo.NewSentrySnapshot{snap}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(want bool) {
+		t.Helper()
+		got, err := repo.SentryBindingEverHadIssues(ctx, scope, bindingID)
+		if err != nil || got != want {
+			t.Fatalf("ever had issues = %v, %v, want %v", got, err, want)
+		}
+	}
+	write("empty", 0)
+	check(false)
+	write("one", 1)
+	check(true)
+	write("empty-again", 0)
+	check(true)
+}

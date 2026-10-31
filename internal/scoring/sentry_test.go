@@ -3,7 +3,6 @@ package scoring
 import (
 	"database/sql"
 	"math"
-	"strings"
 	"testing"
 	"time"
 )
@@ -99,25 +98,25 @@ func TestSentryGradeBands(t *testing.T) {
 	}
 }
 
-func TestEvalSentryStatusFailsWhenThereIsNothingToMeasure(t *testing.T) {
+func TestEvalSentryStatus(t *testing.T) {
 	cases := []struct {
 		name       string
 		mapped     bool
 		hasSnap    bool
-		envCount   int
+		sawEvents  bool
 		signals    []SentryIssueSignal
 		wantKind   SentryStatusKind
 		wantFailed bool
 	}{
-		{"no sentry binding", false, false, 0, nil, SentryStatusNotMapped, true},
-		{"mapped but never pulled", true, false, 0, nil, SentryStatusNoData, true},
-		{"pulled but zero issues, never instrumented", true, true, 0, nil, SentryStatusNoSignal, true},
-		{"pulled but zero issues, environments active", true, true, 4, nil, SentryStatusNoSignal, true},
-		{"reporting issues", true, true, 1, []SentryIssueSignal{sig("ongoing", 5, 0)}, SentryStatusGraded, false},
+		{"no sentry binding", false, false, false, nil, SentryStatusNotMapped, true},
+		{"mapped but never pulled", true, false, false, nil, SentryStatusNoData, true},
+		{"zero issues, never reported", true, true, false, nil, SentryStatusNoSignal, false},
+		{"zero issues, has reported", true, true, true, nil, SentryStatusClean, false},
+		{"reporting issues", true, true, true, []SentryIssueSignal{sig("ongoing", 5, 0)}, SentryStatusGraded, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := evalSentryStatus(c.mapped, c.hasSnap, c.envCount, c.signals, scoreNow)
+			got := evalSentryStatus(c.mapped, c.hasSnap, c.sawEvents, c.signals, scoreNow)
 			if got.Kind != c.wantKind {
 				t.Errorf("kind = %s, want %s", got.Kind, c.wantKind)
 			}
@@ -131,20 +130,18 @@ func TestEvalSentryStatusFailsWhenThereIsNothingToMeasure(t *testing.T) {
 	}
 }
 
-func TestEvalSentryStatusDistinguishesSilentCauses(t *testing.T) {
-	// Both fail, but "never sent an event" and "sends events, currently clean"
-	// call for different follow-ups, so the tooltip must not conflate them.
-	uninstrumented := evalSentryStatus(true, true, 0, nil, scoreNow)
-	clean := evalSentryStatus(true, true, 4, nil, scoreNow)
-
-	if !uninstrumented.Failed || !clean.Failed {
-		t.Fatal("both zero-issue cases must stay red")
+// Zero issues means two different things, and only one of them is a score.
+func TestEvalSentryStatusSeparatesCleanFromSilent(t *testing.T) {
+	clean := evalSentryStatus(true, true, true, nil, scoreNow)
+	if clean.Score != 100 || clean.Grade != "A" {
+		t.Errorf("clean = score %d grade %q, want 100 A", clean.Score, clean.Grade)
 	}
-	if uninstrumented.Detail == clean.Detail {
-		t.Fatal("a repo with active environments should get a different explanation")
+	silent := evalSentryStatus(true, true, false, nil, scoreNow)
+	if silent.Grade != "" || silent.Label != "no signal" {
+		t.Errorf("silent = grade %q label %q, want no grade", silent.Grade, silent.Label)
 	}
-	if !strings.Contains(clean.Detail, "4 environment") {
-		t.Errorf("detail should cite the active environments, got %q", clean.Detail)
+	if clean.Detail == silent.Detail {
+		t.Error("the two zero-issue states must explain themselves differently")
 	}
 }
 
@@ -190,7 +187,7 @@ func TestEvalSentryStatusGradesRealisticRepos(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := evalSentryStatus(true, true, 1, c.signals, scoreNow)
+			got := evalSentryStatus(true, true, true, c.signals, scoreNow)
 			if got.Grade != c.wantGrade {
 				t.Errorf("grade = %s (score %d, load %.2f), want %s", got.Grade, got.Score, got.Load, c.wantGrade)
 			}

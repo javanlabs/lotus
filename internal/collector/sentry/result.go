@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -69,6 +70,8 @@ func (s *session) Collect(ctx context.Context, req collector.CollectRequest) (co
 		envs = []string{envAll}
 	}
 
+	// Asked at most once, and only when an environment comes back empty.
+	sawEvents, checked := req.PriorSignal, req.PriorSignal
 	generatedAt := time.Now()
 	children := make([]collector.Result, 0, len(envs))
 	for _, env := range envs {
@@ -87,7 +90,14 @@ func (s *session) Collect(ctx context.Context, req collector.CollectRequest) (co
 			warnings = append(warnings, collector.Warning{Step: "issues:" + env, Err: err.Error()})
 			continue
 		}
-		children = append(children, buildEnvironmentResult(env, cfg.ServiceTagValue, project, query, generatedAt, issues))
+		if len(issues) == 0 && !checked {
+			checked = true
+			var err error
+			if sawEvents, err = s.hasReported(ctx, cfg, project.Slug); err != nil {
+				warnings = append(warnings, collector.Warning{Step: "signal", Err: err.Error()})
+			}
+		}
+		children = append(children, buildEnvironmentResult(env, cfg.ServiceTagValue, project, query, generatedAt, issues, sawEvents))
 	}
 
 	if len(children) == 0 {
@@ -100,6 +110,18 @@ func (s *session) Collect(ctx context.Context, req collector.CollectRequest) (co
 		Warnings:   warnings,
 		DetailKind: string(collector.KindSentry),
 	}, nil
+}
+
+// hasReported looks for evidence the service has ever sent Sentry an event. In
+// a shared project that is its value of the service tag; a dedicated project
+// has no tag, but its environments only exist once events have arrived.
+func (s *session) hasReported(ctx context.Context, cfg bindingConfig, projectSlug string) (bool, error) {
+	if cfg.Mode == "dedicated" {
+		envs, err := s.client.Environments(ctx, projectSlug)
+		return len(envs) > 0, err
+	}
+	values, err := s.client.TagValues(ctx, projectSlug, cfg.ServiceTagKey)
+	return slices.Contains(values, cfg.ServiceTagValue), err
 }
 
 // rollupHeadline is the binding-level summary task 3.6's dashboard
@@ -176,7 +198,7 @@ type issueDetail struct {
 // pulled live, so evalSentryStatus's "not configured yet" / "never
 // synced" branches are unreachable from this call site by construction;
 // they exist for task 3.6's future dashboard reads of stale/absent state.
-func buildEnvironmentResult(env, serviceName string, project sentryclient.Project, query string, generatedAt time.Time, issues []sentryclient.Issue) collector.Result {
+func buildEnvironmentResult(env, serviceName string, project sentryclient.Project, query string, generatedAt time.Time, issues []sentryclient.Issue, sawEvents bool) collector.Result {
 	signals := make([]scoring.SentryIssueSignal, 0, len(issues))
 	totalEvents, newC, escalatingC, regressedC, ongoingC := 0, 0, 0, 0, 0
 	for _, is := range issues {
@@ -195,10 +217,14 @@ func buildEnvironmentResult(env, serviceName string, project sentryclient.Projec
 			ongoingC++
 		}
 	}
-	status := scoring.EvalSentryStatus(true, true, 1, signals, generatedAt)
+	status := scoring.EvalSentryStatus(true, true, sawEvents, signals, generatedAt)
+	noSignal := status.Kind == scoring.SentryStatusNoSignal
+	score := intPtr(status.Score)
+	if noSignal {
+		score = nil // nothing was measured, so nothing joins an average
+	}
 
 	facts := []collector.Fact{
-		numFact("sentry.score", float64(status.Score)),
 		numFact("sentry.total_issues", float64(len(issues))),
 		numFact("sentry.events_total", float64(totalEvents)),
 		numFact("sentry.new", float64(newC)),
@@ -206,15 +232,23 @@ func buildEnvironmentResult(env, serviceName string, project sentryclient.Projec
 		numFact("sentry.regressed", float64(regressedC)),
 		numFact("sentry.ongoing", float64(ongoingC)),
 	}
+	if !noSignal {
+		facts = append(facts, numFact("sentry.score", float64(status.Score)))
+	}
 
 	headline := collector.Headline{
 		Grade:      status.Grade,
-		Score:      intPtr(status.Score),
+		Score:      score,
 		CountValue: int64Ptr(int64(len(issues))),
 		CountLabel: "issue",
 		Summary:    fmt.Sprintf("%s: %d unresolved issue(s), load %.1f", env, len(issues), status.Load),
 	}
+	if status.Kind != scoring.SentryStatusGraded {
+		headline.Summary = fmt.Sprintf("%s: %s. %s", env, status.Label, status.Detail)
+	}
 	switch {
+	case noSignal:
+		headline.Status, headline.StateLabel, headline.CountValue = collector.StatusUnknown, status.Label, nil
 	case status.Failed:
 		headline.Status = collector.StatusFail
 	case status.Grade == "A" || status.Grade == "B":
@@ -241,7 +275,7 @@ func buildEnvironmentResult(env, serviceName string, project sentryclient.Projec
 		SentryProjectID: project.ID, ProjectSlug: project.Slug, ProjectName: project.Name,
 		Platform: project.Platform, SentryOrg: project.Org, TeamID: project.TeamID, TeamSlug: project.TeamSlug,
 		StatusFilter: query, GeneratedAt: &generatedAt, TotalIssues: len(issues),
-		Score: intPtr(status.Score), Grade: gradePtr, Load: float64Ptr(status.Load),
+		Score: score, Grade: gradePtr, Load: float64Ptr(status.Load),
 		Issues: issueDetails,
 	})
 

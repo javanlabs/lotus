@@ -316,3 +316,14 @@ func ListLatestSentryEnvironmentsForProject(ctx context.Context, s tenant.Scope,
 	})
 	return out, err
 }
+
+// SentryBindingEverHadIssues reports whether any snapshot of this binding held
+// an issue, which proves its service has sent Sentry events at some point.
+func SentryBindingEverHadIssues(ctx context.Context, s tenant.Scope, bindingID uuid.UUID) (bool, error) {
+	var out bool
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		return tx.GetContext(ctx, &out, `
+			SELECT EXISTS (SELECT 1 FROM sentry_snapshots WHERE binding_id = $1 AND total_issues > 0)`, bindingID)
+	})
+	return out, err
+}

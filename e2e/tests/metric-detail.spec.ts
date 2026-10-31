@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { seedOwnerSession, withDB } from './helpers/db';
+import { retireOrg, seedOwnerSession, withDB } from './helpers/db';
 import { chooseFromDropdown } from './helpers/dropdown';
 
 const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
@@ -286,3 +286,27 @@ test('Sentry detail page shows the score and its grade, and filters issues by st
   await page.getByRole('button', { name: /new \(1\)/ }).click();
   await expect(page.getByText('NullPointerException in checkout')).toBeVisible();
 });
+
+// Zero issues reads differently when the service has reported and when nothing
+// has ever arrived from it.
+for (const [grade, score, text] of [
+  ['A', 100, 'No unresolved issues in this environment.'],
+  [null, null, 'No signal: Sentry has no events from this service'],
+] as const) {
+  test(`a Sentry page with zero issues and grade ${grade} says "${text}"`, async ({ page, context }) => {
+    const { sessionToken, orgId, subdomain } = await seedOwnerSession('metric-sentry-zero-e2e', 'placeholder');
+    const origin = tenantOrigin(subdomain);
+    const ids = await seedComponentWithBinding(orgId, 'sentry', 'sentry', 'quiet-api');
+    await withDB((client) =>
+      client.query(
+        `INSERT INTO sentry_snapshots (org_id, binding_id, component_id, environment, project_slug, total_issues, score, grade)
+         VALUES ($1, $2, $3, 'all', 'quiet-api', 0, $4, $5)`,
+        [orgId, ids.bindingId, ids.componentId, score, grade],
+      ),
+    );
+    await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+    await page.goto(`${origin}${detailPath(ids)}`);
+    await expect(page.getByText(text)).toBeVisible();
+    await retireOrg(orgId);
+  });
+}

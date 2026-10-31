@@ -8,6 +8,6 @@ import "time"
 // faithful port of the legacy sentry_score.go — task 3.5's own
 // instruction was "don't rewrite it", and every symbol it ported stayed
 // unexported exactly as it was there.
-func EvalSentryStatus(mapped, hasSnapshot bool, envCount int, signals []SentryIssueSignal, now time.Time) SentryStatus {
-	return evalSentryStatus(mapped, hasSnapshot, envCount, signals, now)
+func EvalSentryStatus(mapped, hasSnapshot, sawEvents bool, signals []SentryIssueSignal, now time.Time) SentryStatus {
+	return evalSentryStatus(mapped, hasSnapshot, sawEvents, signals, now)
 }

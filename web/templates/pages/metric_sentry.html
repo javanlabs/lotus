@@ -77,7 +77,11 @@
   </a>
   {{end}}
   {{else}}
+  {{if .Data.NoSignal}}
+  <div style="padding:32px;text-align:center;color:#6B7280;font-size:12.5px">No signal: Sentry has no events from this service, so its health can't be measured. Check that the SDK is installed and tags its events.</div>
+  {{else}}
   <div style="padding:32px;text-align:center;color:#23808F;font-size:12.5px">No unresolved issues in this environment.</div>
+  {{end}}
   {{end}}
 {{template "lotus_card_section_close" .}}
 {{end}}

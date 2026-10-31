@@ -16,7 +16,6 @@ package scoring
 
 import (
 	"database/sql"
-	"fmt"
 	"math"
 	"time"
 )
@@ -91,10 +90,13 @@ type SentryStatusKind string
 const (
 	// SentryStatusGraded means the repo reports issues and has a real score.
 	SentryStatusGraded SentryStatusKind = "graded"
-	// SentryStatusNoSignal means Sentry answered but the repo has zero issues.
-	// Treated as failing on purpose: across a fleet this far more often means
-	// the SDK was never wired up than that the service is defect-free, and a
-	// green "0 issues" would hide exactly the repos with no safety net.
+	// SentryStatusClean means zero issues from a service known to report: it
+	// has sent events before, so the silence is a real result.
+	SentryStatusClean SentryStatusKind = "clean"
+	// SentryStatusNoSignal means zero issues and no sign the service has ever
+	// sent anything. There is nothing to grade, so it is neither a pass nor a
+	// failure: a green "0 issues" would hide a missing SDK, and a red one
+	// would report a defect nobody has seen.
 	SentryStatusNoSignal SentryStatusKind = "no_signal"
 	// SentryStatusNoData means the binding exists but nothing was ever
 	// pulled for it — usually a wrong project slug (the pull 404s) or a
@@ -214,19 +216,18 @@ func sentryGrade(score float64) string {
 // services.yaml, which this codebase has no equivalent of, so the wording
 // was updated to describe a metric_bindings row instead.
 var sentryDetailText = map[string]string{
-	"not_mapped":               "This component has no Sentry binding configured — it isn't monitored by Sentry at all.",
-	"no_data":                  "A Sentry binding exists but no data has been collected yet. Usually the project slug is wrong (the pull 404s) or the first sync hasn't run.",
-	"no_signal_uninstrumented": "Sentry answered with zero issues and zero environments — most likely the SDK was never wired up, or it has never sent an event.",
-	"no_signal_clean":          "Zero unresolved issues despite %d environment(s) actively reporting — the SDK is wired up, so this may genuinely be clean. Still flagged red because there's nothing to measure; verify directly in Sentry.",
+	"not_mapped": "This component has no Sentry binding configured — it isn't monitored by Sentry at all.",
+	"no_data":    "A Sentry binding exists but no data has been collected yet. Usually the project slug is wrong (the pull 404s) or the first sync hasn't run.",
+	"no_signal":  "Sentry has no events from this service, so its health can't be measured. Check that the SDK is installed and tags its events.",
+	"clean":      "No unresolved issues, and this service has reported to Sentry before.",
 }
 
 // evalSentryStatus turns a component's binding + pulled issues into its row
 // verdict. mapped is whether this component has a Sentry binding at all;
-// hasSnapshot is whether anything was ever stored for it; envCount is how
-// many environments that binding's pull covered, which is what separates
-// "silent because nothing is wired up" from "silent because it is
-// genuinely clean".
-func evalSentryStatus(mapped, hasSnapshot bool, envCount int, signals []SentryIssueSignal, now time.Time) SentryStatus {
+// hasSnapshot is whether anything was ever stored for it; sawEvents is whether
+// the service is known to have reported, which is what separates "silent
+// because nothing is wired up" from "silent because it is genuinely clean".
+func evalSentryStatus(mapped, hasSnapshot, sawEvents bool, signals []SentryIssueSignal, now time.Time) SentryStatus {
 	switch {
 	case !mapped:
 		return SentryStatus{
@@ -243,20 +244,19 @@ func evalSentryStatus(mapped, hasSnapshot bool, envCount int, signals []SentryIs
 			Failed: true,
 		}
 	case len(signals) == 0:
-		// Environments only exist in Sentry once events have arrived tagged with
-		// them, so their presence is evidence the SDK really is wired up. Both
-		// cases still fail — the dashboard cannot measure what it cannot see —
-		// but the operator should know which one they are looking at.
-		detail := sentryDetailText["no_signal_uninstrumented"]
-		if envCount > 0 {
-			detail = fmt.Sprintf(sentryDetailText["no_signal_clean"], envCount)
+		if sawEvents {
+			return SentryStatus{
+				Kind:   SentryStatusClean,
+				Score:  100,
+				Grade:  sentryGrade(100),
+				Label:  "no issues",
+				Detail: sentryDetailText["clean"],
+			}
 		}
 		return SentryStatus{
 			Kind:   SentryStatusNoSignal,
-			Score:  0,
 			Label:  "no signal",
-			Detail: detail,
-			Failed: true,
+			Detail: sentryDetailText["no_signal"],
 		}
 	}
 
