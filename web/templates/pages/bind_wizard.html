@@ -53,14 +53,18 @@
       </label>
     </div>
 
-    <div x-show="connMode==='new'" style="display:flex;flex-direction:column;gap:14px;padding:14px;background:rgba(67,40,78,.03);border-radius:12px 4px 12px 4px">
+    {{/* A fieldset, disabled while hidden: x-show alone leaves these fields
+         live, so their required URL blocked the submit of an existing
+         connection with nothing on screen to say why ("not focusable" in
+         the console). Disabled controls are neither validated nor sent. */}}
+    <fieldset x-show="connMode==='new'" :disabled="connMode!=='new'" style="min-width:0;margin:0;border:0;display:flex;flex-direction:column;gap:14px;padding:14px;background:rgba(67,40,78,.03);border-radius:12px 4px 12px 4px">
       <label style="display:flex;flex-direction:column;gap:6px">
         <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">CONNECTION NAME</span>
         <input type="text" name="new_connection_name" value="{{.Data.NewConnectionName}}" placeholder="e.g. gitlab.com"
                class="lotus-input">
       </label>
       {{range .Data.ConnectionFields}}{{template "field_input" .}}{{end}}
-    </div>
+    </fieldset>
 
     <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:6px">
       <a href="{{.Data.ComponentURL}}" class="btn-lotus btn-lotus-secondary">Cancel</a>

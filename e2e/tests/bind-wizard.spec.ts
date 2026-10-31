@@ -90,3 +90,28 @@ test('bind wizard creates a connection and a binding together, real browser roun
     expect(Number(rows[0].count)).toBe(1);
   });
 });
+
+// The hidden "+ New connection" fields include a required URL. While they
+// were only hidden, the browser refused the submit over a field nobody could
+// see — "An invalid form control is not focusable" in the console and
+// nothing at all on screen.
+test('bind wizard binds to an existing connection with the new-connection fields hidden', async ({ page, context }) => {
+  const { sessionToken, orgId, subdomain } = await seedOwnerSession('bindwiz-existing-e2e', 'placeholder');
+  const origin = tenantOrigin(subdomain);
+  await seedProjectAndComponent(orgId);
+  await withDB((client) =>
+    client.query(`INSERT INTO integration_connections (org_id, provider, name, base_url) VALUES ($1,'gitlab','GitLab','https://gitlab.example.test')`, [orgId]),
+  );
+
+  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+  await page.goto(`${origin}/projects/p/components/c/bind?kind=gitlab`);
+
+  await page.locator('input[name="external_key"]').fill('alurkerja/billing-api');
+  await page.getByRole('radio', { name: /GitLab/ }).check();
+  await expect(page.locator('input[name="base_url"]')).toBeHidden();
+  await page.getByRole('button', { name: 'Bind metric' }).click();
+
+  await expect(page).toHaveURL(`${origin}/projects/p/components/c/metrics/gitlab`);
+  await expect(page.getByText('alurkerja/billing-api')).toBeVisible();
+  await expect(page.getByText('via GitLab')).toBeVisible();
+});
