@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -65,6 +66,23 @@ func TestHomeViz_MapIsWorstFirstInTheFixedKindOrder(t *testing.T) {
 	}
 	if v.Map[0].Cells[0].Label == "" {
 		t.Error("a cell with no text would be colour alone")
+	}
+}
+
+// The map is the only list of failing components, so past its cap it drops
+// only components with nothing failing, and its "healthier" note stays true.
+func TestHomeViz_MapNeverHidesAFailingComponent(t *testing.T) {
+	in := homeInputs{Now: time.Now()}
+	failing := homeHealthMapCap + 3
+	for i := 0; i < failing; i++ {
+		vizComponent(t, &in, fmt.Sprintf("bad%d", i), "alpha", "fail", map[string]string{"sonarqube": "fail"})
+	}
+	for i := 0; i < 2; i++ {
+		vizComponent(t, &in, fmt.Sprintf("good%d", i), "alpha", "pass", map[string]string{"sonarqube": "pass"})
+	}
+	v := buildHomeHealthForTest(in)
+	if len(v.Map) != failing || v.MoreMap != 2 {
+		t.Fatalf("map lists %d and %d more, want %d and 2", len(v.Map), v.MoreMap, failing)
 	}
 }
 

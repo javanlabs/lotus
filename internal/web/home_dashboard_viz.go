@@ -21,8 +21,9 @@ import (
 const (
 	// homeTrendDays is how far back the trends look.
 	homeTrendDays = 30
-	// homeHealthMapCap is how many components the map lists; it is sorted
-	// worst first, so what falls off is the healthiest.
+	// homeHealthMapCap is how many components the map lists at least; it is
+	// sorted worst first, and a component with a failing check always stays,
+	// so what falls off is only the ones with nothing failing.
 	homeHealthMapCap = 25
 	// homeNearWinNames is how many components a near-win insight names.
 	homeNearWinNames = 3
@@ -212,10 +213,12 @@ func buildHomeViz(in homeInputs, rates []kpiCard) homeViz {
 
 	// Worst first, so the top of the map is the top of the to-do list.
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Failing > rows[j].Failing })
-	if len(rows) > homeHealthMapCap {
-		v.MoreMap = len(rows) - homeHealthMapCap
-		rows = rows[:homeHealthMapCap]
+	shown := min(homeHealthMapCap, len(rows))
+	for shown < len(rows) && rows[shown].Failing > 0 {
+		shown++
 	}
+	v.MoreMap = len(rows) - shown
+	rows = rows[:shown]
 	v.Map = rows
 
 	h := &v.Health
