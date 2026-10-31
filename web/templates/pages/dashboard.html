@@ -1,6 +1,6 @@
 {{/* dashboard is where a member lands after signing in
-     (internal/web/home_dashboard.go): how healthy the organization is, where
-     to start, whether it is improving, what needs attention, this month's QA activity per project and person, and the
+     (internal/web/home_dashboard.go): how healthy the organization is, whether
+     it is improving, which components fail and where to start, this month's QA activity per project and person, and the
      latest issue activity — one column of panels, the metric pages'
      panel style. .Data is a homeDashboard. */}}
 {{define "content"}}
@@ -13,7 +13,8 @@
 </header>
 
 {{$v := $d.Viz}}
-<div class="lotus-dash-top-row{{if $v.HasComponents}} has-trends{{end}}">
+<div class="lotus-dash-columns{{if $v.HasComponents}} has-side{{end}}">
+<div class="lotus-dash-column">
 {{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel lotus-dash-health-panel")}}
   <div class="lotus-panel-head"><span class="lotus-panel-title">Health</span></div>
   {{if $v.HasComponents}}
@@ -56,55 +57,7 @@
   </div>
 {{template "lotus_card_section_close" .}}
 
-{{if $v.HasComponents}}
-{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel" "Attrs" `data-testid="trends"`)}}
-  <div class="lotus-panel-head"><span class="lotus-panel-title">Trends</span><span class="lotus-panel-note">last 30 days, all components</span></div>
-  <div class="lotus-panel-charts lotus-dash-trends">
-    {{range $v.Trends}}
-    <div class="lotus-panel-chart" x-data="lotusChart()" data-points="{{.Chart.Hover}}">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
-        <span class="lotus-mt-stat-label">{{.Label}}</span>
-        {{if .Chart.HasData}}<span style="display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap">
-          <span class="lotus-chart-at" x-show="p" x-cloak x-text="p && p.t"></span>
-          <span class="lotus-mt-stat-neutral" style="font-size:15px;font-weight:700" data-latest="{{.Chart.Latest}}" x-text="p ? p.v : $el.dataset.latest">{{.Chart.Latest}}</span>
-        </span>{{end}}
-      </div>
-      {{if .Chart.HasData}}
-      <div class="lotus-chart" @mousemove="move($event)" @mouseleave="p = null">
-        {{.Chart.SVG}}
-        <template x-if="p"><div>
-          <div class="lotus-chart-cursor" :style="{ left: p.x + '%' }"></div>
-          <div class="lotus-chart-ring" :style="{ left: p.x + '%', top: p.y + '%' }"></div>
-        </div></template>
-      </div>
-      <div class="lotus-dash-trend-delta {{if ne .DeltaTone "none"}}lotus-text-{{.DeltaTone}}{{end}}">{{.Delta}}{{if eq .DeltaTone "pass"}} · better{{else if eq .DeltaTone "fail"}} · worse{{end}}</div>
-      {{else}}
-      <div class="lotus-dash-trend-empty">no data yet</div>
-      {{end}}
-    </div>
-    {{end}}
-  </div>
-{{template "lotus_card_section_close" .}}
-{{end}}
-</div>
 
-{{if $v.Insights}}
-{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel" "Attrs" `data-testid="insights"`)}}
-  <div class="lotus-panel-head"><span class="lotus-panel-title">Where to start</span></div>
-  <div class="lotus-dash-insights">
-    {{range $v.Insights}}
-    <section class="lotus-dash-insight">
-      <div class="lotus-dash-insight-figure lotus-text-{{.Tone}}">{{.Figure}}</div>
-      <div class="lotus-dash-title">{{.Title}}</div>
-      <p class="lotus-dash-detail">{{.Detail}}</p>
-      {{if .Links}}<div class="lotus-dash-insight-links">{{range .Links}}<a href="{{.Href}}" class="lotus-dash-link">{{.Label}}</a>{{end}}</div>{{end}}
-    </section>
-    {{end}}
-  </div>
-{{template "lotus_card_section_close" .}}
-{{end}}
-
-<div class="lotus-dash-map-row{{if $v.Map}} has-map{{end}}">
 {{if $v.Map}}
 {{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel" "Attrs" `data-testid="health-map"`)}}
   <div class="lotus-panel-head">
@@ -137,15 +90,44 @@
 {{template "lotus_card_section_close" .}}
 {{end}}
 
-{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel" "Attrs" `data-testid="attention"`)}}
-  <div class="lotus-panel-head">
-    <span class="lotus-panel-title">Needs attention</span>
-    {{if $d.Alerts}}<span class="lotus-panel-note">{{len $d.Alerts}}{{if $d.MoreAlerts}}+{{end}} item{{if or (gt (len $d.Alerts) 1) $d.MoreAlerts}}s{{end}}</span>{{end}}
+</div>
+
+<div class="lotus-dash-column">
+{{if $v.HasComponents}}
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel" "Attrs" `data-testid="trends"`)}}
+  <div class="lotus-panel-head"><span class="lotus-panel-title">Trends</span><span class="lotus-panel-note">last 30 days, all components</span></div>
+  <div class="lotus-panel-charts lotus-dash-trends">
+    {{range $v.Trends}}
+    <div class="lotus-panel-chart" x-data="lotusChart()" data-points="{{.Chart.Hover}}">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+        <span class="lotus-mt-stat-label">{{.Label}}</span>
+        {{if .Chart.HasData}}<span style="display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap">
+          <span class="lotus-chart-at" x-show="p" x-cloak x-text="p && p.t"></span>
+          <span class="lotus-mt-stat-neutral" style="font-size:15px;font-weight:700" data-latest="{{.Chart.Latest}}" x-text="p ? p.v : $el.dataset.latest">{{.Chart.Latest}}</span>
+        </span>{{end}}
+      </div>
+      {{if .Chart.HasData}}
+      <div class="lotus-chart" @mousemove="move($event)" @mouseleave="p = null">
+        {{.Chart.SVG}}
+        <template x-if="p"><div>
+          <div class="lotus-chart-cursor" :style="{ left: p.x + '%' }"></div>
+          <div class="lotus-chart-ring" :style="{ left: p.x + '%', top: p.y + '%' }"></div>
+        </div></template>
+      </div>
+      <div class="lotus-dash-trend-delta {{if ne .DeltaTone "none"}}lotus-text-{{.DeltaTone}}{{end}}">{{.Delta}}{{if eq .DeltaTone "pass"}} · better{{else if eq .DeltaTone "fail"}} · worse{{end}}</div>
+      {{else}}
+      <div class="lotus-dash-trend-empty">no data yet</div>
+      {{end}}
+    </div>
+    {{end}}
   </div>
-  {{if not $d.Alerts}}
-  <div class="lotus-panel-empty">Nothing needs attention.</div>
-  {{else}}
-  <ul class="lotus-dash-list">
+{{template "lotus_card_section_close" .}}
+{{end}}
+
+{{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel" "Attrs" `data-testid="insights"`)}}
+  <div class="lotus-panel-head"><span class="lotus-panel-title">Where to start</span></div>
+  {{if $d.Alerts}}
+  <ul class="lotus-dash-list lotus-dash-alerts" data-testid="alerts">
     {{range $d.Alerts}}
     <li class="lotus-dash-row">
       {{template "status_dot" .Tone}}
@@ -159,7 +141,18 @@
   </ul>
   {{if $d.MoreAlerts}}<div class="lotus-dash-more">and {{$d.MoreAlerts}} more</div>{{end}}
   {{end}}
+  <div class="lotus-dash-insights">
+    {{range $v.Insights}}
+    <section class="lotus-dash-insight">
+      <div class="lotus-dash-insight-figure lotus-text-{{.Tone}}">{{.Figure}}</div>
+      <div class="lotus-dash-title">{{.Title}}</div>
+      <p class="lotus-dash-detail">{{.Detail}}</p>
+      {{if .Links}}<div class="lotus-dash-insight-links">{{range .Links}}<a href="{{.Href}}" class="lotus-dash-link">{{.Label}}</a>{{end}}</div>{{end}}
+    </section>
+    {{end}}
+  </div>
 {{template "lotus_card_section_close" .}}
+</div>
 </div>
 
 {{if $d.ShowQA}}

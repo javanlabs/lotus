@@ -40,7 +40,7 @@ async function expectNoPageScroll(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
-test('the dashboard is where the app opens, and each alert leads to its page', async ({ page, context }) => {
+test('the dashboard is where the app opens, and the health map leads to each failure', async ({ page, context }) => {
   const { sessionToken, orgId, userId, subdomain } = await seedOwnerSession('home-dash-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   await seed(orgId, userId);
@@ -55,30 +55,41 @@ test('the dashboard is where the app opens, and each alert leads to its page', a
   await expect(summary.getByText('FAILING COMPONENTS')).toBeVisible();
   await expect(summary.locator('a', { hasText: 'OPEN ISSUES' })).toContainText('1');
 
-  const attention = page.getByTestId('attention');
-  await expect(attention.getByRole('link', { name: 'Blocker issue #1: Checkout crashes' })).toBeVisible();
-  await expect(attention.getByRole('link', { name: 'Sentry on billing-api has not synced in over a day' })).toBeVisible();
+  const insights = page.getByTestId('insights');
+  await expect(insights.getByTestId('alerts').getByRole('link', { name: 'Blocker issue #1: Checkout crashes' })).toBeVisible();
+  await expect(page.getByText('Needs attention')).toHaveCount(0);
   await expect(page.getByTestId('recent-activity')).toContainText('marked open');
   await page.screenshot({ path: 'test-results/home-dashboard.png', fullPage: true });
 
-  // On a wide screen the map and what needs attention share a row, without
-  // the map's table being pushed into its own scrollbar; on a narrow one they stack.
+  // On a wide screen health and the map share one column at one width, with
+  // trends and where to start beside them, without the map's table being
+  // pushed into its own scrollbar; on a narrow one everything stacks. Each
+  // column sizes itself, so health is not stretched to match trends.
   const map = page.getByTestId('health-map');
-  const [m, at] = [(await map.boundingBox())!, (await attention.boundingBox())!];
-  expect(at.x).toBeGreaterThanOrEqual(m.x + m.width);
-  expect(at.y).toBe(m.y);
+  const health = (await page.getByTestId('health').locator('xpath=ancestor::*[contains(@class,"lotus-dash-column")][1]').boundingBox())!;
+  const m = (await map.boundingBox())!;
+  const at = (await insights.boundingBox())!;
+  const trend = (await page.getByTestId('trends').boundingBox())!;
+  expect(m.x).toBe(health.x);
+  expect(m.width).toBeLessThanOrEqual(health.width);
+  expect(m.width).toBeGreaterThanOrEqual(health.width - 1);
+  expect(trend.x).toBeGreaterThanOrEqual(m.x + m.width);
+  expect(at.x).toBe(trend.x);
+  expect(at.y).toBeGreaterThanOrEqual(trend.y + trend.height);
   const clipped = await map.locator('.lotus-dash-map-scroll').evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(clipped).toBeLessThanOrEqual(0);
   await expect(map.locator('.lotus-dash-cell.is-stale')).toHaveCount(1);
   await expectNoPageScroll(page);
 
   await page.setViewportSize({ width: 1000, height: 900 });
-  const [m2, at2] = [(await map.boundingBox())!, (await attention.boundingBox())!];
+  const [m2, at2] = [(await map.boundingBox())!, (await insights.boundingBox())!];
   expect(at2.y).toBeGreaterThanOrEqual(m2.y + m2.height);
+  expect(at2.x).toBe(m2.x);
   await expectNoPageScroll(page);
   await page.setViewportSize({ width: 1280, height: 900 });
 
-  await attention.getByRole('link', { name: 'billing-api is failing' }).click();
+  // The failing component is on the map, and its cell opens that integration.
+  await map.getByRole('link', { name: '40', exact: true }).click();
   await expect(page).toHaveURL(`${origin}/projects/payments/components/billing/metrics/sonarqube`);
 
   // The breadcrumb's logo leads back.

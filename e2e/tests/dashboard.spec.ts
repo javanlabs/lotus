@@ -23,7 +23,7 @@ test('dashboard shows the app shell and an empty state for a fresh org', async (
   await page.goto(`${origin}/`);
   await expect(page).toHaveURL(`${origin}/dashboard`);
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
-  await expect(page.getByText('Nothing needs attention.')).toBeVisible();
+  await expect(page.getByTestId('alerts')).toHaveCount(0);
 
   // The app shell (task 4.1): sidebar with the signed-in user, the
   // Dashboard and Projects entries, the Lotus wordmark — proves the

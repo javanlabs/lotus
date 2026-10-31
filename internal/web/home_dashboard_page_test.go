@@ -31,7 +31,7 @@ func TestHomeDashboard_Page(t *testing.T) {
 		t.Fatalf("status %d:\n%s", status, body)
 	}
 	for _, want := range []string{
-		"ledger-api is failing", `href="/projects/payments/components/ledger/metrics/sonarqube"`,
+		`href="/projects/payments/components/ledger/metrics/sonarqube"`,
 		"SonarQube sync keeps failing on ledger-api", `href="/projects/payments/components/ledger/metrics/sonarqube/runs"`,
 		"cannot sign in", "bad token",
 		"Blocker issue #1: Checkout crashes", `href="/projects/payments/qa/issues/1"`,
@@ -44,12 +44,13 @@ func TestHomeDashboard_Page(t *testing.T) {
 			t.Errorf("dashboard missing %q", want)
 		}
 	}
-	// The dashboard covers the whole organization, so a healthy component of
-	// another project belongs on the health map — but it must not be
-	// reported as needing attention.
-	attention := body[strings.Index(body, `data-testid="attention"`):]
-	if strings.Contains(attention, "intruder") {
-		t.Error("a healthy component was raised as needing attention")
+	// The card that repeated the health map is gone; what the map cannot show
+	// is listed where to start, and no component is reported twice.
+	if strings.Contains(body, "Needs attention") || strings.Contains(body, "ledger-api is failing") {
+		t.Error("the dashboard still repeats failing components outside the map")
+	}
+	if !strings.Contains(body[strings.Index(body, `data-testid="insights"`):], `data-testid="alerts"`) {
+		t.Error("alerts are not inside Where to start")
 	}
 	// Dashboard is the sidebar's first item, and active here; the
 	// breadcrumb's logo leads here.
@@ -77,7 +78,7 @@ func TestHomeDashboard_LandingAndGuests(t *testing.T) {
 	}
 	// An organization with nothing yet still has a page, saying so.
 	status, body := e.get(t, e.owner, "/dashboard")
-	if status != http.StatusOK || !strings.Contains(body, "Nothing needs attention.") || !strings.Contains(body, "No issue activity yet.") {
+	if status != http.StatusOK || strings.Contains(body, `data-testid="alerts"`) || !strings.Contains(body, "No issue activity yet.") {
 		t.Fatalf("empty dashboard = %d", status)
 	}
 }

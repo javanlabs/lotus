@@ -69,8 +69,10 @@ type homeFigure struct {
 	Label, Value, Tone, Href string
 }
 
-// homeAlert is one thing that needs the team's attention. Tone is fail or
-// warn; at orders alerts of one tone, newest first.
+// homeAlert is a problem the health map cannot show: a broken connection,
+// a binding that keeps failing to sync, a severe open issue. A failing or
+// stale component is not one, because the map already marks it. at orders
+// alerts newest first.
 type homeAlert struct {
 	Tone, Title, Detail, Href, When string
 	at                              time.Time
@@ -121,45 +123,15 @@ func buildHomeDashboard(in homeInputs) homeDashboard {
 		if !ok {
 			continue
 		}
-		project := &repo.Project{ID: c.ProjectID, Slug: c.ProjectSlug}
-		comp := &repo.Component{ID: c.ID, Slug: c.Slug}
 		kinds := cm.Metrics()
 		if cm.StatusValue() == collector.StatusFail {
 			failing++
-			var labels []string
-			first := ""
-			for _, k := range bindableKinds {
-				if kh, ok := kinds[k]; ok && collector.Status(kh.Status) == collector.StatusFail {
-					labels = append(labels, kindLabels[k])
-					if first == "" {
-						first = k
-					}
-				}
-			}
-			href := componentURL(project, comp)
-			if first != "" {
-				href = metricURL(project, comp, first)
-			}
-			detail := c.ProjectName
-			if len(labels) > 0 {
-				detail += " · " + strings.Join(labels, ", ")
-			}
-			alerts = append(alerts, homeAlert{Tone: "fail", Title: c.Name + " is failing", Detail: detail, Href: href,
-				When: relativeTimeStrAt(cm.UpdatedAt, in.Now), at: cm.UpdatedAt})
 		}
 		for _, k := range bindableKinds {
 			kh, ok := kinds[k]
-			if !ok {
-				continue
+			if ok && staleNote(k, kindSyncedAt(cm, kh), in.Now) != "" {
+				stale++
 			}
-			at := kindSyncedAt(cm, kh)
-			if staleNote(k, at, in.Now) == "" {
-				continue
-			}
-			stale++
-			alerts = append(alerts, homeAlert{Tone: "warn", Title: kindLabels[k] + " on " + c.Name + " has not synced in over a day",
-				Detail: c.ProjectName + " · last synced " + relativeTimeStrAt(at, in.Now), Href: metricURL(project, comp, k),
-				When: relativeTimeStrAt(at, in.Now), at: at})
 		}
 	}
 	for _, cn := range in.Connections {
@@ -200,9 +172,6 @@ func buildHomeDashboard(in homeInputs) homeDashboard {
 	sort.SliceStable(alerts, func(i, j int) bool {
 		if alerts[i].outage != alerts[j].outage {
 			return alerts[i].outage
-		}
-		if alerts[i].Tone != alerts[j].Tone {
-			return alerts[i].Tone == "fail"
 		}
 		return alerts[i].at.After(alerts[j].at)
 	})

@@ -19,8 +19,9 @@ func homeComponent(project, name string) repo.LiveComponent {
 
 func strPtrHome(s string) *string { return &s }
 
-// Each condition raises its alert, failing ones before warnings and the
-// newest first within a tone; figures count what the alerts are about.
+// Each problem the health map cannot show raises an alert, an outage first
+// and then the newest. A failing or stale component is the map's to show, so
+// it raises none, and is still counted in the figures.
 func TestBuildHomeDashboard_AlertsAndFigures(t *testing.T) {
 	t.Parallel()
 	at := func(d time.Duration) *time.Time { v := homeNow.Add(-d); return &v }
@@ -63,19 +64,13 @@ func TestBuildHomeDashboard_AlertsAndFigures(t *testing.T) {
 	want := []string{
 		"fail Connection sonar.internal cannot sign in", // an outage leads
 		"fail Blocker issue #12: Login loops",           // 10 min ago
-		"fail Authentication is failing",                // 1 hr ago
 		"fail GitLab sync keeps failing on Ledger",      // no time: last of the failures
-		"warn Sentry on Billing has not synced in over a day",
 	}
 	if strings.Join(titles, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("alerts =\n%s\nwant\n%s", strings.Join(titles, "\n"), strings.Join(want, "\n"))
 	}
-	// The failing component names its failing kinds in the fixed order and
-	// opens the first of them; the binding alert opens its Syncs.
-	if a := d.Alerts[2]; a.Detail != "AlurKerja · SonarQube, GitLab" || a.Href != "/projects/alurkerja/components/authentication/metrics/sonarqube" {
-		t.Errorf("failing component alert = %+v", a)
-	}
-	if a := d.Alerts[3]; a.Href != "/projects/payments/components/ledger/metrics/gitlab/runs" || a.Detail != "Payments · 5 failed syncs in a row" {
+	// The binding alert opens its Syncs.
+	if a := d.Alerts[2]; a.Href != "/projects/payments/components/ledger/metrics/gitlab/runs" || a.Detail != "Payments · 5 failed syncs in a row" {
 		t.Errorf("failing binding alert = %+v", a)
 	}
 	if a := d.Alerts[0]; a.Detail != "SonarQube · syncs are paused until its credential is replaced · 401 Unauthorized" || a.Href != "/settings/connections" {
@@ -238,11 +233,9 @@ func TestMonthLabel(t *testing.T) {
 // is how an expired Harbor credential went unnoticed for a month.
 func TestBuildHomeDashboard_ABrokenConnectionLeadsTheAlerts(t *testing.T) {
 	t.Parallel()
-	in := homeInputs{Now: homeNow, Metrics: map[uuid.UUID]repo.ComponentMetric{}}
+	in := homeInputs{Now: homeNow}
 	for i := 0; i < homeAlertCap+2; i++ {
-		c := homeComponent("P", fmt.Sprintf("C%d", i))
-		in.Components = append(in.Components, c)
-		in.Metrics[c.ID] = repo.ComponentMetric{Status: "fail", UpdatedAt: homeNow, MetricsJSON: metricsJSON(t, map[string]repo.KindHeadline{})}
+		in.FailingBindings = append(in.FailingBindings, repo.FailingBinding{Kind: "sonarqube", ConsecutiveFailures: 3, LiveComponent: homeComponent("P", fmt.Sprintf("C%d", i))})
 	}
 	in.Connections = []repo.Connection{{Name: "Harbor", Provider: "harbor_trivy", Status: "auth_failed"}}
 	first := buildHomeDashboard(in).Alerts[0]
