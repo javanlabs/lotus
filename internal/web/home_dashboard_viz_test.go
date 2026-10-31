@@ -124,3 +124,26 @@ func TestHomeInsights_NamesTheTrendThatGotWorstRelativeToItsStart(t *testing.T) 
 		t.Errorf("worst trend insight = %+v", last)
 	}
 }
+
+func TestHomeViz_AValueNotSyncedLatelyIsMarkedStale(t *testing.T) {
+	now := time.Now()
+	in := homeInputs{Now: now}
+	id := uuid.New()
+	in.Components = []repo.LiveComponent{{ID: id, Name: "c", Slug: "c", ProjectName: "p", ProjectSlug: "p"}}
+	old, recent := now.Add(-30*24*time.Hour), now.Add(-time.Hour)
+	raw, err := json.Marshal(map[string]repo.KindHeadline{
+		"trivy":  {Status: "pass", UpdatedAt: &old},
+		"gitlab": {Status: "pass", UpdatedAt: &recent},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.Metrics = map[uuid.UUID]repo.ComponentMetric{id: {ComponentID: id, Status: "pass", MetricsJSON: raw}}
+	cells := map[string]homeMapCell{}
+	for i, c := range buildHomeDashboard(in).Viz.Map[0].Cells {
+		cells[bindableKinds[i]] = c
+	}
+	if !cells["trivy"].Stale || cells["gitlab"].Stale {
+		t.Errorf("trivy stale=%v gitlab stale=%v", cells["trivy"].Stale, cells["gitlab"].Stale)
+	}
+}

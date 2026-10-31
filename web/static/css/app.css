@@ -923,6 +923,8 @@ a.lotus-dash-figure:focus-visible { outline: none; box-shadow: var(--shadow-focu
 .lotus-dash-cell.is-pass { background: var(--status-pass-bg); color: var(--status-pass); }
 .lotus-dash-cell.is-fail { background: var(--status-fail-bg); color: var(--status-fail); }
 .lotus-dash-cell.is-none { background: var(--status-none-bg); color: var(--status-none); }
+.lotus-dash-cell.is-stale { background: repeating-linear-gradient(135deg, var(--status-none-bg) 0 4px, transparent 4px 8px); color: var(--text-muted); }
+.lotus-dash-cell-stale { font: 400 9.5px var(--font-mono); }
 a.lotus-dash-cell:hover { box-shadow: inset 0 0 0 1.5px currentColor; }
 a.lotus-dash-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-ring); }
 /* Health and Trends side by side, trends stacked in the narrower column;

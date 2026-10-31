@@ -62,6 +62,9 @@ type homeKindBar struct {
 // homeMapCell is one component's state for one integration.
 type homeMapCell struct {
 	Tone, Label, Title, Href string
+	// Stale marks a value last synced too long ago to trust: it is still
+	// shown, but must not read as the current state.
+	Stale bool
 }
 
 type homeMapRow struct {
@@ -192,7 +195,12 @@ func buildHomeViz(in homeInputs, rates []kpiCard) homeViz {
 			if kh.Summary != "" {
 				title += " · " + kh.Summary
 			}
-			row.Cells = append(row.Cells, homeMapCell{Tone: tone, Label: homeMapCellLabel(k, kh), Title: title, Href: metricURL(project, comp, k)})
+			at := kindSyncedAt(cm, kh)
+			stale := staleNote(k, at, in.Now) != ""
+			if stale {
+				title += " · last synced " + relativeTimeStrAt(at, in.Now)
+			}
+			row.Cells = append(row.Cells, homeMapCell{Tone: tone, Label: homeMapCellLabel(k, kh), Title: title, Href: metricURL(project, comp, k), Stale: stale})
 		}
 		if row.Failing == 1 {
 			nearWins = append(nearWins, nearWin{c.Name, metricURL(project, comp, failedKind), failedKind})
