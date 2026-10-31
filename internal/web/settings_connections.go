@@ -2,6 +2,8 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"strconv"
 	"strings"
 
@@ -36,6 +38,7 @@ type connectionRow struct {
 	LastVerifiedAt  string
 	LastError       string
 	ActiveBindings  int
+	EditFields      []fieldView
 }
 
 func providerLabel(provider string) string {
@@ -103,7 +106,9 @@ func settingsConnectionsPage(d Deps) fiber.Handler {
 			if err != nil {
 				return writeRepoErr(c, err)
 			}
-			rows = append(rows, buildConnectionRow(conn, n))
+			row := buildConnectionRow(conn, n)
+			row.EditFields = connectionEditFields(conn)
+			rows = append(rows, row)
 		}
 
 		kind := c.Query("kind", bindableKinds[0])
@@ -245,7 +250,11 @@ func createConnectionSettingsUI(d Deps) fiber.Handler {
 	}
 }
 
-func rotateConnectionSecretUI(d Deps) fiber.Handler {
+// editConnectionUI changes a connection's name, settings, URL and credential.
+// A blank credential keeps the stored one, except when the URL changes: the
+// URL only ever moves together with a credential, so a stored one is never
+// sent to a new host.
+func editConnectionUI(d Deps) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		s, err := mustScope(c)
 		if err != nil {
@@ -263,51 +272,134 @@ func rotateConnectionSecretUI(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		secret := strings.TrimSpace(c.FormValue("secret"))
-		if conn.Provider == providerForKind("trivy") {
-			// Harbor's one secret is two fields, as in planConnectionFields.
-			// A single box here stored a bare password that could never sign in.
-			user, pass := strings.TrimSpace(c.FormValue("username")), strings.TrimSpace(c.FormValue("password"))
-			secret = ""
-			if user != "" && pass != "" {
-				secret = user + ":" + pass
+		kind, err := integrations.BindingKindForProvider(conn.Provider)
+		if err != nil {
+			return err
+		}
+		reject := func(status int, msg string) error { return folderFormError(c, d, status, msg) }
+
+		name := strings.TrimSpace(c.FormValue("name"))
+		if name == "" {
+			return reject(fiber.StatusUnprocessableEntity, "A connection name is required.")
+		}
+		baseURL, secret, formConfig := planConnectionFields(kind, func(key string) string { return c.FormValue(key) })
+		baseURL = strings.TrimRight(baseURL, "/")
+		if baseURL == "" {
+			return reject(fiber.StatusUnprocessableEntity, "A server URL is required.")
+		}
+		if kind == "trivy" {
+			// Harbor's one secret is two fields, as in planConnectionFields:
+			// half of one is refused rather than stored unable to sign in.
+			user, pass, _ := strings.Cut(secret, ":")
+			switch {
+			case user == "" && pass == "":
+				secret = ""
+			case user == "" || pass == "":
+				return reject(fiber.StatusUnprocessableEntity, "Enter both the username and the password, or neither to keep the current ones.")
 			}
 		}
-		if secret == "" {
-			return fiber.NewError(fiber.StatusUnprocessableEntity, "a new credential must be provided")
+		moved := baseURL != strings.TrimRight(conn.BaseURL, "/")
+		if moved && secret == "" {
+			return reject(fiber.StatusUnprocessableEntity, "Changing the server URL requires entering the credential again.")
 		}
-		dek, err := global.GetOrCreateOrgDEK(c.Context(), d.DB, d.KEK, org.ID)
+		if moved {
+			netguardCfg := netguard.Config{AllowHTTP: d.Cfg.Dev, Resolver: d.NetguardResolver, IsBlocked: d.NetguardIsBlocked}
+			if err := netguard.ValidateBaseURL(c.Context(), netguardCfg, baseURL); err != nil {
+				return reject(fiber.StatusUnprocessableEntity, "Connection URL rejected · "+err.Error())
+			}
+		}
+		config, err := mergeConnectionConfig(conn.Config, kind, formConfig)
 		if err != nil {
+			return err
+		}
+
+		// Opened before anything is written, so a key that won't open leaves
+		// the whole edit undone rather than saving half of it.
+		var dek []byte
+		if secret != "" {
+			dek, err = global.GetOrCreateOrgDEK(c.Context(), d.DB, d.KEK, org.ID)
+			if err != nil {
+				log.Printf("connection edit: open organization key: %v", err)
+				return reject(fiber.StatusConflict, "The new credential can't be stored: this server's LOTUS_KEK can't open the organization's encryption key. Nothing was changed.")
+			}
+		}
+
+		if _, err := repo.UpdateConnectionMeta(c.Context(), s, id, name, config); err != nil {
+			if errors.Is(err, repo.ErrNameTaken) {
+				return reject(fiber.StatusConflict, connectionCreateErrorMessage(err))
+			}
 			return writeRepoErr(c, err)
 		}
-		baseURL := strings.TrimRight(strings.TrimSpace(c.FormValue("base_url")), "/")
-		if baseURL == "" || baseURL == conn.BaseURL {
-			if _, err := repo.UpdateConnectionSecret(c.Context(), s, dek, id, secret); err != nil {
+		if secret != "" {
+			if moved {
+				_, err = repo.UpdateConnectionBaseURLWithSecret(c.Context(), s, dek, id, baseURL, secret)
+			} else {
+				_, err = repo.UpdateConnectionSecret(c.Context(), s, dek, id, secret)
+			}
+			if err != nil {
 				return writeRepoErr(c, err)
 			}
-			setFlash(c, "connection.rotated")
-			return redirectAfterMutation(c, "/settings/connections")
 		}
-		// A server that moved. The URL only ever changes together with the
-		// credential, so a stored one is never sent to a new host.
-		netguardCfg := netguard.Config{AllowHTTP: d.Cfg.Dev, Resolver: d.NetguardResolver, IsBlocked: d.NetguardIsBlocked}
-		if err := netguard.ValidateBaseURL(c.Context(), netguardCfg, baseURL); err != nil {
-			return fiber.NewError(fiber.StatusUnprocessableEntity, "Connection URL rejected · "+err.Error())
+		if moved {
+			var actor *uuid.UUID
+			if p, ok := authz.CurrentPrincipal(c); ok && p.UserID != uuid.Nil {
+				actor = &p.UserID
+			}
+			meta, _ := json.Marshal(fiber.Map{"new_base_url": baseURL})
+			if err := repo.RecordAuditEvent(c.Context(), s, actor, "connection.base_url_changed", "integration_connection", &id, meta); err != nil {
+				return writeRepoErr(c, err)
+			}
 		}
-		if _, err := repo.UpdateConnectionBaseURLWithSecret(c.Context(), s, dek, id, baseURL, secret); err != nil {
-			return writeRepoErr(c, err)
-		}
-		var actor *uuid.UUID
-		if p, ok := authz.CurrentPrincipal(c); ok && p.UserID != uuid.Nil {
-			actor = &p.UserID
-		}
-		meta, _ := json.Marshal(fiber.Map{"new_base_url": baseURL})
-		if err := repo.RecordAuditEvent(c.Context(), s, actor, "connection.base_url_changed", "integration_connection", &id, meta); err != nil {
-			return writeRepoErr(c, err)
-		}
-		setFlash(c, "connection.rotated")
+		setFlash(c, "connection.updated")
 		return redirectAfterMutation(c, "/settings/connections")
 	}
+}
+
+// mergeConnectionConfig applies the form to the stored config: the fields the
+// form shows are replaced or cleared, anything else stored there is kept.
+func mergeConnectionConfig(stored json.RawMessage, kind string, form map[string]any) (json.RawMessage, error) {
+	merged := map[string]any{}
+	if len(stored) > 0 {
+		if err := json.Unmarshal(stored, &merged); err != nil {
+			return nil, err
+		}
+	}
+	for _, f := range connectionFieldsFor(kind) {
+		delete(merged, f.Key)
+	}
+	for k, v := range form {
+		merged[k] = v
+	}
+	return marshalConfig(merged)
+}
+
+// connectionEditFields are a connection's fields as its edit form shows them:
+// settings filled in from the stored config, and the credential always empty
+// because it is write-only. Harbor's username is part of that credential.
+func connectionEditFields(conn repo.Connection) []fieldView {
+	kind, err := integrations.BindingKindForProvider(conn.Provider)
+	if err != nil {
+		return nil
+	}
+	values := map[string]string{"base_url": conn.BaseURL}
+	stored := map[string]any{}
+	if len(conn.Config) > 0 && json.Unmarshal(conn.Config, &stored) == nil {
+		for k, v := range stored {
+			switch t := v.(type) {
+			case string:
+				values[k] = t
+			case float64:
+				values[k] = strconv.FormatFloat(t, 'f', -1, 64)
+			}
+		}
+	}
+	fields := connectionFieldViews(connectionFieldsFor(kind), values)
+	for i := range fields {
+		if f := &fields[i]; f.Type == "secret" || (kind == "trivy" && f.Key == "username") {
+			f.Required, f.Value, f.Default = false, "", "leave blank to keep the current one"
+		}
+	}
+	return fields
 }
 
 // testConnectionSettingsUI is an htmx endpoint mirroring component_page.go's
@@ -332,13 +424,28 @@ func testConnectionSettingsUI(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
+		// A credential this server can't open says nothing about the provider,
+		// so it is reported beside the button and the stored status stays.
+		cannotOpen := func(err error) error {
+			log.Printf("connection test: open credential: %v", err)
+			c.Type("html")
+			return d.Renderer.RenderPartial(c, "partials/binding_test_result.html", struct {
+				OK       bool
+				AuthFail bool
+				Summary  string
+				ReqErr   string
+			}{ReqErr: "This server's LOTUS_KEK can't open the stored credential, so nothing was tested."})
+		}
 		dek, err := global.GetOrCreateOrgDEK(c.Context(), d.DB, d.KEK, org.ID)
 		if err != nil {
-			return writeRepoErr(c, err)
+			return cannotOpen(err)
 		}
 		secret, err := repo.DecryptConnectionSecret(c.Context(), s, dek, id)
 		if err != nil {
-			return writeRepoErr(c, err)
+			if errors.Is(err, repo.ErrNotFound) {
+				return writeRepoErr(c, err)
+			}
+			return cannotOpen(err)
 		}
 		client := netguard.NewClient(netguard.Config{AllowHTTP: d.Cfg.Dev, Resolver: d.NetguardResolver, IsBlocked: d.NetguardIsBlocked})
 		result, testErr := integrations.Test(c.Context(), client, conn.Provider, conn.BaseURL, secret)
@@ -413,8 +520,8 @@ func registerConnectionSettingsRoutes(app *fiber.App, d Deps, requireSession, lo
 		authz.Require("connection.secret.write"), connectionFormFragment(d))
 	app.Post("/settings/connections", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("connection.secret.write"), createConnectionSettingsUI(d))
-	app.Post("/settings/connections/:id/rotate", tenant.RequireTenant(), requireSession, loadPrincipal,
-		authz.Require("connection.secret.write"), rotateConnectionSecretUI(d))
+	app.Post("/settings/connections/:id/edit", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("connection.secret.write"), editConnectionUI(d))
 	app.Post("/settings/connections/:id/test-ui", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("connection.secret.write"), testConnectionSettingsUI(d))
 	app.Post("/settings/connections/:id/delete", tenant.RequireTenant(), requireSession, loadPrincipal,

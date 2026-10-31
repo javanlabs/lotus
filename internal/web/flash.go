@@ -39,7 +39,7 @@ var flashMessages = map[string]struct {
 	"connection.created":    {"pass", "Connection created"},
 	"connection.deleted":    {"pass", "Connection deleted"},
 	"connection.unbound":    {"pass", "Connection deleted · %s bindings removed"},
-	"connection.rotated":    {"pass", "Secret rotated"},
+	"connection.updated":    {"pass", "Connection updated"},
 	"member.invited":        {"pass", "Invitation sent to %s"},
 	"member.role":           {"pass", "Role updated"},
 	"member.removed":        {"pass", "Member removed"},
@@ -153,6 +153,16 @@ func takeFlash(c *fiber.Ctx) *httpx.Flash {
 func redirectAfterMutation(c *fiber.Ctx, to string) error {
 	if c.Get("HX-Request") != "" {
 		c.Set("HX-Refresh", "true")
+		return c.SendStatus(fiber.StatusNoContent)
+	}
+	return c.Redirect(to, fiber.StatusFound)
+}
+
+// redirectAwayAfterMutation ends a mutation that removed the page it was made
+// from: reloading would land on a 404, so htmx goes to `to` instead.
+func redirectAwayAfterMutation(c *fiber.Ctx, to string) error {
+	if c.Get("HX-Request") != "" {
+		c.Set("HX-Redirect", to)
 		return c.SendStatus(fiber.StatusNoContent)
 	}
 	return c.Redirect(to, fiber.StatusFound)

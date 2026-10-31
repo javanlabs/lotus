@@ -533,7 +533,7 @@ func TestActivityPage_ShowsSyncRunsAcrossTheWholeOrg(t *testing.T) {
 // A Harbor that moved: the URL and the credential change together, and what
 // the old server's failure froze resumes. Harbor's secret is username and
 // password, the format its collector requires.
-func TestRotateConnection_MovesTheServerAndResumesFrozenBindings(t *testing.T) {
+func TestEditConnection_MovesTheServerAndResumesFrozenBindings(t *testing.T) {
 	t.Parallel()
 	app, db := newDashboardTestApp(t)
 	orgID, userID := seedMember(t, db, "acme-conn-move", "owner")
@@ -562,16 +562,38 @@ func TestRotateConnection_MovesTheServerAndResumesFrozenBindings(t *testing.T) {
 			t.Fatalf("insert binding: %v", err)
 		}
 	})
-	path := "/settings/connections/" + connID + "/rotate"
+	path := "/settings/connections/" + connID + "/edit"
 
 	// Half a credential is refused rather than stored as one that can't sign in.
-	bad := postForm(t, app, host, path, raw, url.Values{"base_url": {"https://harbor.new.example.com"}, "username": {"robot"}})
+	bad := postForm(t, app, host, path, raw, url.Values{"name": {"Harbor"}, "base_url": {"https://harbor.old.example.com"}, "username": {"robot"}})
 	bad.Body.Close()
 	if bad.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("missing password status = %d, want 422", bad.StatusCode)
 	}
+	// The stored credential must never reach a new host.
+	bad = postForm(t, app, host, path, raw, url.Values{"name": {"Harbor"}, "base_url": {"https://harbor.new.example.com"}})
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("moved without credential status = %d, want 422", bad.StatusCode)
+	}
+	// A rename alone keeps the credential, and resumes nothing.
+	renamed := postForm(t, app, host, path, raw, url.Values{"name": {"Registry"}, "base_url": {"https://harbor.old.example.com"}})
+	renamed.Body.Close()
+	if renamed.StatusCode != http.StatusFound {
+		t.Fatalf("rename status = %d, want 302", renamed.StatusCode)
+	}
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		var name, last4 string
+		var enabled bool
+		if err := tx.QueryRow(`SELECT c.name, c.secret_last4, b.enabled FROM integration_connections c JOIN metric_bindings b ON b.connection_id = c.id WHERE c.id = $1`, connID).Scan(&name, &last4, &enabled); err != nil {
+			t.Fatal(err)
+		}
+		if name != "Registry" || last4 != "word" || enabled {
+			t.Errorf("after rename: name=%q last4=%q enabled=%v", name, last4, enabled)
+		}
+	})
 
-	resp := postForm(t, app, host, path, raw, url.Values{"base_url": {"https://harbor.new.example.com/"}, "username": {"robot"}, "password": {"new-password"}})
+	resp := postForm(t, app, host, path, raw, url.Values{"name": {"Registry"}, "base_url": {"https://harbor.new.example.com/"}, "username": {"robot"}, "password": {"new-password"}})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusFound {
 		t.Fatalf("rotate status = %d, want 302", resp.StatusCode)
@@ -597,6 +619,77 @@ func TestRotateConnection_MovesTheServerAndResumesFrozenBindings(t *testing.T) {
 		}
 		if audits != 1 {
 			t.Errorf("audit events = %d, want 1", audits)
+		}
+	})
+}
+
+// A copy of production has another server's key: the edit is refused in the
+// form, says why, and saves nothing rather than half of it.
+func TestEditConnection_AKeyThatWontOpenChangesNothing(t *testing.T) {
+	t.Parallel()
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-conn-kek", "owner")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-conn-kek." + dashboardTestDomain
+	created := postForm(t, app, host, "/settings/connections", raw, url.Values{"kind": {"gitlab"}, "name": {"gl"}, "base_url": {"https://gitlab.com"}, "token": {"tok"}})
+	created.Body.Close()
+	if _, err := db.Exec(`UPDATE organizations SET dek_ciphertext = decode('00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff', 'hex') WHERE id = $1`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	var connID string
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&connID, `SELECT id FROM integration_connections WHERE name = 'gl'`); err != nil {
+			t.Fatal(err)
+		}
+	})
+	resp := postForm(t, app, host, "/settings/connections/"+connID+"/edit", raw, url.Values{"name": {"renamed"}, "base_url": {"https://gitlab.com"}, "token": {"new"}})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.StatusCode)
+	}
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		var name string
+		if err := tx.Get(&name, `SELECT name FROM integration_connections WHERE id = $1`, connID); err != nil {
+			t.Fatal(err)
+		}
+		if name != "gl" {
+			t.Errorf("name = %q, the failed edit saved part of itself", name)
+		}
+	})
+}
+
+// Testing with a key that won't open reports that beside the button instead of
+// a 500, and leaves the connection's status alone.
+func TestConnectionTest_AKeyThatWontOpenIsReportedInPlace(t *testing.T) {
+	t.Parallel()
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-conn-kek2", "owner")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-conn-kek2." + dashboardTestDomain
+	created := postForm(t, app, host, "/settings/connections", raw, url.Values{"kind": {"gitlab"}, "name": {"gl"}, "base_url": {"https://gitlab.com"}, "token": {"tok"}})
+	created.Body.Close()
+	if _, err := db.Exec(`UPDATE organizations SET dek_ciphertext = decode('00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff', 'hex') WHERE id = $1`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	var connID string
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&connID, `SELECT id FROM integration_connections WHERE name = 'gl'`); err != nil {
+			t.Fatal(err)
+		}
+	})
+	resp := postForm(t, app, host, "/settings/connections/"+connID+"/test-ui", raw, url.Values{})
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "LOTUS_KEK") {
+		t.Fatalf("status = %d body = %s", resp.StatusCode, body)
+	}
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		var status string
+		if err := tx.Get(&status, `SELECT status FROM integration_connections WHERE id = $1`, connID); err != nil {
+			t.Fatal(err)
+		}
+		if status != "pending" {
+			t.Errorf("status = %q, want it left alone", status)
 		}
 	})
 }

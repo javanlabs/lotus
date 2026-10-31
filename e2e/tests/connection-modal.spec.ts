@@ -91,7 +91,7 @@ test('switching kind does not put credential fields in the URL', async ({ page, 
 
 // A registry that moved has to be repointable from the page, with Harbor's
 // credential entered as the two fields it really is.
-test('rotating a Harbor connection can move it to a new server', async ({ page, context }) => {
+test('editing a Harbor connection can move it to a new server', async ({ page, context }) => {
   const { sessionToken, subdomain, orgId } = await seedOwnerSession('conn-move-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
@@ -102,13 +102,20 @@ test('rotating a Harbor connection can move it to a new server', async ({ page, 
 
   await page.goto(`${origin}/settings/connections`);
   await expect(page.getByText('harbor.old.example.test')).toBeVisible();
-  await page.getByRole('button', { name: 'Rotate' }).click();
+  await page.getByRole('button', { name: 'Edit' }).click();
+  const edit = page.getByTestId('connection-edit');
   // The new URL has to resolve: the server checks it before accepting it.
-  await page.getByLabel('Server URL').fill('https://gitlab.com');
-  await page.getByLabel('Username').fill('robot');
-  await page.getByLabel('Password').fill('new-password');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await edit.locator('input[name="base_url"]').fill('https://gitlab.com');
+  // Moving without a credential is refused in place.
+  await edit.getByRole('button', { name: 'Save' }).click();
+  await expect(edit.getByText('requires entering the credential again')).toBeVisible();
 
+  await edit.locator('input[name="name"]').fill('Registry');
+  await edit.locator('input[name="username"]').fill('robot');
+  await edit.locator('input[name="password"]').fill('new-password');
+  await edit.getByRole('button', { name: 'Save' }).click();
+
+  await expect(page.getByText('Registry', { exact: true })).toBeVisible();
   await expect(page.getByText('https://gitlab.com')).toBeVisible();
   await expect(page.getByText('harbor.old.example.test')).toHaveCount(0);
 

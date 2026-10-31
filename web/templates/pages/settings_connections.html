@@ -22,7 +22,7 @@
     <div style="font-size:13px;font-weight:600;color:#43284E">Connections</div>
   </div>
   {{range .Data.Connections}}
-  <div {{if $.Data.CanWrite}}x-data="{rotate:false}"{{end}}>
+  <div {{if $.Data.CanWrite}}x-data="{editing:false}"{{end}}>
     <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-bottom:1px solid #F3F4F6">
       <span class="lotus-badge" style="min-width:96px;justify-content:center">{{.ProviderLabel}}</span>
       <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1;overflow:hidden">
@@ -36,7 +36,7 @@
       <div style="display:flex;gap:6px;flex:none">
         <button type="button" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px"
                 hx-post="/settings/connections/{{.ID}}/test-ui" hx-target="#conn-test-{{.ID}}" hx-swap="innerHTML">Test</button>
-        <button type="button" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px" @click="rotate = !rotate">Rotate</button>
+        <button type="button" class="btn-lotus btn-lotus-secondary" style="padding:6px 10px;font-size:11px" @click="editing = !editing">Edit</button>
         <form method="post" action="/settings/connections/{{.ID}}/delete"
               onsubmit="return confirm('Delete {{.Name}}? {{.ActiveBindings}} binding(s) will be disabled along with it.')">
           <button type="submit" class="btn-lotus" style="padding:6px 10px;font-size:11px;background:var(--surface-danger-soft);color:var(--text-danger)">Delete</button>
@@ -45,17 +45,18 @@
       {{end}}
     </div>
     {{if $.Data.CanWrite}}
-    <div x-show="rotate" x-cloak style="padding:10px 14px 14px 124px;border-bottom:1px solid #F3F4F6;background:rgba(67,40,78,.02)">
-      <form method="post" action="/settings/connections/{{.ID}}/rotate" style="display:flex;flex-direction:column;gap:8px;max-width:420px">
-        <input type="url" name="base_url" value="{{.BaseURL}}" aria-label="Server URL" placeholder="Server URL" required style="flex:1;min-width:0;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+    <div x-show="editing" x-cloak data-testid="connection-edit" style="padding:12px 14px 14px 124px;border-bottom:1px solid #F3F4F6;background:rgba(67,40,78,.02)">
+      <form method="post" action="/settings/connections/{{.ID}}/edit" hx-post="/settings/connections/{{.ID}}/edit"
+            hx-target="#conn-edit-error-{{.ID}}" hx-swap="innerHTML" style="display:flex;flex-direction:column;gap:10px;max-width:420px">
+        <div id="conn-edit-error-{{.ID}}"></div>
+        <label style="display:flex;flex-direction:column;gap:6px">
+          <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5B4A63">Connection name *</span>
+          <input type="text" name="name" value="{{.Name}}" required class="lotus-input">
+        </label>
+        {{range .EditFields}}{{template "field_input" .}}{{end}}
         <div style="display:flex;gap:8px">
-          {{if eq .Provider "harbor_trivy"}}
-          <input type="text" name="username" placeholder="Username" aria-label="Username" required autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
-          <input type="password" name="password" placeholder="Password" aria-label="Password" required autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
-          {{else}}
-          <input type="password" name="secret" placeholder="New credential" aria-label="New credential" required autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
-          {{end}}
-          <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none;padding:8px 14px;font-size:11px">Save</button>
+          <button type="submit" class="btn-lotus btn-lotus-primary">Save</button>
+          <button type="button" class="btn-lotus btn-lotus-secondary" @click="editing = false">Cancel</button>
         </div>
       </form>
     </div>
