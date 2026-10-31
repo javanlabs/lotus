@@ -61,8 +61,8 @@ func TestBuildHomeDashboard_AlertsAndFigures(t *testing.T) {
 		titles[i] = a.Tone + " " + a.Title
 	}
 	want := []string{
+		"fail Connection sonar.internal cannot sign in", // an outage leads
 		"fail Blocker issue #12: Login loops",           // 10 min ago
-		"fail Connection sonar.internal cannot sign in", // 30 min ago
 		"fail Authentication is failing",                // 1 hr ago
 		"fail GitLab sync keeps failing on Ledger",      // no time: last of the failures
 		"warn Sentry on Billing has not synced in over a day",
@@ -78,10 +78,10 @@ func TestBuildHomeDashboard_AlertsAndFigures(t *testing.T) {
 	if a := d.Alerts[3]; a.Href != "/projects/payments/components/ledger/metrics/gitlab/runs" || a.Detail != "Payments · 5 failed syncs in a row" {
 		t.Errorf("failing binding alert = %+v", a)
 	}
-	if a := d.Alerts[1]; a.Detail != "SonarQube · 401 Unauthorized" || a.Href != "/settings/connections" {
+	if a := d.Alerts[0]; a.Detail != "SonarQube · syncs are paused until its credential is replaced · 401 Unauthorized" || a.Href != "/settings/connections" {
 		t.Errorf("connection alert = %+v", a)
 	}
-	if a := d.Alerts[0]; a.Href != "/projects/alurkerja/qa/issues/12" {
+	if a := d.Alerts[1]; a.Href != "/projects/alurkerja/qa/issues/12" {
 		t.Errorf("issue alert = %+v", a)
 	}
 
@@ -230,5 +230,23 @@ func TestMonthLabel(t *testing.T) {
 	t.Parallel()
 	if got := monthLabel("2026-10"); got != "October 2026" {
 		t.Errorf("monthLabel = %q", got)
+	}
+}
+
+// A broken connection stops every binding on it, and it has no timestamp to
+// sort by. It used to sink below the cap under ten failing components, which
+// is how an expired Harbor credential went unnoticed for a month.
+func TestBuildHomeDashboard_ABrokenConnectionLeadsTheAlerts(t *testing.T) {
+	t.Parallel()
+	in := homeInputs{Now: homeNow, Metrics: map[uuid.UUID]repo.ComponentMetric{}}
+	for i := 0; i < homeAlertCap+2; i++ {
+		c := homeComponent("P", fmt.Sprintf("C%d", i))
+		in.Components = append(in.Components, c)
+		in.Metrics[c.ID] = repo.ComponentMetric{Status: "fail", UpdatedAt: homeNow, MetricsJSON: metricsJSON(t, map[string]repo.KindHeadline{})}
+	}
+	in.Connections = []repo.Connection{{Name: "Harbor", Provider: "harbor_trivy", Status: "auth_failed"}}
+	first := buildHomeDashboard(in).Alerts[0]
+	if !strings.Contains(first.Title, "Harbor cannot sign in") || !strings.Contains(first.Detail, "replaced") {
+		t.Errorf("first alert = %+v", first)
 	}
 }

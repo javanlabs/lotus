@@ -74,6 +74,9 @@ type homeFigure struct {
 type homeAlert struct {
 	Tone, Title, Detail, Href, When string
 	at                              time.Time
+	// outage leads the list: a broken connection stops every binding on it,
+	// and its cause is often the same one behind the rest of the list.
+	outage bool
 }
 
 // homeTop is one ranked list of the project-activity panel.
@@ -167,7 +170,10 @@ func buildHomeDashboard(in homeInputs) homeDashboard {
 		if cn.Status == "error" {
 			title = "Connection " + cn.Name + " is failing"
 		}
-		a := homeAlert{Tone: "fail", Title: title, Detail: integrationProviderLabel(cn.Provider), Href: "/settings/connections"}
+		a := homeAlert{Tone: "fail", Title: title, Detail: integrationProviderLabel(cn.Provider), Href: "/settings/connections", outage: true}
+		if cn.Status == "auth_failed" {
+			a.Detail += " · syncs are paused until its credential is replaced"
+		}
 		if cn.LastError != nil && *cn.LastError != "" {
 			a.Detail += " · " + *cn.LastError
 		}
@@ -192,6 +198,9 @@ func buildHomeDashboard(in homeInputs) homeDashboard {
 		}
 	}
 	sort.SliceStable(alerts, func(i, j int) bool {
+		if alerts[i].outage != alerts[j].outage {
+			return alerts[i].outage
+		}
 		if alerts[i].Tone != alerts[j].Tone {
 			return alerts[i].Tone == "fail"
 		}
