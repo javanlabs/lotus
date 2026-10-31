@@ -104,6 +104,7 @@
 {{template "lotus_card_section_close" .}}
 {{end}}
 
+<div class="lotus-dash-map-row{{if $v.Map}} has-map{{end}}">
 {{if $v.Map}}
 {{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel" "Attrs" `data-testid="health-map"`)}}
   <div class="lotus-panel-head">
@@ -159,6 +160,7 @@
   {{if $d.MoreAlerts}}<div class="lotus-dash-more">and {{$d.MoreAlerts}} more</div>{{end}}
   {{end}}
 {{template "lotus_card_section_close" .}}
+</div>
 
 {{if $d.ShowQA}}
 {{template "lotus_card_section_open" (dict "Padding" "4px" "Class" "lotus-panel" "Attrs" `data-testid="project-activity"`)}}

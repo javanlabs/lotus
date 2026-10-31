@@ -61,6 +61,23 @@ test('the dashboard is where the app opens, and each alert leads to its page', a
   await expect(page.getByTestId('recent-activity')).toContainText('marked open');
   await page.screenshot({ path: 'test-results/home-dashboard.png', fullPage: true });
 
+  // On a wide screen the map and what needs attention share a row, without
+  // the map's table being pushed into its own scrollbar; on a narrow one they stack.
+  const map = page.getByTestId('health-map');
+  const [m, at] = [(await map.boundingBox())!, (await attention.boundingBox())!];
+  expect(at.x).toBeGreaterThanOrEqual(m.x + m.width);
+  expect(at.y).toBe(m.y);
+  const clipped = await map.locator('.lotus-dash-map-scroll').evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(clipped).toBeLessThanOrEqual(0);
+  await expect(map.locator('.lotus-dash-cell.is-stale')).toHaveCount(1);
+  await expectNoPageScroll(page);
+
+  await page.setViewportSize({ width: 1000, height: 900 });
+  const [m2, at2] = [(await map.boundingBox())!, (await attention.boundingBox())!];
+  expect(at2.y).toBeGreaterThanOrEqual(m2.y + m2.height);
+  await expectNoPageScroll(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
   await attention.getByRole('link', { name: 'billing-api is failing' }).click();
   await expect(page).toHaveURL(`${origin}/projects/payments/components/billing/metrics/sonarqube`);
 
