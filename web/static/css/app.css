@@ -876,6 +876,59 @@ a.lotus-binding-key svg { flex: none; }
 a.lotus-dash-figure { color: inherit; text-decoration: none; border-radius: var(--radius-segment); }
 a.lotus-dash-figure:hover .lotus-mt-stat-label { color: var(--text-brand); }
 a.lotus-dash-figure:focus-visible { outline: none; box-shadow: var(--shadow-focus-ring); }
+/* Dashboard visuals. Status colours only ever mean status, and every mark
+   carries a label or number beside it, so state is never colour alone. */
+.lotus-dash-health { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 28px; padding: 14px 14px 16px; border-bottom: 1px solid var(--border-hairline); }
+@media (max-width: 720px) { .lotus-dash-health { grid-template-columns: minmax(0, 1fr); } }
+.lotus-dash-donut-wrap { display: flex; align-items: center; gap: 18px; }
+.lotus-dash-donut { position: relative; width: 132px; height: 132px; flex: none; }
+.lotus-dash-donut svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.lotus-dash-donut circle { fill: none; stroke-width: 5; }
+.lotus-dash-donut-track { stroke: var(--status-none-bg); }
+.lotus-dash-arc-pass { stroke: var(--status-pass); }
+.lotus-dash-arc-fail { stroke: var(--status-fail); }
+.lotus-dash-arc-none { stroke: var(--status-none); }
+.lotus-dash-donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.lotus-dash-donut-center strong { font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+.lotus-dash-donut-center span { margin-top: 3px; font-size: 10.5px; color: var(--text-muted); }
+.lotus-dash-legend { display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--text-secondary); }
+.lotus-dash-legend.is-row { flex-direction: row; gap: 12px; font-size: 11px; }
+.lotus-dash-legend li { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.lotus-dash-legend b { font-weight: 700; color: var(--text-primary); }
+.lotus-dash-key { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.lotus-dash-key.is-pass { background: var(--status-pass); }
+.lotus-dash-key.is-fail { background: var(--status-fail); }
+.lotus-dash-key.is-none { background: var(--status-none); }
+.lotus-dash-bars { display: flex; flex-direction: column; justify-content: center; gap: 10px; min-width: 0; }
+.lotus-dash-bars .lotus-panel-section-title { margin-bottom: 0; }
+.lotus-dash-bar-head { display: flex; align-items: baseline; gap: 8px; font: 600 10px var(--font-mono); letter-spacing: .05em; color: var(--text-secondary); }
+.lotus-dash-bar-note { margin-left: auto; font: 400 11px var(--font-sans, inherit); letter-spacing: 0; color: var(--text-muted); }
+.lotus-dash-bar-head b { width: 38px; text-align: right; font-size: 12px; color: var(--text-primary); }
+.lotus-dash-bar-track { height: 8px; margin-top: 4px; border-radius: 4px; background: var(--status-none-bg); overflow: hidden; }
+.lotus-dash-bar-track i { display: block; height: 100%; border-radius: 4px; background: var(--status-none); }
+.lotus-dash-bar-track i.is-pass { background: var(--status-pass); }
+.lotus-dash-bar-track i.is-fail { background: var(--status-fail); }
+.lotus-dash-insights { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 1px; background: var(--border-hairline); }
+.lotus-dash-insight { display: flex; flex-direction: column; gap: 4px; padding: 13px 14px 14px; background: var(--surface-panel); min-width: 0; }
+.lotus-dash-insight-figure { font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+.lotus-dash-insight p { margin: 0; }
+.lotus-dash-insight-links { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
+.lotus-dash-map-scroll { overflow-x: auto; }
+.lotus-dash-map { width: 100%; min-width: 560px; border-collapse: separate; border-spacing: 3px; padding: 6px 10px 10px; }
+.lotus-dash-map thead th { padding: 4px 2px; font: 600 9.5px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); text-align: center; }
+.lotus-dash-map thead th:first-child, .lotus-dash-map tbody th { text-align: left; }
+.lotus-dash-map tbody th { display: flex; flex-direction: column; font-weight: 400; padding: 2px 10px 2px 2px; min-width: 170px; }
+.lotus-dash-map td { padding: 0; width: 17%; }
+.lotus-dash-cell { display: block; padding: 7px 4px; border-radius: 5px; text-align: center; font: 600 11.5px var(--font-mono); text-decoration: none; }
+.lotus-dash-cell.is-pass { background: var(--status-pass-bg); color: var(--status-pass); }
+.lotus-dash-cell.is-fail { background: var(--status-fail-bg); color: var(--status-fail); }
+.lotus-dash-cell.is-none { background: var(--status-none-bg); color: var(--status-none); }
+a.lotus-dash-cell:hover { box-shadow: inset 0 0 0 1.5px currentColor; }
+a.lotus-dash-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-ring); }
+.lotus-dash-trends { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .lotus-dash-trends { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .lotus-dash-trends { grid-template-columns: minmax(0, 1fr); } }
+.lotus-dash-trend-delta { font: 400 10.5px var(--font-mono); color: var(--text-muted); }
 .lotus-dash-list { margin: 0; padding: 0; list-style: none; }
 .lotus-dash-row {
   display: flex;

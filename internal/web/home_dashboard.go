@@ -49,6 +49,10 @@ type homeInputs struct {
 	FailedSyncs     int // in the last 24 hours
 	Connections     []repo.Connection
 	FailingBindings []repo.FailingBinding
+	// Trends are repo.OrgDailyTrends for homeTrendCombine; TrendKeys are those
+	// keys' catalog rows, for direction and unit.
+	Trends    map[string][]repo.Point
+	TrendKeys map[string]repo.MetricKey
 
 	CanQA, CanWorkload bool
 	OpenIssues         int
@@ -99,6 +103,7 @@ type homeDashboard struct {
 	Tops      []homeTop
 	TopsMonth string
 	Activity  []homeEvent
+	Viz       homeViz
 }
 
 func buildHomeDashboard(in homeInputs) homeDashboard {
@@ -219,6 +224,7 @@ func buildHomeDashboard(in homeInputs) homeDashboard {
 		infos = append(infos, componentInfo{ID: c.ID, Name: c.Name, Slug: c.Slug, ProjectID: c.ProjectID, ProjectName: c.ProjectName, ProjectSlug: c.ProjectSlug})
 	}
 	d.Rates = projectKPIs(infos, in.Metrics)
+	d.Viz = buildHomeViz(in, d.Rates)
 
 	if in.CanQA && in.Workload != nil {
 		d.TopsMonth = monthLabel(in.Workload.Month)
@@ -395,6 +401,20 @@ func homeDashboardPage(d Deps) fiber.Handler {
 		}
 		if in.FailingBindings, err = repo.ListFailingBindings(ctx, s, failingBindingAfter); err != nil {
 			return writeRepoErr(c, err)
+		}
+
+		if in.Trends, err = repo.OrgDailyTrends(ctx, s, homeTrendCombine(), homeTrendDays, now); err != nil {
+			return writeRepoErr(c, err)
+		}
+		in.TrendKeys = map[string]repo.MetricKey{}
+		for _, kind := range bindableKinds {
+			keys, err := repo.ListMetricKeys(ctx, s, kind)
+			if err != nil {
+				return writeRepoErr(c, err)
+			}
+			for _, k := range keys {
+				in.TrendKeys[k.Key] = k
+			}
 		}
 
 		if in.CanQA {

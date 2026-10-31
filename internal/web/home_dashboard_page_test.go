@@ -37,13 +37,19 @@ func TestHomeDashboard_Page(t *testing.T) {
 		"Blocker issue #1: Checkout crashes", `href="/projects/payments/qa/issues/1"`,
 		"marked open", // the feed
 		"SONAR GATE",  // the per-integration rates
+		`data-testid="health"`, `data-testid="insights"`, `data-testid="health-map"`, `data-testid="trends"`,
+		"SonarQube causes the most failures",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard missing %q", want)
 		}
 	}
-	if strings.Contains(body, "intruder") {
-		t.Error("another project's component leaked onto the dashboard")
+	// The dashboard covers the whole organization, so a healthy component of
+	// another project belongs on the health map — but it must not be
+	// reported as needing attention.
+	attention := body[strings.Index(body, `data-testid="attention"`):]
+	if strings.Contains(attention, "intruder") {
+		t.Error("a healthy component was raised as needing attention")
 	}
 	// Dashboard is the sidebar's first item, and active here; the
 	// breadcrumb's logo leads here.

@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 
 	"github.com/uyab/lotus/internal/tenant"
 )
@@ -146,4 +147,123 @@ func ListRecentQAIssueActivity(ctx context.Context, s tenant.Scope, limit int) (
 			LIMIT $1`, limit)
 	})
 	return out, err
+}
+
+// OrgDailyTrends is each key's organization-wide value on each of the last
+// `days` calendar days: every live, enabled binding's day-end reading,
+// carried forward over days without one exactly as DailySeries does, then
+// combined across bindings by combine (keyed by metric key; "sum" adds,
+// anything else averages). A day before any binding has a reading has no
+// value. It reads every binding at once, so the dashboard's trends cost
+// two queries rather than one per binding.
+func OrgDailyTrends(ctx context.Context, s tenant.Scope, combine map[string]string, days int, now time.Time) (map[string][]Point, error) {
+	if days < 1 {
+		days = 1
+	}
+	keys := make([]string, 0, len(combine))
+	for k := range combine {
+		keys = append(keys, k)
+	}
+	type reading struct {
+		BindingID uuid.UUID `db:"binding_id"`
+		Key       string    `db:"key"`
+		Day       time.Time `db:"day"`
+		Value     float64   `db:"value"`
+	}
+	var inWindow, seeds []reading
+	const live = `
+		FROM metric_bindings mb
+		JOIN components c ON c.id = mb.component_id
+		JOIN projects p ON p.id = c.project_id
+		CROSS JOIN unnest($1::text[]) AS k(key)`
+	const liveWhere = `mb.deleted_at IS NULL AND mb.enabled AND c.archived_at IS NULL AND p.archived_at IS NULL`
+	var firstDay time.Time
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		if err := tx.GetContext(ctx, &firstDay, `SELECT date_trunc('day', $1::timestamptz) - ($2::int - 1) * interval '1 day'`, now, days); err != nil {
+			return err
+		}
+		// Raw facts win over the rollup for a day both hold, as in DailySeries.
+		if err := tx.SelectContext(ctx, &inWindow, `
+			SELECT DISTINCT ON (binding_id, key, day) binding_id, key, day, value FROM (
+			    SELECT mb.id AS binding_id, k.key, date_trunc('day', f.collected_at) AS day, f.value_num AS value, f.collected_at AS at, 0 AS tier
+			    `+live+`
+			    JOIN metric_facts f ON f.binding_id = mb.id AND f.key = k.key
+			    WHERE `+liveWhere+` AND f.value_num IS NOT NULL AND f.collected_at >= $2 AND f.collected_at <= $3
+			    UNION ALL
+			    SELECT mb.id, k.key, d.bucket, d.value_last, d.bucket, 1
+			    `+live+`
+			    JOIN metric_facts_daily d ON d.binding_id = mb.id AND d.key = k.key
+			    WHERE `+liveWhere+` AND d.value_last IS NOT NULL AND d.bucket >= $2
+			) r ORDER BY binding_id, key, day, tier, at DESC`, pq.Array(keys), firstDay, now); err != nil {
+			return err
+		}
+		return tx.SelectContext(ctx, &seeds, `
+			SELECT mb.id AS binding_id, k.key, prior.at AS day, prior.value
+			`+live+`
+			CROSS JOIN LATERAL (
+			    SELECT at, value FROM (
+			        (SELECT collected_at AS at, value_num AS value FROM metric_facts
+			         WHERE binding_id = mb.id AND key = k.key AND value_num IS NOT NULL AND collected_at < $2
+			         ORDER BY collected_at DESC LIMIT 1)
+			        UNION ALL
+			        (SELECT bucket AS at, value_last AS value FROM metric_facts_daily
+			         WHERE binding_id = mb.id AND key = k.key AND value_last IS NOT NULL AND bucket < $2
+			         ORDER BY bucket DESC LIMIT 1)
+			    ) newest ORDER BY at DESC LIMIT 1
+			) prior
+			WHERE `+liveWhere, pq.Array(keys), firstDay)
+	})
+	if err != nil && !isNoRows(err) {
+		return nil, err
+	}
+
+	type series struct {
+		carry *float64
+		byDay map[int]float64
+	}
+	dayIndex := func(t time.Time) int { return int(t.Sub(firstDay).Hours()/24 + 0.5) }
+	perKey := map[string]map[uuid.UUID]*series{}
+	at := func(key string, id uuid.UUID) *series {
+		if perKey[key] == nil {
+			perKey[key] = map[uuid.UUID]*series{}
+		}
+		if perKey[key][id] == nil {
+			perKey[key][id] = &series{byDay: map[int]float64{}}
+		}
+		return perKey[key][id]
+	}
+	for _, r := range seeds {
+		v := r.Value
+		at(r.Key, r.BindingID).carry = &v
+	}
+	for _, r := range inWindow {
+		at(r.Key, r.BindingID).byDay[dayIndex(r.Day)] = r.Value
+	}
+
+	out := make(map[string][]Point, len(keys))
+	for _, key := range keys {
+		points := make([]Point, days)
+		for i := range points {
+			points[i].At = firstDay.AddDate(0, 0, i)
+			total, n := 0.0, 0
+			for _, b := range perKey[key] {
+				if v, ok := b.byDay[i]; ok {
+					b.carry = &v
+				}
+				if b.carry != nil {
+					total += *b.carry
+					n++
+				}
+			}
+			if n == 0 {
+				continue
+			}
+			if combine[key] != "sum" {
+				total /= float64(n)
+			}
+			points[i].Value, points[i].HasValue, points[i].Min, points[i].Max = total, true, total, total
+		}
+		out[key] = points
+	}
+	return out, nil
 }
