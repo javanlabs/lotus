@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { retireOrg, seedOwnerSession } from './helpers/db';
+import { retireOrg, seedOwnerSession, withDB } from './helpers/db';
 
 const PORT = process.env.LOTUS_E2E_PORT ?? '8095';
 const BASE_DOMAIN = process.env.LOTUS_BASE_DOMAIN ?? 'lotus.localhost';
@@ -85,6 +85,32 @@ test('switching kind does not put credential fields in the URL', async ({ page, 
     expect(url).not.toContain('super-secret-token');
     expect(url).not.toContain('token=');
   }
+
+  await retireOrg(orgId);
+});
+
+// A registry that moved has to be repointable from the page, with Harbor's
+// credential entered as the two fields it really is.
+test('rotating a Harbor connection can move it to a new server', async ({ page, context }) => {
+  const { sessionToken, subdomain, orgId } = await seedOwnerSession('conn-move-e2e', 'placeholder');
+  const origin = tenantOrigin(subdomain);
+  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+
+  await withDB((client) =>
+    client.query(`INSERT INTO integration_connections (org_id, provider, name, base_url) VALUES ($1,'harbor_trivy','Harbor','https://harbor.old.example.test')`, [orgId]),
+  );
+
+  await page.goto(`${origin}/settings/connections`);
+  await expect(page.getByText('harbor.old.example.test')).toBeVisible();
+  await page.getByRole('button', { name: 'Rotate' }).click();
+  // The new URL has to resolve: the server checks it before accepting it.
+  await page.getByLabel('Server URL').fill('https://gitlab.com');
+  await page.getByLabel('Username').fill('robot');
+  await page.getByLabel('Password').fill('new-password');
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  await expect(page.getByText('https://gitlab.com')).toBeVisible();
+  await expect(page.getByText('harbor.old.example.test')).toHaveCount(0);
 
   await retireOrg(orgId);
 });

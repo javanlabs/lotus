@@ -259,15 +259,50 @@ func rotateConnectionSecretUI(d Deps) fiber.Handler {
 		if err != nil {
 			return fiber.ErrNotFound
 		}
+		conn, err := repo.ConnectionByID(c.Context(), s, id)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
 		secret := strings.TrimSpace(c.FormValue("secret"))
+		if conn.Provider == providerForKind("trivy") {
+			// Harbor's one secret is two fields, as in planConnectionFields.
+			// A single box here stored a bare password that could never sign in.
+			user, pass := strings.TrimSpace(c.FormValue("username")), strings.TrimSpace(c.FormValue("password"))
+			secret = ""
+			if user != "" && pass != "" {
+				secret = user + ":" + pass
+			}
+		}
 		if secret == "" {
-			return fiber.NewError(fiber.StatusUnprocessableEntity, "a new secret must be provided")
+			return fiber.NewError(fiber.StatusUnprocessableEntity, "a new credential must be provided")
 		}
 		dek, err := global.GetOrCreateOrgDEK(c.Context(), d.DB, d.KEK, org.ID)
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		if _, err := repo.UpdateConnectionSecret(c.Context(), s, dek, id, secret); err != nil {
+		baseURL := strings.TrimRight(strings.TrimSpace(c.FormValue("base_url")), "/")
+		if baseURL == "" || baseURL == conn.BaseURL {
+			if _, err := repo.UpdateConnectionSecret(c.Context(), s, dek, id, secret); err != nil {
+				return writeRepoErr(c, err)
+			}
+			setFlash(c, "connection.rotated")
+			return redirectAfterMutation(c, "/settings/connections")
+		}
+		// A server that moved. The URL only ever changes together with the
+		// credential, so a stored one is never sent to a new host.
+		netguardCfg := netguard.Config{AllowHTTP: d.Cfg.Dev, Resolver: d.NetguardResolver, IsBlocked: d.NetguardIsBlocked}
+		if err := netguard.ValidateBaseURL(c.Context(), netguardCfg, baseURL); err != nil {
+			return fiber.NewError(fiber.StatusUnprocessableEntity, "Connection URL rejected · "+err.Error())
+		}
+		if _, err := repo.UpdateConnectionBaseURLWithSecret(c.Context(), s, dek, id, baseURL, secret); err != nil {
+			return writeRepoErr(c, err)
+		}
+		var actor *uuid.UUID
+		if p, ok := authz.CurrentPrincipal(c); ok && p.UserID != uuid.Nil {
+			actor = &p.UserID
+		}
+		meta, _ := json.Marshal(fiber.Map{"new_base_url": baseURL})
+		if err := repo.RecordAuditEvent(c.Context(), s, actor, "connection.base_url_changed", "integration_connection", &id, meta); err != nil {
 			return writeRepoErr(c, err)
 		}
 		setFlash(c, "connection.rotated")

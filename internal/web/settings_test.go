@@ -529,3 +529,74 @@ func TestActivityPage_ShowsSyncRunsAcrossTheWholeOrg(t *testing.T) {
 		}
 	}
 }
+
+// A Harbor that moved: the URL and the credential change together, and what
+// the old server's failure froze resumes. Harbor's secret is username and
+// password, the format its collector requires.
+func TestRotateConnection_MovesTheServerAndResumesFrozenBindings(t *testing.T) {
+	t.Parallel()
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-conn-move", "owner")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-conn-move." + dashboardTestDomain
+
+	createResp := postForm(t, app, host, "/settings/connections", raw, url.Values{"kind": {"trivy"}, "name": {"Harbor"},
+		"base_url": {"https://harbor.old.example.com"}, "username": {"robot"}, "password": {"old-password"}})
+	createResp.Body.Close()
+	if createResp.StatusCode != http.StatusFound {
+		t.Fatalf("create status = %d, want 302", createResp.StatusCode)
+	}
+	var connID string
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		if err := tx.Get(&connID, `SELECT id FROM integration_connections WHERE name = 'Harbor'`); err != nil {
+			t.Fatalf("find connection: %v", err)
+		}
+		var projectID, componentID string
+		if err := tx.Get(&projectID, `INSERT INTO projects (org_id, slug, name) VALUES ($1,'p','P') RETURNING id`, orgID); err != nil {
+			t.Fatalf("insert project: %v", err)
+		}
+		if err := tx.Get(&componentID, `INSERT INTO components (org_id, project_id, slug, name, kind) VALUES ($1,$2,'c','c','backend') RETURNING id`, orgID, projectID); err != nil {
+			t.Fatalf("insert component: %v", err)
+		}
+		if _, err := tx.Exec(`INSERT INTO metric_bindings (org_id, component_id, connection_id, kind, external_key, config, enabled, frozen_at) VALUES ($1,$2,$3,'trivy','a/b','{}',false,now())`, orgID, componentID, connID); err != nil {
+			t.Fatalf("insert binding: %v", err)
+		}
+	})
+	path := "/settings/connections/" + connID + "/rotate"
+
+	// Half a credential is refused rather than stored as one that can't sign in.
+	bad := postForm(t, app, host, path, raw, url.Values{"base_url": {"https://harbor.new.example.com"}, "username": {"robot"}})
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("missing password status = %d, want 422", bad.StatusCode)
+	}
+
+	resp := postForm(t, app, host, path, raw, url.Values{"base_url": {"https://harbor.new.example.com/"}, "username": {"robot"}, "password": {"new-password"}})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("rotate status = %d, want 302", resp.StatusCode)
+	}
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		var baseURL string
+		if err := tx.Get(&baseURL, `SELECT base_url FROM integration_connections WHERE id = $1`, connID); err != nil {
+			t.Fatal(err)
+		}
+		if baseURL != "https://harbor.new.example.com" {
+			t.Errorf("base_url = %q", baseURL)
+		}
+		var enabled bool
+		if err := tx.Get(&enabled, `SELECT enabled FROM metric_bindings WHERE connection_id = $1`, connID); err != nil {
+			t.Fatal(err)
+		}
+		if !enabled {
+			t.Error("the frozen binding did not resume")
+		}
+		var audits int
+		if err := tx.Get(&audits, `SELECT count(*) FROM audit_events WHERE action = 'connection.base_url_changed'`); err != nil {
+			t.Fatal(err)
+		}
+		if audits != 1 {
+			t.Errorf("audit events = %d, want 1", audits)
+		}
+	})
+}

@@ -46,10 +46,17 @@
     </div>
     {{if $.Data.CanWrite}}
     <div x-show="rotate" x-cloak style="padding:10px 14px 14px 124px;border-bottom:1px solid #F3F4F6;background:rgba(67,40,78,.02)">
-      <form method="post" action="/settings/connections/{{.ID}}/rotate" style="display:flex;gap:8px;max-width:420px">
-        <input type="password" name="secret" placeholder="New credential" required autocomplete="off"
-               style="flex:1;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
-        <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none;padding:8px 14px;font-size:11px">Save</button>
+      <form method="post" action="/settings/connections/{{.ID}}/rotate" style="display:flex;flex-direction:column;gap:8px;max-width:420px">
+        <input type="url" name="base_url" value="{{.BaseURL}}" aria-label="Server URL" placeholder="Server URL" required style="flex:1;min-width:0;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+        <div style="display:flex;gap:8px">
+          {{if eq .Provider "harbor_trivy"}}
+          <input type="text" name="username" placeholder="Username" aria-label="Username" required autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+          <input type="password" name="password" placeholder="Password" aria-label="Password" required autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+          {{else}}
+          <input type="password" name="secret" placeholder="New credential" aria-label="New credential" required autocomplete="off" style="flex:1;min-width:0;box-sizing:border-box;padding:8px 10px;font:400 12px system-ui;border:1px solid rgba(67,40,78,.16);border-radius:8px;outline:none">
+          {{end}}
+          <button type="submit" class="btn-lotus btn-lotus-primary" style="border:none;padding:8px 14px;font-size:11px">Save</button>
+        </div>
       </form>
     </div>
     {{end}}
