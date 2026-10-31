@@ -393,8 +393,8 @@ func TestPool_IntervalFallsBackToTheOrgDefaultThenAnHour(t *testing.T) {
 	}
 }
 
-// A result with nothing measured, like an image Harbor has not scanned, is a
-// successful run carrying its state through to the headline.
+// A result with nothing measured, like an image Harbor has not scanned, is an
+// ordinary successful run rather than a collector bug.
 func TestPool_ResultWithNothingMeasuredIsAnOrdinarySuccess(t *testing.T) {
 	t.Parallel()
 	db := dbtest.Open(t)
@@ -418,13 +418,4 @@ func TestPool_ResultWithNothingMeasuredIsAnOrdinarySuccess(t *testing.T) {
 	if binding.LastStatus == nil || *binding.LastStatus != "ok" {
 		t.Fatalf("last_status = %v, want ok", binding.LastStatus)
 	}
-	withOrgTxSchedTest(t, db, orgID, func(tx *sqlx.Tx) {
-		var label string
-		if err := tx.Get(&label, `SELECT metrics->'gitlab'->>'state_label' FROM component_metrics_current WHERE component_id = $1`, binding.ComponentID); err != nil {
-			t.Fatal(err)
-		}
-		if label != "not scanned" {
-			t.Errorf("state_label = %q", label)
-		}
-	})
 }

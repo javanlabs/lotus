@@ -246,3 +246,32 @@ func TestPersist_CrossOrgSnapshotsNeverMixDespiteIdenticalExternalKey(t *testing
 		t.Fatal("expected org A's scope to not see org B's snapshot")
 	}
 }
+
+// An unscanned image reaches the dashboard's projection as not scanned, with
+// nothing measured, rather than as a score of 100.
+func TestPersist_NotScannedReachesTheProjection(t *testing.T) {
+	db := dbtest.Open(t)
+	orgID, componentID, bindingID := seedTrivyFixture(t, db, "acme-unscanned")
+	srv := fakeHarborServer(t)
+	defer srv.Close()
+	session := openTrivySession(t, srv, "good-user:good-pass")
+	defer session.Close()
+
+	result, err := session.Collect(context.Background(), collector.CollectRequest{ExternalKey: "proj/app", Config: []byte(`{"tag_pattern":"v1.1.0"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := trivycollector.Persist(context.Background(), tenant.FromRun(db, orgID), componentID, bindingID, result); err != nil {
+		t.Fatal(err)
+	}
+	withOrgTxTrivy(t, db, orgID, func(tx *sqlx.Tx) {
+		var status, label string
+		var score, count *int
+		if err := tx.QueryRow(`SELECT metrics->'trivy'->>'status', metrics->'trivy'->>'state_label', (metrics->'trivy'->>'score')::int, (metrics->'trivy'->>'count_value')::int FROM component_metrics_current WHERE component_id = $1`, componentID).Scan(&status, &label, &score, &count); err != nil {
+			t.Fatal(err)
+		}
+		if status != "unknown" || label != "not scanned" || score != nil || count != nil {
+			t.Errorf("projection = %s %q score %v count %v", status, label, score, count)
+		}
+	})
+}
