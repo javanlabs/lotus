@@ -199,7 +199,7 @@ func resolveProjectID(ctx context.Context, tx *sqlx.Tx, orgID uuid.UUID, claim C
 	var id uuid.UUID
 	err := tx.GetContext(ctx, &id, `
 		INSERT INTO projects (org_id, slug, name) VALUES ($1, $2, $3)
-		ON CONFLICT (org_id, slug) DO UPDATE SET slug = EXCLUDED.slug
+		ON CONFLICT (org_id, slug) WHERE deleted_at IS NULL DO UPDATE SET slug = EXCLUDED.slug
 		RETURNING id`, orgID, claim.NewProjectSlug, claim.NewProjectName)
 	if err != nil {
 		return uuid.Nil, err

@@ -29,6 +29,27 @@
     </div>
   {{template "lotus_modal_close" .}}
   {{end}}
+  {{if .Data.CanDelete}}
+  {{template "lotus_modal_open" (dict "Name" "delete-project" "Title" "Delete project" "Trigger" "Delete project" "Variant" "danger-soft")}}
+    <div class="lotus-modal-form">
+      <form method="post" action="{{.Data.URL}}/delete" hx-post="{{.Data.URL}}/delete"
+            hx-target="#delete-project-error" hx-swap="innerHTML">
+        <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
+          <div id="delete-project-error"></div>
+          <p style="margin:0;font-size:12.5px;line-height:1.5;color:var(--text-secondary)"><strong>{{.Data.Project.Name}}</strong> disappears from Lotus and its syncs stop. Its data is kept, but bringing it back takes an administrator.</p>
+          <label style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">TYPE THE PROJECT NAME TO CONFIRM</span>
+            <input type="text" name="confirm_name" required autocomplete="off" placeholder="{{.Data.Project.Name}}" class="lotus-input">
+          </label>
+        </div>
+        <div class="lotus-modal-foot">
+          <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+          <button type="submit" class="btn-lotus btn-lotus-danger-soft">Delete project</button>
+        </div>
+      </form>
+    </div>
+  {{template "lotus_modal_close" .}}
+  {{end}}
   <a href="{{.Data.URL}}/components/new" class="btn-lotus btn-lotus-primary">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Add component
   </a>

@@ -266,9 +266,6 @@ func TestProjectTree_EmptyFolderShowsNoVerdict(t *testing.T) {
 	if row.Subtext != "0 projects · 0 components" {
 		t.Fatalf("subtext = %q", row.Subtext)
 	}
-	if row.DeleteBlocked != "" {
-		t.Fatalf("DeleteBlocked = %q on an empty folder, want empty", row.DeleteBlocked)
-	}
 }
 
 func TestProjectTree_UnmeasuredProjectsAreCalledOutNotCounted(t *testing.T) {
@@ -289,9 +286,6 @@ func TestProjectTree_UnmeasuredProjectsAreCalledOutNotCounted(t *testing.T) {
 	}
 	if nc := rowNamed(t, f.buildIn(product), "No components"); nc.Subtext != "0 components" || nc.Tone != "none" {
 		t.Fatalf("componentless project row = %+v, want a 0 components row with no verdict", nc)
-	}
-	if row.DeleteBlocked == "" {
-		t.Fatal("DeleteBlocked is empty on a folder holding projects")
 	}
 }
 
@@ -417,11 +411,13 @@ func TestProjectTree_DeleteHintCountsOnlyDirectlyFiledProjects(t *testing.T) {
 	inner := f.folder("Inner", &outer)
 	f.project("A", &inner, "pass", intPtr(90))
 	f.project("B", &inner, "fail", intPtr(40))
-	vm := f.build()
 
-	row := rowNamed(t, vm, "Outer")
-	if want := "Still holds 1 folder · move them out first"; row.DeleteBlocked != want {
-		t.Fatalf("DeleteBlocked = %q, want %q (no project count — those are in Inner, not Outer)", row.DeleteBlocked, want)
+	got := f.buildIn(outer).CurrentFolderDeleteBlocked
+	if want := "Still holds 1 folder · move them out first"; got != want {
+		t.Fatalf("CurrentFolderDeleteBlocked = %q, want %q (no project count — those are in Inner, not Outer)", got, want)
+	}
+	if vm := f.buildIn(inner); vm.CurrentFolderName != "Inner" || vm.CurrentFolderDeleteBlocked == "" {
+		t.Fatalf("inner folder = %q blocked %q", vm.CurrentFolderName, vm.CurrentFolderDeleteBlocked)
 	}
 }
 

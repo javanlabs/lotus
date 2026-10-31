@@ -203,7 +203,11 @@ func deleteFolderUI(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		setFlash(c, "folder.deleted", f.Name)
-		return redirectAfterMutation(c, "/projects")
+		to := "/projects"
+		if f.ParentID != nil {
+			to += "?folder=" + f.ParentID.String()
+		}
+		return redirectAwayAfterMutation(c, to)
 	}
 }
 

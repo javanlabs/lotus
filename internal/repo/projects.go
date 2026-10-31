@@ -82,7 +82,7 @@ func CreateProject(ctx context.Context, s tenant.Scope, in NewProject) (*Project
 func ProjectByID(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Project, error) {
 	var out Project
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		return tx.GetContext(ctx, &out, `SELECT `+projectCols+` FROM projects WHERE id = $1`, id)
+		return tx.GetContext(ctx, &out, `SELECT `+projectCols+` FROM projects WHERE id = $1 AND deleted_at IS NULL`, id)
 	})
 	if err != nil {
 		if isNoRows(err) {
@@ -98,7 +98,7 @@ func ProjectByID(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Project, e
 func ProjectBySlug(ctx context.Context, s tenant.Scope, slug string) (*Project, error) {
 	var out Project
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		return tx.GetContext(ctx, &out, `SELECT `+projectCols+` FROM projects WHERE slug = $1`, slug)
+		return tx.GetContext(ctx, &out, `SELECT `+projectCols+` FROM projects WHERE slug = $1 AND deleted_at IS NULL`, slug)
 	})
 	if err != nil {
 		if isNoRows(err) {
@@ -116,9 +116,9 @@ func ProjectBySlug(ctx context.Context, s tenant.Scope, slug string) (*Project, 
 func ListProjects(ctx context.Context, s tenant.Scope, includeArchived bool) ([]Project, error) {
 	var out []Project
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		q := `SELECT ` + projectCols + ` FROM projects`
+		q := `SELECT ` + projectCols + ` FROM projects WHERE deleted_at IS NULL`
 		if !includeArchived {
-			q += ` WHERE archived_at IS NULL`
+			q += ` AND archived_at IS NULL`
 		}
 		q += ` ORDER BY sort_order, created_at`
 		return tx.SelectContext(ctx, &out, q)
@@ -163,7 +163,7 @@ func SetProjectArchived(ctx context.Context, s tenant.Scope, id uuid.UUID, archi
 		} else {
 			expr = "NULL"
 		}
-		res, err := tx.ExecContext(ctx, `UPDATE projects SET archived_at = `+expr+` WHERE id = $1`, id)
+		res, err := tx.ExecContext(ctx, `UPDATE projects SET archived_at = `+expr+` WHERE id = $1 AND deleted_at IS NULL`, id)
 		if err != nil {
 			return err
 		}
@@ -203,6 +203,27 @@ func ProjectDeletionImpactOf(ctx context.Context, s tenant.Scope, id uuid.UUID) 
 	return &out, err
 }
 
+// SoftDeleteProject hides a project everywhere and stops its syncs, keeping
+// everything under it. It also counts as archived, which is what every query
+// over live projects already filters on.
+func SoftDeleteProject(ctx context.Context, s tenant.Scope, id uuid.UUID) error {
+	return s.Tx(ctx, func(tx *sqlx.Tx) error {
+		res, err := tx.ExecContext(ctx, `
+			UPDATE projects SET deleted_at = now(), archived_at = COALESCE(archived_at, now())
+			WHERE id = $1 AND deleted_at IS NULL`, id)
+		if err != nil {
+			return err
+		}
+		if err := checkRowsAffected(res); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `
+			UPDATE metric_bindings SET enabled = false, frozen_at = NULL
+			WHERE deleted_at IS NULL AND component_id IN (SELECT id FROM components WHERE project_id = $1)`, id)
+		return err
+	})
+}
+
 // HardDeleteProject permanently removes a project and everything under
 // it: its components, their metric bindings, and unbinds (never deletes)
 // any discovered_resources that pointed at those bindings. This is the
@@ -224,7 +245,7 @@ func HardDeleteProject(ctx context.Context, s tenant.Scope, id uuid.UUID) error 
 		if _, err := tx.ExecContext(ctx, `DELETE FROM components WHERE project_id = $1`, id); err != nil {
 			return err
 		}
-		res, err := tx.ExecContext(ctx, `DELETE FROM projects WHERE id = $1`, id)
+		res, err := tx.ExecContext(ctx, `DELETE FROM projects WHERE id = $1 AND deleted_at IS NULL`, id)
 		if err != nil {
 			return err
 		}

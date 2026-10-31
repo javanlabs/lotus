@@ -58,12 +58,10 @@ type dashboardRow struct {
 	// so a folder at 80% never looks all-clear.
 	BarTone string
 
-	// Folder rows only: the actions dialog's move picker, its current value
-	// (the parent's id, "" at the top), and why Delete is unavailable
-	// ("" when the folder is empty).
-	MoveOptions   []httpx.SelectOption
-	MoveValue     string
-	DeleteBlocked string
+	// Folder rows only: the actions dialog's move picker and its current
+	// value (the parent's id, "" at the top).
+	MoveOptions []httpx.SelectOption
+	MoveValue   string
 }
 
 // dashboardColumn is one integration column in the rows table. Making the
@@ -262,9 +260,11 @@ type dashboardViewModel struct {
 	// FailingRows is the "Failing" filter's list — every failing project
 	// beneath the current folder at any depth — and FailingCount its size.
 	CurrentFolderID string
-	Crumbs          []crumb
-	FailingRows     []dashboardRow
-	FailingCount    int
+	// The open folder's name, and why it cannot be deleted ("" when empty).
+	CurrentFolderName, CurrentFolderDeleteBlocked string
+	Crumbs                                        []crumb
+	FailingRows                                   []dashboardRow
+	FailingCount                                  int
 	// FolderOptions is every folder depth-first with its full path;
 	// FolderSelect is the new-folder parent picker built from it, and
 	// ProjectFolderSelect the bulk-move picker (every folder: a project may
@@ -658,7 +658,10 @@ func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, fo
 	rows := view.levelRows(projectRows, repo.RollupFolders(folders, treeProjects))
 	failing := view.failingRows(projectRows)
 
+	currentName, deleteBlocked := view.currentDeletion()
+
 	return dashboardViewModel{
+		CurrentFolderName: currentName, CurrentFolderDeleteBlocked: deleteBlocked,
 		TableTitle:      "Projects",
 		RowHeading:      "PROJECT",
 		Columns:         projectColumns,

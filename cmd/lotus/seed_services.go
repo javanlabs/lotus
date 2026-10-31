@@ -217,7 +217,7 @@ func importServices(ctx context.Context, conn *sqlx.DB, orgID uuid.UUID, reg leg
 			var projectID uuid.UUID
 			if err := tx.GetContext(ctx, &projectID, `
 				INSERT INTO projects (org_id, slug, name) VALUES ($1, $2, $3)
-				ON CONFLICT (org_id, slug) DO UPDATE SET name = EXCLUDED.name
+				ON CONFLICT (org_id, slug) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name
 				RETURNING id`, orgID, product, displayName(product)); err != nil {
 				return fmt.Errorf("project %s: %w", product, err)
 			}

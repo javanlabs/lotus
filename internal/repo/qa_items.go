@@ -255,7 +255,7 @@ func ListMyQAItems(ctx context.Context, s tenant.Scope, userID uuid.UUID, projec
 			FROM qa_run_items i
 			JOIN qa_runs r ON r.id = i.run_id AND r.closed_at IS NULL
 			JOIN qa_plans p ON p.id = r.plan_id AND p.closed_at IS NULL
-			JOIN projects pr ON pr.id = p.project_id
+			JOIN projects pr ON pr.id = p.project_id AND pr.deleted_at IS NULL
 			WHERE i.assignee_id = $1 AND i.status = 'untested'
 			  AND ($2::uuid[] IS NULL OR p.project_id = ANY($2))
 			ORDER BY pr.name, p.created_at, r.cycle, i.position`, userID, projectIDs)

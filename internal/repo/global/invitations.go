@@ -133,7 +133,7 @@ func AcceptInvitation(ctx context.Context, db *sqlx.DB, invitationID, userID uui
 		SELECT $1, p.id, $3 FROM projects p
 		JOIN invitations i ON i.id = $2 AND p.id = ANY(i.project_ids)
 		JOIN roles r ON r.id = i.role_id AND r.key = 'guest'
-		WHERE p.org_id = $1
+		WHERE p.org_id = $1 AND p.deleted_at IS NULL
 		ON CONFLICT (project_id, user_id) DO NOTHING`, orgID, invitationID, userID); err != nil {
 		return err
 	}

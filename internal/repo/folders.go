@@ -137,7 +137,7 @@ func loadFolderParents(ctx context.Context, tx *sqlx.Tx) (map[uuid.UUID]*uuid.UU
 		ID       uuid.UUID  `db:"id"`
 		ParentID *uuid.UUID `db:"parent_id"`
 	}
-	if err := tx.SelectContext(ctx, &rows, `SELECT id, parent_id FROM folders`); err != nil {
+	if err := tx.SelectContext(ctx, &rows, `SELECT id, parent_id FROM folders WHERE deleted_at IS NULL`); err != nil {
 		return nil, err
 	}
 	out := make(map[uuid.UUID]*uuid.UUID, len(rows))
@@ -195,7 +195,7 @@ func ListFolders(ctx context.Context, s tenant.Scope) ([]Folder, error) {
 	var out []Folder
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.SelectContext(ctx, &out,
-			`SELECT `+folderCols+` FROM folders ORDER BY sort_order, lower(name)`)
+			`SELECT `+folderCols+` FROM folders WHERE deleted_at IS NULL ORDER BY sort_order, lower(name)`)
 	})
 	return out, err
 }
@@ -203,7 +203,7 @@ func ListFolders(ctx context.Context, s tenant.Scope) ([]Folder, error) {
 func FolderByID(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Folder, error) {
 	var out Folder
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
-		return tx.GetContext(ctx, &out, `SELECT `+folderCols+` FROM folders WHERE id = $1`, id)
+		return tx.GetContext(ctx, &out, `SELECT `+folderCols+` FROM folders WHERE id = $1 AND deleted_at IS NULL`, id)
 	})
 	if err != nil {
 		return nil, folderWriteErr(err)
@@ -219,7 +219,7 @@ func RenameFolder(ctx context.Context, s tenant.Scope, id uuid.UUID, name string
 	var out Folder
 	err = s.Tx(ctx, func(tx *sqlx.Tx) error {
 		return tx.GetContext(ctx, &out,
-			`UPDATE folders SET name = $2 WHERE id = $1 RETURNING `+folderCols, id, name)
+			`UPDATE folders SET name = $2 WHERE id = $1 AND deleted_at IS NULL RETURNING `+folderCols, id, name)
 	})
 	if err != nil {
 		return nil, folderWriteErr(err)
@@ -339,7 +339,7 @@ func MoveFolder(ctx context.Context, s tenant.Scope, id uuid.UUID, parentID *uui
 			return ErrFolderTooDeep
 		}
 		return tx.GetContext(ctx, &out,
-			`UPDATE folders SET parent_id = $2 WHERE id = $1 RETURNING `+folderCols, id, parentID)
+			`UPDATE folders SET parent_id = $2 WHERE id = $1 AND deleted_at IS NULL RETURNING `+folderCols, id, parentID)
 	})
 	if err != nil {
 		return nil, folderWriteErr(err)
@@ -354,7 +354,7 @@ func MoveFolder(ctx context.Context, s tenant.Scope, id uuid.UUID, parentID *uui
 func folderContents(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, name string) (*FolderNotEmptyError, error) {
 	notEmpty := &FolderNotEmptyError{Name: name}
 	if err := tx.GetContext(ctx, &notEmpty.Subfolders,
-		`SELECT count(*) FROM folders WHERE parent_id = $1`, id); err != nil {
+		`SELECT count(*) FROM folders WHERE parent_id = $1 AND deleted_at IS NULL`, id); err != nil {
 		return nil, err
 	}
 	var filed []struct {
@@ -363,7 +363,7 @@ func folderContents(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, name string)
 	}
 	if err := tx.SelectContext(ctx, &filed, `
 		SELECT name, archived_at IS NOT NULL AS archived
-		FROM projects WHERE folder_id = $1 ORDER BY lower(name)`, id); err != nil {
+		FROM projects WHERE folder_id = $1 AND deleted_at IS NULL ORDER BY lower(name)`, id); err != nil {
 		return nil, err
 	}
 	for _, p := range filed {
@@ -375,7 +375,7 @@ func folderContents(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, name string)
 	return notEmpty, nil
 }
 
-// DeleteFolder removes an empty folder and returns it. Anything inside —
+// DeleteFolder soft-deletes an empty folder and returns it. Anything inside —
 // a subfolder, or a project, archived or not — refuses with a
 // *FolderNotEmptyError naming what is left. There is no cascade: projects
 // are never deleted or silently moved as a side effect of tidying folders.
@@ -385,7 +385,7 @@ func DeleteFolder(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Folder, e
 		if err := lockFolderTree(ctx, tx, s.OrgID()); err != nil {
 			return err
 		}
-		if err := tx.GetContext(ctx, &out, `SELECT `+folderCols+` FROM folders WHERE id = $1`, id); err != nil {
+		if err := tx.GetContext(ctx, &out, `SELECT `+folderCols+` FROM folders WHERE id = $1 AND deleted_at IS NULL`, id); err != nil {
 			return err
 		}
 		notEmpty, err := folderContents(ctx, tx, id, out.Name)
@@ -395,7 +395,7 @@ func DeleteFolder(ctx context.Context, s tenant.Scope, id uuid.UUID) (*Folder, e
 		if notEmpty.Subfolders > 0 || len(notEmpty.Projects) > 0 {
 			return notEmpty
 		}
-		_, err = tx.ExecContext(ctx, `DELETE FROM folders WHERE id = $1`, id)
+		_, err = tx.ExecContext(ctx, `UPDATE folders SET deleted_at = now() WHERE id = $1`, id)
 		return err
 	})
 	if err != nil {

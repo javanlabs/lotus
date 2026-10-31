@@ -500,3 +500,27 @@ func TestMoveProjects_IsAllOrNothing(t *testing.T) {
 		t.Fatalf("empty batch err = %v, want ErrInvalidInput", err)
 	}
 }
+
+// A deleted folder keeps its row, frees its name, and a deleted project inside
+// does not keep a folder from being deleted.
+func TestDeleteFolder_IsSoftAndIgnoresDeletedProjects(t *testing.T) {
+	t.Parallel()
+	db := dbtest.Open(t)
+	_, s := folderTestOrg(t, db, "acme")
+	ctx := context.Background()
+	tribe := mustFolder(t, s, "Tribe", nil)
+	p := mustProject(t, s, "Linknet", tribe)
+	if _, err := repo.DeleteFolder(ctx, s, tribe.ID); err == nil {
+		t.Fatal("deleted a folder holding a live project")
+	}
+	if err := repo.SoftDeleteProject(ctx, s, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.DeleteFolder(ctx, s, tribe.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := repo.FolderByID(ctx, s, tribe.ID); err == nil {
+		t.Error("a deleted folder is still found")
+	}
+	mustFolder(t, s, "Tribe", nil)
+}

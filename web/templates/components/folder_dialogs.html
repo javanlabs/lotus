@@ -23,11 +23,12 @@
 </div>
 {{end}}
 
-{{/* folder_edit_dialog is one folder's actions: rename, move, delete.
+{{/* folder_edit_dialog is one folder's actions: rename, move. Deleting is
+     only offered from inside the folder, on its own page.
      One dialog per folder, rendered server-side, so each carries its own
      move targets (never itself or its subtree, never past the depth cap)
      and a fixed form action. Opened by the row's actions button.
-     Takes (dict "Row" <folder dashboardRow> "CanDelete" bool). */}}
+     Takes (dict "Row" <folder dashboardRow>). */}}
 {{define "folder_edit_dialog"}}
 {{$r := .Row}}
 <div x-data="lotusModal('folder-{{$r.NodeID}}')" style="display:contents">
@@ -60,15 +61,6 @@
           <button type="submit" class="btn-lotus btn-lotus-secondary">Move</button>
         </div>
       </form>
-
-      {{if .CanDelete}}
-      <form method="post" action="/folders/{{$r.NodeID}}/delete" hx-post="/folders/{{$r.NodeID}}/delete"
-            hx-target="#folder-error-{{$r.NodeID}}" hx-swap="innerHTML" hx-confirm="Delete the folder {{$r.Name}}?"
-            style="display:flex;align-items:center;gap:10px;padding-top:4px;border-top:1px solid #F3F4F6">
-        <button type="submit" class="btn-lotus btn-lotus-secondary" {{if $r.DeleteBlocked}}disabled{{end}}>Delete folder</button>
-        {{if $r.DeleteBlocked}}<span style="font-size:11.5px;color:#6B7280">{{$r.DeleteBlocked}}</span>{{end}}
-      </form>
-      {{end}}
     </div>
   </dialog>
 </div>

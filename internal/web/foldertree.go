@@ -297,10 +297,6 @@ func (v folderView) levelRows(projectRows map[uuid.UUID]dashboardRow, rollups ma
 		row.MoveOptions = folderSelect(v.options, func(o folderOption) bool {
 			return members[o.ID] || o.Depth+height > repo.MaxFolderDepth
 		})
-		// The server's FolderNotEmptyError only counts what is filed
-		// DIRECTLY in the folder — direct subfolders and direct projects —
-		// so the hint counts the same, not the rollup's any-depth total.
-		row.DeleteBlocked = folderDeleteBlocked(len(v.filed[f.ID]), len(v.children[f.ID]))
 		rows = append(rows, row)
 	}
 	for _, p := range v.filed[v.current] {
@@ -391,4 +387,15 @@ func (v folderView) crumbs() []crumb {
 		out = append(out, crumb{Name: f.Name, Href: folderHref(f.ID), FolderID: f.ID.String(), Current: i == len(path)-1})
 	}
 	return out
+}
+
+// currentDeletion is the open folder's name and why it cannot be deleted. The
+// server's FolderNotEmptyError only counts what is filed DIRECTLY in the
+// folder, so the hint counts the same, not the rollup's any-depth total.
+func (v *folderView) currentDeletion() (name, blocked string) {
+	crumbs := v.crumbs()
+	if v.currentID() == "" || len(crumbs) == 0 {
+		return "", ""
+	}
+	return crumbs[len(crumbs)-1].Name, folderDeleteBlocked(len(v.filed[v.current]), len(v.children[v.current]))
 }

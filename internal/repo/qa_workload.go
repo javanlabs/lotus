@@ -187,7 +187,7 @@ func LoadQAWorkload(ctx context.Context, s tenant.Scope, month string) (*QAWorkl
 			LEFT JOIN items ON items.project_id = p.id
 			LEFT JOIN cases ON cases.project_id = p.id
 			LEFT JOIN issues ON issues.project_id = p.id
-			WHERE items.project_id IS NOT NULL OR cases.project_id IS NOT NULL OR issues.project_id IS NOT NULL
+			WHERE p.deleted_at IS NULL AND (items.project_id IS NOT NULL OR cases.project_id IS NOT NULL OR issues.project_id IS NOT NULL)
 			ORDER BY lower(p.name), p.id`, first); err != nil {
 			return err
 		}
@@ -195,7 +195,7 @@ func LoadQAWorkload(ctx context.Context, s tenant.Scope, month string) (*QAWorkl
 			WITH `+workloadMonth+`, `+workloadRuns+`
 			SELECT mr.id AS run_id, mr.project_id, p.name AS project_name, p.slug AS project_slug, mr.name, mr.created_at,
 				it.assignee_id, `+workloadCounts+`
-			FROM mr JOIN projects p ON p.id = mr.project_id
+			FROM mr JOIN projects p ON p.id = mr.project_id AND p.deleted_at IS NULL
 			LEFT JOIN qa_run_items it ON it.run_id = mr.id
 			GROUP BY mr.id, mr.project_id, p.name, p.slug, mr.name, mr.created_at, it.assignee_id
 			ORDER BY mr.created_at, mr.id`, first); err != nil {
@@ -205,7 +205,7 @@ func LoadQAWorkload(ctx context.Context, s tenant.Scope, month string) (*QAWorkl
 			WITH `+workloadMonth+`
 			SELECT i.id AS issue_id, i.project_id, p.name AS project_name, p.slug AS project_slug, i.key, i.title, i.status, i.severity,
 				i.reported_by, COALESCE(NULLIF(btrim(u.name), ''), u.email, '') AS reporter, i.created_at
-			FROM qa_issues i JOIN projects p ON p.id = i.project_id
+			FROM qa_issues i JOIN projects p ON p.id = i.project_id AND p.deleted_at IS NULL
 			LEFT JOIN users u ON u.id = i.reported_by, b
 			WHERE i.created_at >= b.lo AND i.created_at < b.hi
 			ORDER BY i.created_at, i.id`, first)

@@ -167,8 +167,12 @@ test('a folder name cannot run script through the success toast (stored XSS)', a
   await page.getByRole('button', { name: 'Create folder' }).click();
   await expect(folderRow(page, payload)).toBeVisible();
 
+  // Deleting is only offered from inside the folder, never from its row.
   await folderRow(page, payload).getByRole('button').click();
-  await page.locator('dialog[open]').getByRole('button', { name: 'Delete folder' }).click();
+  await expect(page.locator('dialog[open]').getByRole('button', { name: 'Delete folder' })).toHaveCount(0);
+  await page.locator('dialog[open]').getByRole('button', { name: 'Close' }).click();
+  await folderRow(page, payload).getByRole('link').first().click();
+  await page.getByRole('button', { name: 'Delete folder' }).click();
 
   await expect(page.getByText(`Folder ${payload} deleted`)).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __x?: number }).__x)).toBeUndefined();

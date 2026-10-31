@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -76,12 +77,14 @@ func projectPage(d Deps) fiber.Handler {
 				Dashboard    dashboardViewModel
 				CanMove      bool
 				CanQA        bool
+				CanDelete    bool
 				FolderSelect []httpx.SelectOption
 				FolderValue  string
 			}{
 				Project: *project, URL: projectURL(project), Dashboard: vm,
 				CanMove:      mustPrincipal(c).Can("project.update"),
 				CanQA:        d.Cfg.Features.QA && mustPrincipal(c).Can("qa.read"),
+				CanDelete:    mustPrincipal(c).Can("project.delete"),
 				FolderSelect: folderSelect(folderOptionsFor(folders), nil),
 				FolderValue:  folderValue,
 			},
@@ -188,6 +191,39 @@ func registerProjectPageDetailRoutes(app *fiber.App, d Deps, requireSession, loa
 		authz.Require("dashboard.read"), canonicalURL(), projectPage(d))
 	app.Get("/projects/:id/components/new", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("component.create"), canonicalURL(), newComponentPage(d))
+	app.Post("/projects/:id/delete", tenant.RequireTenant(), requireSession, loadPrincipal,
+		authz.Require("project.delete"), deleteProjectUI(d))
 	app.Post("/projects/:id/components/new", tenant.RequireTenant(), requireSession, loadPrincipal,
 		authz.Require("component.create"), submitNewComponent(d))
+}
+
+// deleteProjectUI soft-deletes a project from its own page, once its name has
+// been typed. Its history stays in the database.
+func deleteProjectUI(d Deps) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		s, err := mustScope(c)
+		if err != nil {
+			return err
+		}
+		project, err := resolveProject(c)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+		if strings.TrimSpace(c.FormValue("confirm_name")) != project.Name {
+			return folderFormError(c, d, fiber.StatusUnprocessableEntity, "Type the project's name exactly to delete it.")
+		}
+		if err := repo.SoftDeleteProject(c.Context(), s, project.ID); err != nil {
+			return writeRepoErr(c, err)
+		}
+		meta, _ := json.Marshal(fiber.Map{"name": project.Name, "slug": project.Slug})
+		if err := repo.RecordAuditEvent(c.Context(), s, folderAuditActor(c), "project.delete", "project", &project.ID, meta); err != nil {
+			return writeRepoErr(c, err)
+		}
+		setFlash(c, "project.deleted", project.Name)
+		to := "/projects"
+		if project.FolderID != nil {
+			to += "?folder=" + project.FolderID.String()
+		}
+		return redirectAwayAfterMutation(c, to)
+	}
 }

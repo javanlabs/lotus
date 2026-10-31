@@ -623,6 +623,54 @@ func TestEditConnection_MovesTheServerAndResumesFrozenBindings(t *testing.T) {
 	})
 }
 
+// Deleting from the project's page hides the project and stops its syncs, keeps
+// its data, and frees its slug. Without the typed name nothing happens.
+func TestDeleteProject_IsSoft(t *testing.T) {
+	t.Parallel()
+	app, db := newDashboardTestApp(t)
+	orgID, userID := seedMember(t, db, "acme-proj-del", "owner")
+	raw := seedSession(t, db, orgID, userID)
+	host := "acme-proj-del." + dashboardTestDomain
+	var connID, componentID string
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		var projectID string
+		if err := tx.Get(&projectID, `INSERT INTO projects (org_id, slug, name) VALUES ($1,'pay','Payments') RETURNING id`, orgID); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Get(&componentID, `INSERT INTO components (org_id, project_id, slug, name, kind) VALUES ($1,$2,'c','c','backend') RETURNING id`, orgID, projectID); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Get(&connID, `INSERT INTO integration_connections (org_id, provider, name, base_url) VALUES ($1,'gitlab','g','https://g') RETURNING id`, orgID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec(`INSERT INTO metric_bindings (org_id, component_id, connection_id, kind, external_key, config) VALUES ($1,$2,$3,'gitlab','k','{}')`, orgID, componentID, connID); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if resp := postForm(t, app, host, "/projects/pay/delete", raw, url.Values{"confirm_name": {"wrong"}}); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("wrong name status = %d, want 422", resp.StatusCode)
+	}
+	if resp := postForm(t, app, host, "/projects/pay/delete", raw, url.Values{"confirm_name": {"Payments"}}); resp.StatusCode != http.StatusFound {
+		t.Fatalf("delete status = %d, want 302", resp.StatusCode)
+	}
+	if resp, err := app.Test(reqWithSession(http.MethodGet, host, "/projects/pay", raw), -1); err != nil || resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET deleted project = %v, %v, want 404", resp, err)
+	}
+	withOrgTx(t, db, orgID, func(tx *sqlx.Tx) {
+		var components int
+		var enabled bool
+		if err := tx.QueryRow(`SELECT (SELECT count(*) FROM components WHERE id = $1), (SELECT enabled FROM metric_bindings WHERE component_id = $1)`, componentID).Scan(&components, &enabled); err != nil {
+			t.Fatal(err)
+		}
+		if components != 1 || enabled {
+			t.Errorf("components=%d enabled=%v, want the data kept and syncs stopped", components, enabled)
+		}
+		if _, err := tx.Exec(`INSERT INTO projects (org_id, slug, name) VALUES ($1,'pay','Payments again')`, orgID); err != nil {
+			t.Errorf("the slug was not freed: %v", err)
+		}
+	})
+}
+
 // A copy of production has another server's key: the edit is refused in the
 // form, says why, and saves nothing rather than half of it.
 func TestEditConnection_AKeyThatWontOpenChangesNothing(t *testing.T) {

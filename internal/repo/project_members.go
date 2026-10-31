@@ -23,7 +23,7 @@ func AddProjectMember(ctx context.Context, s tenant.Scope, projectID, userID uui
 		// and silently "succeeds".
 		var visible bool
 		if err := tx.GetContext(ctx, &visible,
-			`SELECT EXISTS (SELECT 1 FROM projects WHERE id = $1)`, projectID); err != nil {
+			`SELECT EXISTS (SELECT 1 FROM projects WHERE id = $1 AND deleted_at IS NULL)`, projectID); err != nil {
 			return err
 		}
 		if !visible {

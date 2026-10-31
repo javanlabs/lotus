@@ -50,6 +50,7 @@ var flashMessages = map[string]struct {
 	"folder.moved":          {"pass", "Folder %s moved"},
 	"folder.deleted":        {"pass", "Folder %s deleted"},
 	"project.moved":         {"pass", "Project moved"},
+	"project.deleted":       {"pass", "Project %s deleted"},
 	"projects.moved":        {"pass", "%s projects moved"},
 	"qa.section.created":    {"pass", "Section %s created"},
 	"qa.section.renamed":    {"pass", "Section renamed to %s"},
