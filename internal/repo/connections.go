@@ -314,7 +314,13 @@ func SetConnectionTestResult(ctx context.Context, s tenant.Scope, id uuid.UUID, 
 		if err != nil {
 			return err
 		}
-		return checkRowsAffected(res)
+		if err := checkRowsAffected(res); err != nil {
+			return err
+		}
+		if ok {
+			return unfreezeBindings(ctx, tx, id)
+		}
+		return nil
 	})
 }
 

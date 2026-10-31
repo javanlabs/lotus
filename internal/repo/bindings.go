@@ -144,8 +144,9 @@ func FreezeBindingsForConnection(ctx context.Context, s tenant.Scope, connection
 }
 
 // unfreezeBindings resumes what a failed sign-in froze: called in the same
-// transaction that stores a new credential, the one event that can fix it.
-// If the credential is wrong too, the next sync simply freezes them again.
+// transaction that stores a new credential or records a passing test, since
+// access can also be fixed on the provider's side. If it is still refused,
+// the next sync simply freezes them again.
 func unfreezeBindings(ctx context.Context, tx *sqlx.Tx, connectionID uuid.UUID) error {
 	_, err := tx.ExecContext(ctx, `
 		UPDATE metric_bindings SET enabled = true, frozen_at = NULL
@@ -207,7 +208,7 @@ func ListBindingsForOrgByKind(ctx context.Context, s tenant.Scope, kind string) 
 			FROM metric_bindings mb
 			JOIN components c ON c.id = mb.component_id
 			JOIN projects p ON p.id = c.project_id
-			WHERE mb.kind = $1 AND mb.deleted_at IS NULL
+			WHERE mb.kind = $1 AND mb.deleted_at IS NULL AND p.deleted_at IS NULL
 			ORDER BY p.name, c.name`, kind)
 	})
 	return out, err

@@ -67,6 +67,38 @@ func TestFreeze_ANewCredentialResumesOnlyWhatTheFailureStopped(t *testing.T) {
 	}
 }
 
+// Access fixed on the provider's side, with the credential unchanged: a passing
+// test resumes the frozen bindings, a failing one does not.
+func TestFreeze_APassingTestResumes(t *testing.T) {
+	t.Parallel()
+	db := dbtest.Open(t)
+	orgID, _, running := seedMFFixture(t, db, "acme-freeze-test", "gitlab")
+	scope := tenant.FromRun(db, orgID)
+	ctx := context.Background()
+	binding, err := repo.BindingByID(ctx, scope, running)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.FreezeBindingsForConnection(ctx, scope, binding.ConnectionID); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		status string
+		want   bool
+	}{{"auth_failed", false}, {"ok", true}} {
+		if err := repo.SetConnectionTestResult(ctx, scope, binding.ConnectionID, tc.status, "x"); err != nil {
+			t.Fatal(err)
+		}
+		b, err := repo.BindingByID(ctx, scope, running)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if b.Enabled != tc.want {
+			t.Errorf("after %s test enabled = %v, want %v", tc.status, b.Enabled, tc.want)
+		}
+	}
+}
+
 func mustProjectOf(t *testing.T, ctx context.Context, s tenant.Scope, componentID uuid.UUID) uuid.UUID {
 	t.Helper()
 	c, err := repo.ComponentByID(ctx, s, componentID)
