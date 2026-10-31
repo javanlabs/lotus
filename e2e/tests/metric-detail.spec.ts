@@ -310,3 +310,22 @@ for (const [grade, score, text] of [
     await retireOrg(orgId);
   });
 }
+
+// An image Harbor has not scanned must not read as a clean one.
+test('a Trivy page for an unscanned image says so instead of celebrating', async ({ page, context }) => {
+  const { sessionToken, orgId, subdomain } = await seedOwnerSession('metric-trivy-unscanned-e2e', 'placeholder');
+  const origin = tenantOrigin(subdomain);
+  const ids = await seedComponentWithBinding(orgId, 'trivy', 'harbor_trivy', 'unscanned-api');
+  await withDB((client) =>
+    client.query(
+      `INSERT INTO trivy_snapshots (org_id, binding_id, component_id, source, digest, total) VALUES ($1, $2, $3, 'registry', 'sha256:abc', 0)`,
+      [orgId, ids.bindingId, ids.componentId],
+    ),
+  );
+  await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
+  await page.goto(`${origin}${detailPath(ids)}`);
+  await expect(page.getByText('Not scanned: this image has no finished scan')).toBeVisible();
+  await expect(page.getByText('No vulnerabilities found')).toHaveCount(0);
+  await expect(page.locator('.lotus-panel-figures')).toHaveCount(0);
+  await retireOrg(orgId);
+});

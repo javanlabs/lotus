@@ -36,6 +36,7 @@ type trivyDetail struct {
 	Tags           []string
 	Severity       string
 	Counts         Counts
+	NotScanned     bool
 	Pulls          *int
 	ArtifactCount  *int
 	ImagePushedAt  *time.Time
@@ -109,6 +110,19 @@ func ComputeHeadline(c Counts, failOn string) collector.Headline {
 }
 
 func buildResult(d trivyDetail, failOn string) (collector.Result, error) {
+	if d.NotScanned {
+		detail, err := json.Marshal(d)
+		if err != nil {
+			return collector.Result{}, collector.ErrInternal(err)
+		}
+		return collector.Result{
+			Headline: collector.Headline{
+				Status: collector.StatusUnknown, StateLabel: "not scanned",
+				Summary: "This image has no finished scan in Harbor, so its vulnerabilities are unknown.",
+			},
+			Detail: detail, DetailKind: string(collector.KindTrivy),
+		}, nil
+	}
 	var facts []collector.Fact
 	numFact := func(key string, v int) {
 		vv := float64(v)

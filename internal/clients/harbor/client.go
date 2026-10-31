@@ -157,8 +157,9 @@ func (c *Client) ListRepositories(ctx context.Context, project string) ([]Reposi
 
 // vulnSummary mirrors the nested shape Harbor returns inside scan_overview.
 type vulnSummary struct {
-	Severity string `json:"severity"`
-	Summary  struct {
+	Severity   string `json:"severity"`
+	ScanStatus string `json:"scan_status"`
+	Summary    struct {
 		Total   int            `json:"total"`
 		Fixable int            `json:"fixable"`
 		Summary map[string]int `json:"summary"` // {"Critical":N,"High":N,...}
@@ -184,8 +185,8 @@ type Artifact struct {
 }
 
 // LatestArtifactWithScan returns the most recently pushed artifact in repoName
-// (after the project prefix) that has a scan_overview attached. If none has
-// scan data yet, the newest artifact is returned anyway with empty Scan.
+// (after the project prefix) that has a finished scan report. If none has one
+// yet, the newest artifact is returned anyway with no report.
 func (c *Client) LatestArtifactWithScan(ctx context.Context, project, repoName string) (*Artifact, error) {
 	arts, err := c.listArtifacts(ctx, project, repoName)
 	if err != nil {
@@ -195,7 +196,7 @@ func (c *Client) LatestArtifactWithScan(ctx context.Context, project, repoName s
 		return nil, nil
 	}
 	for i := range arts {
-		if len(arts[i].ScanOverview) > 0 {
+		if Summarize(&arts[i]).HasReport {
 			return &arts[i], nil
 		}
 	}
@@ -330,6 +331,11 @@ func Summarize(a *Artifact) ScanSummary {
 	for _, v := range a.ScanOverview {
 		picked = v
 		break
+	}
+	// A queued, running or failed scan also has an overview entry, with counts
+	// of zero that are not a result. Only a finished one is a report.
+	if picked.ScanStatus != "" && !strings.EqualFold(picked.ScanStatus, "Success") {
+		return out
 	}
 	out.HasReport = true
 	out.Severity = picked.Severity

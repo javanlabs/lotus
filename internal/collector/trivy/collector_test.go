@@ -34,6 +34,14 @@ func fakeHarborServer(t *testing.T) *httptest.Server {
 					{"severity":"Critical","summary":{"total":5,"fixable":3,"summary":{"Critical":1,"High":2,"Medium":2}},"end_time":"2026-01-02T01:00:00Z"}}},
 				{"digest":"sha256:old","type":"IMAGE","push_time":"2026-01-01T00:00:00Z","tags":[{"name":"v1.1.0"}]}
 			]`)
+		case "/api/v2.0/projects/proj/repositories/running/artifacts":
+			fmt.Fprint(w, `[{"digest":"sha256:r","type":"IMAGE","push_time":"2026-01-02T00:00:00Z",
+				"scan_overview":{"application/vnd.security.vulnerability.report; version=1.1":
+					{"severity":"","scan_status":"Running","summary":{"total":0}}}}]`)
+		case "/api/v2.0/projects/proj/repositories/clean/artifacts":
+			fmt.Fprint(w, `[{"digest":"sha256:c","type":"IMAGE","push_time":"2026-01-02T00:00:00Z",
+				"scan_overview":{"application/vnd.security.vulnerability.report; version=1.1":
+					{"severity":"","scan_status":"Success","summary":{"total":0},"end_time":"2026-01-02T01:00:00Z"}}}]`)
 		case "/api/v2.0/projects/proj/repositories/app/artifacts/sha256:new/additions/vulnerabilities":
 			fmt.Fprint(w, `{"application/vnd.security.vulnerability.report; version=1.1":{"severity":"Critical","vulnerabilities":[{"id":"CVE-2026-1","package":"openssl","severity":"Critical"}]}}`)
 		default:
@@ -85,10 +93,17 @@ func TestCollect_TagPatternPinsToExactTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	// v1.1.0 only tags the older, unscanned artifact — no scan_overview,
-	// so severity counts are all zero and the headline passes.
-	if result.Headline.Status != collector.StatusPass {
-		t.Fatalf("Status = %q, want pass (pinned tag has no scan data)", result.Headline.Status)
+	// v1.1.0 only tags the older artifact, which has no scan_overview: its
+	// vulnerabilities are unknown, not zero.
+	h := result.Headline
+	if h.Status != collector.StatusUnknown || h.StateLabel != "not scanned" || h.Score != nil || h.CountValue != nil {
+		t.Fatalf("headline = %+v, want unknown, not scanned, nothing measured", h)
+	}
+	if len(result.Facts) != 0 {
+		t.Errorf("facts = %v, want none: zeros would chart as a clean reading", result.Facts)
+	}
+	if err := collector.ValidateResult(result); err != nil {
+		t.Errorf("ValidateResult: %v", err)
 	}
 }
 
@@ -164,5 +179,23 @@ func TestOpen_RejectsSecretWithoutColon(t *testing.T) {
 	_, err := c.Open(context.Background(), collector.ConnConfig{BaseURL: "https://harbor.example.com", Secret: "no-colon-here"})
 	if collector.ClassOf(err) != collector.ErrClassConfig {
 		t.Fatalf("ClassOf = %q, want config", collector.ClassOf(err))
+	}
+}
+
+// Only a finished scan is a result: a running one has zero counts too.
+func TestCollect_ScanStateDecidesWhetherZeroIsClean(t *testing.T) {
+	srv := fakeHarborServer(t)
+	defer srv.Close()
+	session := openTrivySession(t, srv, "good-user:good-pass")
+	defer session.Close()
+
+	for repo, want := range map[string]collector.Status{"running": collector.StatusUnknown, "clean": collector.StatusPass} {
+		result, err := session.Collect(context.Background(), collector.CollectRequest{ExternalKey: "proj/" + repo, Config: []byte(`{}`)})
+		if err != nil {
+			t.Fatalf("%s: %v", repo, err)
+		}
+		if result.Headline.Status != want {
+			t.Errorf("%s: status = %q, want %q", repo, result.Headline.Status, want)
+		}
 	}
 }

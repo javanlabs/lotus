@@ -392,3 +392,39 @@ func TestPool_IntervalFallsBackToTheOrgDefaultThenAnHour(t *testing.T) {
 		t.Errorf("org default 1m: next sync in %v, want the collector's 5-minute floor", d)
 	}
 }
+
+// A result with nothing measured, like an image Harbor has not scanned, is a
+// successful run carrying its state through to the headline.
+func TestPool_ResultWithNothingMeasuredIsAnOrdinarySuccess(t *testing.T) {
+	t.Parallel()
+	db := dbtest.Open(t)
+	orgID, connID, bindingID := seedFixture(t, db, "acme-unmeasured")
+	ctx := context.Background()
+
+	if _, _, err := global.EnqueueRun(ctx, db, global.NewSyncRun{OrgID: orgID, ConnectionID: connID, BindingID: bindingID, Kind: "gitlab", Trigger: "manual", ScheduledFor: time.Now()}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	pool := &scheduler.Pool{DB: db, WorkerID: "w1", LeaseDuration: 10 * time.Minute, Execute: func(ctx context.Context, run *global.SyncRun) (collector.Result, error) {
+		return collector.Result{Headline: collector.Headline{Status: collector.StatusUnknown, StateLabel: "not scanned"}}, nil
+	}}
+	if claimed, err := pool.ClaimAndRun(ctx); err != nil || !claimed {
+		t.Fatalf("ClaimAndRun = %v, %v", claimed, err)
+	}
+	scope := tenant.FromRun(db, orgID)
+	binding, err := repo.BindingByID(ctx, scope, bindingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding.LastStatus == nil || *binding.LastStatus != "ok" {
+		t.Fatalf("last_status = %v, want ok", binding.LastStatus)
+	}
+	withOrgTxSchedTest(t, db, orgID, func(tx *sqlx.Tx) {
+		var label string
+		if err := tx.Get(&label, `SELECT metrics->'gitlab'->>'state_label' FROM component_metrics_current WHERE component_id = $1`, binding.ComponentID); err != nil {
+			t.Fatal(err)
+		}
+		if label != "not scanned" {
+			t.Errorf("state_label = %q", label)
+		}
+	})
+}

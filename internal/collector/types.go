@@ -199,7 +199,9 @@ type Result struct {
 // collector bug, not a run failure to retry.
 func ValidateResult(r Result) error {
 	if len(r.Children) == 0 {
-		if len(r.Facts) == 0 {
+		// Unknown is the one headline allowed no Facts: nothing was measured,
+		// and zeros would chart as a real reading.
+		if len(r.Facts) == 0 && r.Headline.Status != StatusUnknown {
 			return errEmptyFacts
 		}
 		return nil

@@ -102,7 +102,8 @@ func parseTrivyRawJSON(raw []byte) []trivyCVERow {
 }
 
 type trivyDetailHeader struct {
-	HasData bool
+	HasData    bool
+	NotScanned bool
 
 	Source                                               string
 	Digest                                               string
@@ -124,6 +125,9 @@ func buildTrivyHeader(snap *repo.TrivySnapshot) trivyDetailHeader {
 	}
 	h.HasData = true
 	h.Source = snap.Source
+	// An image with no finished scan, as opposed to a clean one. A repository
+	// scan or pushed report is always a finished scan.
+	h.NotScanned = snap.Source == "registry" && snap.ScanFinishedAt == nil && snap.Total == 0
 	if snap.Source == repo.RepoScanSource {
 		if snap.Digest != nil {
 			h.Commit = *snap.Digest

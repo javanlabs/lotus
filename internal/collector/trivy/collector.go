@@ -164,6 +164,7 @@ func (s *session) Collect(ctx context.Context, req collector.CollectRequest) (co
 		Tags:           tagNames(art.Tags),
 		Severity:       summary.Severity,
 		Counts:         Counts{Total: summary.Total, Fixable: summary.Fixable, Critical: summary.Critical, High: summary.High, Medium: summary.Medium, Low: summary.Low, Unknown: summary.Unknown},
+		NotScanned:     !summary.HasReport,
 		ImagePushedAt:  timePtr(art.PushTime),
 		ScanFinishedAt: summary.EndTime,
 		RawReport:      rawReport,
