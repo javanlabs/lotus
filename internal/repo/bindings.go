@@ -131,13 +131,26 @@ func UpdateBindingAfterRun(ctx context.Context, s tenant.Scope, id uuid.UUID, ne
 // FreezeBindingsForConnection disables every binding on connectionID —
 // task 3.1's auth-failure side effect: an expired credential must stop
 // every binding under it at once, not fail them one at a time as the
-// scheduler happens to get around to each.
+// scheduler happens to get around to each. Only bindings that were on are
+// marked frozen, so one turned off on purpose stays off when the connection
+// recovers (see unfreezeBindings).
 func FreezeBindingsForConnection(ctx context.Context, s tenant.Scope, connectionID uuid.UUID) error {
 	return s.Tx(ctx, func(tx *sqlx.Tx) error {
 		_, err := tx.ExecContext(ctx, `
-			UPDATE metric_bindings SET enabled = false WHERE connection_id = $1 AND deleted_at IS NULL`, connectionID)
+			UPDATE metric_bindings SET enabled = false, frozen_at = now()
+			WHERE connection_id = $1 AND enabled AND deleted_at IS NULL`, connectionID)
 		return err
 	})
+}
+
+// unfreezeBindings resumes what a failed sign-in froze: called in the same
+// transaction that stores a new credential, the one event that can fix it.
+// If the credential is wrong too, the next sync simply freezes them again.
+func unfreezeBindings(ctx context.Context, tx *sqlx.Tx, connectionID uuid.UUID) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE metric_bindings SET enabled = true, frozen_at = NULL
+		WHERE connection_id = $1 AND frozen_at IS NOT NULL AND deleted_at IS NULL`, connectionID)
+	return err
 }
 
 // CountActiveBindingsForConnection is the pre-delete confirmation count
@@ -236,7 +249,7 @@ func UpdateBindingConfig(ctx context.Context, s tenant.Scope, id uuid.UUID, conf
 // 2.3: "Nonaktifin binding nyetop penjadwalannya tanpa ngapus history."
 func SetBindingEnabled(ctx context.Context, s tenant.Scope, id uuid.UUID, enabled bool) error {
 	return s.Tx(ctx, func(tx *sqlx.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE metric_bindings SET enabled = $2 WHERE id = $1 AND deleted_at IS NULL`, id, enabled)
+		res, err := tx.ExecContext(ctx, `UPDATE metric_bindings SET enabled = $2, frozen_at = NULL WHERE id = $1 AND deleted_at IS NULL`, id, enabled)
 		if err != nil {
 			return err
 		}

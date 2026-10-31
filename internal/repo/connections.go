@@ -206,13 +206,16 @@ func UpdateConnectionSecret(ctx context.Context, s tenant.Scope, dek []byte, id 
 
 	var out Connection
 	err = s.Tx(ctx, func(tx *sqlx.Tx) error {
-		return tx.GetContext(ctx, &out, `
+		if err := tx.GetContext(ctx, &out, `
 			UPDATE integration_connections
 			SET secret_ciphertext = $2, secret_nonce = $3, secret_fingerprint = $4,
 			    secret_last4 = $5, secret_updated_at = now(),
 			    status = 'pending', last_verified_at = NULL, last_error = NULL
 			WHERE id = $1
-			RETURNING `+connectionColumns, id, ciphertext, nonce, fp, last4)
+			RETURNING `+connectionColumns, id, ciphertext, nonce, fp, last4); err != nil {
+			return err
+		}
+		return unfreezeBindings(ctx, tx, id)
 	})
 	if err != nil {
 		if isNoRows(err) {
@@ -245,13 +248,16 @@ func UpdateConnectionBaseURLWithSecret(ctx context.Context, s tenant.Scope, dek 
 
 	var out Connection
 	err = s.Tx(ctx, func(tx *sqlx.Tx) error {
-		return tx.GetContext(ctx, &out, `
+		if err := tx.GetContext(ctx, &out, `
 			UPDATE integration_connections
 			SET base_url = $2, secret_ciphertext = $3, secret_nonce = $4, secret_fingerprint = $5,
 			    secret_last4 = $6, secret_updated_at = now(),
 			    status = 'pending', last_verified_at = NULL, last_error = NULL
 			WHERE id = $1
-			RETURNING `+connectionColumns, id, baseURL, ciphertext, nonce, fp, last4)
+			RETURNING `+connectionColumns, id, baseURL, ciphertext, nonce, fp, last4); err != nil {
+			return err
+		}
+		return unfreezeBindings(ctx, tx, id)
 	})
 	if err != nil {
 		if isNoRows(err) {
