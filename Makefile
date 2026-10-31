@@ -1,6 +1,6 @@
 TAILWIND = bin/tailwindcss
 
-.PHONY: css watch-css dev run-once build build-linux run migrate-up migrate-down db-up db-down test e2e e2e-db lint
+.PHONY: css watch-css dev dev-prod db-pull-prod run-once build build-linux run migrate-up migrate-down db-up db-down test e2e e2e-db lint
 
 css: $(TAILWIND)
 	$(TAILWIND) -i web/static/css/app.css -o web/static/css/app.built.css --minify
@@ -86,6 +86,19 @@ dev: $(TAILWIND) db-up
 	@LOTUS_DEV=1 bash -c 'trap "kill 0" EXIT; \
 	  $(TAILWIND) -i web/static/css/app.css -o web/static/css/app.built.css --watch & \
 	  go run github.com/air-verse/air@latest'
+
+# A local copy of production for testing against real data; see the script.
+# Production is only read. Re-run to refresh, which replaces the copy.
+db-pull-prod: db-up
+	./scripts/db-pull-prod.sh
+
+# `make dev` on that copy. Sign in at /login with your own address: under
+# LOTUS_DEV the magic link is printed on the page. Set in the environment,
+# which takes precedence over .env.
+PROD_COPY_DSN = postgres://postgres@localhost:5418/lotus_prod_copy?sslmode=disable
+dev-prod:
+	@DATABASE_URL="$(PROD_COPY_DSN)" MIGRATE_DATABASE_URL="$(PROD_COPY_DSN)" \
+	  LOTUS_MODE=single LOTUS_URL=http://localhost:8008 ADDR=:8008 $(MAKE) dev
 
 # One-shot run without hot-reload.
 run-once: css db-up

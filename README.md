@@ -184,6 +184,24 @@ lotus import-qa verify --legacy-dsn='…' --org=javan
 
 Full procedure: `docs/qa-import-runbook.md`.
 
+## Testing against a copy of production
+
+```bash
+make db-pull-prod   # needs `ssh collab` with sudo; replaces any earlier copy
+make dev-prod       # serves it on http://localhost:8008
+```
+
+Sign in at `/login` with your own address: under `LOTUS_DEV` the link is
+printed on the page. Never point a local app at the production database
+itself — its workers would claim production's sync queue, and a stray delete
+or test seed lands on real data.
+
+Production is only read. The copy, `lotus_prod_copy`, holds real names and
+emails, so keep it on your machine. Sessions, login and API tokens and share
+links are left out. Integration credentials stay sealed under production's
+`LOTUS_KEK`, which is not copied, and syncs are stopped, so the copy shows
+production's data as of the pull but Sync and Test Connection will fail.
+
 ## Production
 
 Lotus runs at **<https://lotus.javan.id>**, single mode, on the `collab`
