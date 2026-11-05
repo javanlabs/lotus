@@ -59,6 +59,11 @@ func projectPage(d Deps) fiber.Handler {
 		subtitle := fmt.Sprintf("%d component%s in this project", len(components), plural(len(components), "", "s"))
 		vm := buildDashboardViewModel(subtitle, len(projects), components, metrics)
 
+		tags, err := loadProjectTags(c, s, project)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+
 		c.Type("html")
 		return renderPage(c, d, "pages/project.html", httpx.ViewData{
 			Title: project.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), projectTrail(project, trailMenus{Projects: projectMenu(projects, project, "")})),
@@ -68,10 +73,15 @@ func projectPage(d Deps) fiber.Handler {
 				Dashboard dashboardViewModel
 				CanQA     bool
 				CanDelete bool
+				// The project's tags, every tag of the organization (the add
+				// box's suggestions), and whether this person may change them.
+				Tags, AllTags []repo.Tag
+				CanTag        bool
 			}{
 				Project: *project, URL: projectURL(project), Dashboard: vm,
 				CanQA:     d.Cfg.Features.QA && mustPrincipal(c).Can("qa.read"),
 				CanDelete: mustPrincipal(c).Can("project.delete"),
+				Tags:      tags.Tags, AllTags: tags.AllTags, CanTag: tags.CanTag,
 			},
 		})
 	}

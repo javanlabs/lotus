@@ -1,0 +1,29 @@
+{{/* project_tags is a project's tags under its name on the project page,
+     and the htmx swap target of the tag routes (internal/web/project_tags.go).
+     Takes a projectTagsData (or a dict with the same keys): URL, Tags,
+     AllTags, CanTag, Error. Everyone sees the pills; with CanTag each has a
+     remove button and an add box suggests the organization's tags.
+
+     htmx does not swap a 4xx response by default; a 422 here carries the
+     refusal inside the partial, so the before-swap handler lets it through.
+     The handler sits on the target itself, which is where htmx fires it. */}}
+{{define "project_tags"}}
+<div id="project-tags" class="lotus-project-tags" data-testid="project-tags"
+     hx-on::before-swap="if (event.detail.xhr.status === 422) { event.detail.shouldSwap = true; event.detail.isError = false; }">
+  {{range .Tags}}
+  <span class="lotus-tag">{{.Name}}{{if $.CanTag}}
+    <form method="post" action="{{$.URL}}/tags/{{.ID}}/remove" hx-post="{{$.URL}}/tags/{{.ID}}/remove" hx-target="#project-tags" hx-swap="outerHTML">
+      <button type="submit" class="lotus-tag-remove" aria-label="Remove tag {{.Name}}">&times;</button>
+    </form>{{end}}</span>
+  {{end}}
+  {{if .CanTag}}
+  <form method="post" action="{{.URL}}/tags" hx-post="{{.URL}}/tags" hx-target="#project-tags" hx-swap="outerHTML">
+    <input type="text" name="name" list="project-tag-options" maxlength="40" required autocomplete="off"
+           placeholder="Add a tag" aria-label="Tag name" class="lotus-input">
+    <datalist id="project-tag-options">{{range .AllTags}}<option value="{{.Name}}"></option>{{end}}</datalist>
+    <button type="submit" class="btn-lotus btn-lotus-secondary btn-lotus-sm">Add</button>
+  </form>
+  {{if .Error}}<p class="lotus-project-tags-error" role="alert">{{.Error}}</p>{{end}}
+  {{end}}
+</div>
+{{end}}

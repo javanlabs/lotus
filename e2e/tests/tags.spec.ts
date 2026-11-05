@@ -112,3 +112,32 @@ test('projects list is flat and filters by tag', async ({ page }) => {
   await page.goto(`${origin}/projects`);
   await expect(page.locator('a.lotus-repo-row', { hasText: 'Billing' })).toBeVisible();
 });
+
+test('owner tags a project from its page', async ({ page }) => {
+  const { orgId, origin } = await signIn(page, 'tags-edit-e2e');
+  await seedTagged(orgId);
+
+  await page.goto(`${origin}/projects/payments`);
+  const tags = page.getByTestId('project-tags');
+  await expect(tags.locator('.lotus-tag', { hasText: 'PROJECT' })).toBeVisible();
+  await tags.getByLabel('Tag name').fill('XLSMART');
+  await tags.getByRole('button', { name: 'Add' }).click();
+  await expect(page.getByTestId('project-tags').locator('.lotus-tag', { hasText: 'XLSMART' })).toBeVisible();
+
+  // A blank name is refused inside the panel, not silently dropped.
+  await page.getByTestId('project-tags').getByLabel('Tag name').fill('   ');
+  await page.getByTestId('project-tags').getByRole('button', { name: 'Add' }).click();
+  await expect(page.getByTestId('project-tags').getByRole('alert')).toContainText('1–40 characters');
+
+  const chip = (name: string) => page.getByTestId('tag-filter').getByRole('button', { name, exact: true });
+  await page.goto(`${origin}/dashboard`);
+  await expect(chip('XLSMART')).toBeVisible();
+
+  // Removing it from its only project takes the chip with it.
+  await page.goto(`${origin}/projects/payments`);
+  await page.getByTestId('project-tags').getByRole('button', { name: 'Remove tag XLSMART' }).click();
+  await expect(page.getByTestId('project-tags').locator('.lotus-tag', { hasText: 'XLSMART' })).toHaveCount(0);
+  await page.goto(`${origin}/dashboard`);
+  await expect(chip('PROJECT')).toBeVisible();
+  await expect(chip('XLSMART')).toHaveCount(0);
+});

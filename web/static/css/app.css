@@ -787,6 +787,26 @@ body {
   letter-spacing: .02em;
   white-space: nowrap;
 }
+/* The tags under a project's name (components/project_tags.html): pills,
+   each with its remove button for whoever may change them, then the add
+   box. */
+.lotus-project-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.lotus-project-tags .lotus-tag { display: inline-flex; align-items: center; gap: 4px; }
+.lotus-project-tags form { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+.lotus-tag-remove {
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  opacity: .55;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.lotus-tag-remove:hover { opacity: 1; }
+.lotus-tag-remove:focus-visible { outline: none; opacity: 1; box-shadow: var(--shadow-focus-ring); border-radius: 3px; }
+.lotus-project-tags .lotus-input { width: 150px; height: 28px; font-size: var(--text-ui); }
+.lotus-project-tags-error { flex-basis: 100%; margin: 0; font-size: 11.5px; color: var(--text-danger); }
 
 /* A metric page's binding line (components/metric_header.html): what the
    open tab reads and through which connection, on the left; what can be
