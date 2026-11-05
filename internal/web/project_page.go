@@ -59,34 +59,19 @@ func projectPage(d Deps) fiber.Handler {
 		subtitle := fmt.Sprintf("%d component%s in this project", len(components), plural(len(components), "", "s"))
 		vm := buildDashboardViewModel(subtitle, len(projects), components, metrics)
 
-		folders, err := repo.ListFolders(c.Context(), s)
-		if err != nil {
-			return writeRepoErr(c, err)
-		}
-		folderValue := ""
-		if project.FolderID != nil {
-			folderValue = project.FolderID.String()
-		}
-
 		c.Type("html")
 		return renderPage(c, d, "pages/project.html", httpx.ViewData{
-			Title: project.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), projectTrail(folders, project, trailMenus{Projects: projectMenu(projects, project, "")})),
+			Title: project.Name, Org: org, User: user, Nav: navWithTrail("projects", len(projects), projectTrail(project, trailMenus{Projects: projectMenu(projects, project, "")})),
 			Data: struct {
-				Project      repo.Project
-				URL          string // the project's own page; its links hang off it
-				Dashboard    dashboardViewModel
-				CanMove      bool
-				CanQA        bool
-				CanDelete    bool
-				FolderSelect []httpx.SelectOption
-				FolderValue  string
+				Project   repo.Project
+				URL       string // the project's own page; its links hang off it
+				Dashboard dashboardViewModel
+				CanQA     bool
+				CanDelete bool
 			}{
 				Project: *project, URL: projectURL(project), Dashboard: vm,
-				CanMove:      mustPrincipal(c).Can("project.update"),
-				CanQA:        d.Cfg.Features.QA && mustPrincipal(c).Can("qa.read"),
-				CanDelete:    mustPrincipal(c).Can("project.delete"),
-				FolderSelect: folderSelect(folderOptionsFor(folders), nil),
-				FolderValue:  folderValue,
+				CanQA:     d.Cfg.Features.QA && mustPrincipal(c).Can("qa.read"),
+				CanDelete: mustPrincipal(c).Can("project.delete"),
 			},
 		})
 	}
@@ -210,20 +195,16 @@ func deleteProjectUI(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		if strings.TrimSpace(c.FormValue("confirm_name")) != project.Name {
-			return folderFormError(c, d, fiber.StatusUnprocessableEntity, "Type the project's name exactly to delete it.")
+			return formError(c, d, fiber.StatusUnprocessableEntity, "Type the project's name exactly to delete it.")
 		}
 		if err := repo.SoftDeleteProject(c.Context(), s, project.ID); err != nil {
 			return writeRepoErr(c, err)
 		}
 		meta, _ := json.Marshal(fiber.Map{"name": project.Name, "slug": project.Slug})
-		if err := repo.RecordAuditEvent(c.Context(), s, folderAuditActor(c), "project.delete", "project", &project.ID, meta); err != nil {
+		if err := repo.RecordAuditEvent(c.Context(), s, auditActor(c), "project.delete", "project", &project.ID, meta); err != nil {
 			return writeRepoErr(c, err)
 		}
 		setFlash(c, "project.deleted", project.Name)
-		to := "/projects"
-		if project.FolderID != nil {
-			to += "?folder=" + project.FolderID.String()
-		}
-		return redirectAwayAfterMutation(c, to)
+		return redirectAwayAfterMutation(c, "/projects")
 	}
 }

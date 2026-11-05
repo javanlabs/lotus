@@ -244,16 +244,12 @@ func metricDetailPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		folders, err := repo.ListFolders(c.Context(), s)
-		if err != nil {
-			return writeRepoErr(c, err)
-		}
 		menus, err := loadTrailMenus(c.Context(), s, projects, &chrome.Project, &chrome.Component, chrome.Binding.Kind)
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
 		nav := buildNav("projects", len(projects))
-		nav.Trail = metricTrail(folders, &chrome.Project, &chrome.Component, chrome.Binding.Kind, menus)
+		nav.Trail = metricTrail(&chrome.Project, &chrome.Component, chrome.Binding.Kind, menus)
 
 		switch chrome.Binding.Kind {
 		case "gitlab":
@@ -355,16 +351,12 @@ func runHistoryPage(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 
-		folders, err := repo.ListFolders(c.Context(), s)
-		if err != nil {
-			return writeRepoErr(c, err)
-		}
 		menus, err := loadTrailMenus(c.Context(), s, projects, &chrome.Project, &chrome.Component, chrome.Binding.Kind)
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
 		nav := buildNav("projects", len(projects))
-		nav.Trail = metricTrail(folders, &chrome.Project, &chrome.Component, chrome.Binding.Kind, menus,
+		nav.Trail = metricTrail(&chrome.Project, &chrome.Component, chrome.Binding.Kind, menus,
 			httpx.NavCrumb{Label: "Syncs"})
 		c.Type("html")
 		return renderPage(c, d, "pages/metric_runs.html", httpx.ViewData{

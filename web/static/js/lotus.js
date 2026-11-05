@@ -92,13 +92,7 @@ function lotusSort(headingLabel) {
         return av.localeCompare(bv, undefined, { sensitivity: 'base' }) * this.dir;
       };
 
-      // On the folder view, folders stay ahead of projects whatever the
-      // column; within each group the chosen column decides.
-      const ordered = rows.sort((a, b) => {
-        const af = a.dataset.folder === '1', bf = b.dataset.folder === '1';
-        if (af !== bf) return af ? -1 : 1;
-        return compare(a, b);
-      });
+      const ordered = rows.sort(compare);
 
       ordered.forEach((r) => box.appendChild(r));
       this.retitle();
@@ -121,171 +115,11 @@ function lotusSort(headingLabel) {
   };
 }
 
-// lotusTree is the organization dashboard's page state: the All/Failing
-// filter (read by dashboard_block's rows), selection for the bulk move, and
-// drag and drop of projects and folders onto folders.
+// lotusTree is the organization's project list's page state: the
+// All/Failing filter read by dashboard_block's rows.
 function lotusTree() {
   return {
     filter: 'all',
-
-    // Checkboxes stay hidden until "Select" turns selection on; turning it
-    // off (Cancel) also clears what was ticked.
-    selecting: false,
-
-    toggleSelecting() {
-      this.selecting = !this.selecting;
-      if (!this.selecting) this.clearSelection();
-    },
-
-    // Drag and drop. `dragging` is what is in flight — a project (with the
-    // rest of the selection, when the dragged row is ticked) or one folder —
-    // and `dropTarget` the folder id under the pointer ('' = top level,
-    // the breadcrumb's first segment), which the target highlights.
-    dragging: null,
-    dropTarget: null,
-
-    dragStart(event, row) {
-      const kind = row.dataset.kind;
-      const id = row.dataset.node;
-      const ids = kind === 'project' && this.selected[id] ? this.selectedIds() : [id];
-      this.dragging = { kind, ids };
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', ids.join(','));
-    },
-
-    dragEnd() {
-      this.dragging = null;
-      this.dropTarget = null;
-      document.querySelectorAll('[data-drop-folder].lotus-drop-target')
-        .forEach((el) => el.classList.remove('lotus-drop-target'));
-    },
-
-    // The folder path lives in the shell's breadcrumb, outside this
-    // component's element, so its segments are wired up by hand rather than
-    // through Alpine attributes.
-    init() {
-      document.querySelectorAll('[data-drop-folder]').forEach((el) => {
-        const target = el.dataset.dropFolder;
-        el.addEventListener('dragover', (e) => {
-          this.dragOver(e, target);
-          el.classList.toggle('lotus-drop-target', this.dropTarget === target);
-        });
-        el.addEventListener('dragleave', (e) => {
-          this.dragLeave(e, target);
-          if (this.dropTarget !== target) el.classList.remove('lotus-drop-target');
-        });
-        el.addEventListener('drop', (e) => this.drop(e, target));
-      });
-    },
-
-    // A folder cannot be dropped on itself; everything else is for the
-    // server to judge (a folder into its own subfolder, the depth cap).
-    canDrop(target) {
-      if (!this.dragging) return false;
-      return !(this.dragging.kind === 'folder' && this.dragging.ids.includes(target));
-    },
-
-    dragOver(event, target) {
-      if (!this.canDrop(target)) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-      this.dropTarget = target;
-    },
-
-    dragLeave(event, target) {
-      // Moving between a target's own children fires dragleave on it too.
-      if (event.currentTarget.contains(event.relatedTarget)) return;
-      if (this.dropTarget === target) this.dropTarget = null;
-    },
-
-    // drop posts the move the way the dialogs do (as an htmx request, so a
-    // refusal comes back as the dialog's error fragment) and reloads on
-    // success, which shows the flash. A refusal becomes an error toast.
-    async drop(event, target) {
-      event.preventDefault();
-      const moving = this.dragging;
-      this.dragEnd();
-      if (!moving || (moving.kind === 'folder' && moving.ids.includes(target))) return;
-
-      const body = new URLSearchParams();
-      let url;
-      if (moving.kind === 'project') {
-        url = '/projects/move';
-        moving.ids.forEach((id) => body.append('project_id', id));
-        body.append('folder_id', target);
-      } else {
-        url = '/folders/' + encodeURIComponent(moving.ids[0]) + '/move';
-        body.append('parent_id', target);
-      }
-
-      let res;
-      try {
-        res = await fetch(url, {
-          method: 'POST',
-          headers: { 'HX-Request': 'true', 'Content-Type': 'application/x-www-form-urlencoded' },
-          body,
-        });
-      } catch (e) {
-        window.lotusToast({ tone: 'fail', text: 'The move could not be sent. Check your connection and try again.' });
-        return;
-      }
-      if (res.ok && res.headers.get('HX-Refresh')) {
-        window.location.reload();
-        return;
-      }
-      const html = await res.text();
-      const text = new DOMParser().parseFromString(html, 'text/html').body.textContent.trim();
-      window.lotusToast({ tone: 'fail', text: text || 'That move could not be made.' });
-    },
-
-    // Multi-select for the bulk move. `selected` is a set of project ids,
-    // replaced (not mutated) on every change so Alpine re-renders the
-    // checkboxes, the count and the move form's hidden inputs. It lives only
-    // for the page: a reload after a move clears it.
-    selected: {},
-
-    isSelected(id) {
-      return !!this.selected[id];
-    },
-
-    toggleSelect(id) {
-      const next = { ...this.selected };
-      if (next[id]) delete next[id];
-      else next[id] = true;
-      this.selected = next;
-    },
-
-    selectedIds() {
-      return Object.keys(this.selected);
-    },
-
-    selectedCount() {
-      return this.selectedIds().length;
-    },
-
-    clearSelection() {
-      this.selected = {};
-    },
-
-    // The header checkbox acts on the project rows currently on screen —
-    // not ones hidden by the other filter's list.
-    visibleProjectIds(box) {
-      if (!box) return [];
-      return Array.from(box.querySelectorAll('[data-project-select]'))
-        .filter((cb) => cb.offsetParent !== null)
-        .map((cb) => cb.dataset.id);
-    },
-
-    selectVisible(box) {
-      const next = { ...this.selected };
-      this.visibleProjectIds(box).forEach((id) => { next[id] = true; });
-      this.selected = next;
-    },
-
-    allVisibleSelected(box) {
-      const ids = this.visibleProjectIds(box);
-      return ids.length > 0 && ids.every((id) => this.selected[id]);
-    },
   };
 }
 
@@ -402,9 +236,9 @@ function lotusInfo() {
   // Basecoat inserts the toast's title with innerHTML rather than as text,
   // so anything reaching deliver() is escaped here — the single boundary
   // both callers (the seeded flash cookie and an htmx HX-Trigger event)
-  // pass through — before it is handed over. Without this, a folder (or
+  // pass through — before it is handed over. Without this, a project (or
   // anything else) named with markup runs script in whoever's browser
-  // shows the resulting "Folder %s moved/deleted/created/renamed" toast.
+  // shows the resulting "Project %s deleted" toast.
   const ESCAPE_HTML = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
   const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (ch) => ESCAPE_HTML[ch]);
 

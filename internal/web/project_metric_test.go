@@ -321,7 +321,7 @@ func TestProjectPage_MetricTabsOpenTheKindPages(t *testing.T) {
 		}
 	}
 
-	vm := buildProjectDashboardViewModel("", []repo.Project{{ID: f.projectID, Slug: "payments"}}, nil, nil, nil, nil)
+	vm := buildProjectDashboardViewModel("", []repo.Project{{ID: f.projectID, Slug: "payments"}}, nil, nil, nil)
 	for _, k := range vm.KPIs {
 		if k.Href != "" {
 			t.Errorf("organization KPI %s links to %q", k.Key, k.Href)

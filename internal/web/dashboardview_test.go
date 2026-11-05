@@ -19,6 +19,19 @@ func int64Ptr(v int64) *int64 { return &v }
 
 func statusList(statuses ...collector.Status) []collector.Status { return statuses }
 
+// projectsOf derives the project list a set of components belongs to.
+func projectsOf(comps []componentInfo) []repo.Project {
+	seen := map[uuid.UUID]bool{}
+	var out []repo.Project
+	for _, c := range comps {
+		if !seen[c.ProjectID] {
+			seen[c.ProjectID] = true
+			out = append(out, repo.Project{ID: c.ProjectID, Name: c.ProjectName})
+		}
+	}
+	return out
+}
+
 func TestBuildDashboardViewModel_EmptyOrgHasNoComponents(t *testing.T) {
 	t.Parallel()
 	vm := buildDashboardViewModel("subtitle", 0, nil, nil)
@@ -245,7 +258,7 @@ func TestProjectScore_IsIdenticalOnBothPages(t *testing.T) {
 	}
 
 	onProjectPage := buildDashboardViewModel("", 1, comps, metrics)
-	onDashboard := buildProjectDashboardViewModel("", projectsOf(comps), nil, comps, metrics, nil)
+	onDashboard := buildProjectDashboardViewModel("", projectsOf(comps), nil, comps, metrics)
 
 	if !onProjectPage.Score.HasScore || len(onDashboard.Rows) != 1 {
 		t.Fatalf("fixture did not produce a scored project: card=%+v rows=%d",

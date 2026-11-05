@@ -76,3 +76,39 @@ test('dashboard narrows to the chosen tags', async ({ page }) => {
   await expect(map.getByRole('link', { name: 'studio-web' })).toBeVisible();
   await expect(chip('All')).toHaveAttribute('aria-pressed', 'true');
 });
+
+test('projects list is flat and filters by tag', async ({ page }) => {
+  const { orgId, origin } = await signIn(page, 'tags-list-e2e');
+  await seedTagged(orgId);
+  // Payments sits in a folder, as production's projects do: the list must
+  // still show it at the top level.
+  await withDB(async (c) => {
+    const f = await c.query<{ id: string }>(`INSERT INTO folders (org_id, name) VALUES ($1, 'ITSD') RETURNING id`, [orgId]);
+    await c.query(`UPDATE projects SET folder_id = $2 WHERE org_id = $1 AND slug = 'payments'`, [orgId, f.rows[0].id]);
+  });
+
+  await page.goto(`${origin}/projects`);
+  const payments = page.locator('a.lotus-repo-row', { hasText: 'Payments' });
+  const alur = page.locator('a.lotus-repo-row', { hasText: 'AlurKerja' });
+  await expect(payments).toBeVisible();
+  await expect(alur).toBeVisible();
+  await expect(payments.locator('.lotus-tag')).toHaveText('PROJECT');
+  await expect(alur.locator('.lotus-tag')).toHaveText('PRODUCT');
+  await expect(page.getByText('Move to folder')).toHaveCount(0);
+  await expect(page.getByText('New folder')).toHaveCount(0);
+
+  await page.getByTestId('tag-filter').getByRole('button', { name: 'PROJECT', exact: true }).click();
+  await expect(page).toHaveURL(`${origin}/projects?tag=PROJECT`);
+  await expect(payments).toBeVisible();
+  await expect(alur).toHaveCount(0);
+
+  // A new project has no folder to pick and lands in the list.
+  await page.goto(`${origin}/projects/new`);
+  await expect(page.getByText('Folder', { exact: false })).toHaveCount(0);
+  await page.locator('input[name="name"]').fill('Billing');
+  await page.locator('input[name="slug"]').fill('billing');
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await expect(page).toHaveURL(`${origin}/projects/billing`);
+  await page.goto(`${origin}/projects`);
+  await expect(page.locator('a.lotus-repo-row', { hasText: 'Billing' })).toBeVisible();
+});

@@ -84,7 +84,7 @@ type SelectOption struct {
 	Value    string
 	Label    string
 	Disabled bool
-	// Tree options (a folder picker): the list shows Name indented by
+	// Tree options (a section picker): the list shows Name indented by
 	// Depth levels, while Label — the full path — is what the box shows
 	// once chosen and what typing filters on. An option with no Name is a
 	// plain one and shows Label.

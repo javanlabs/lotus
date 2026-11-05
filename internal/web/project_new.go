@@ -15,8 +15,6 @@ import (
 // newProjectFormData is what pages/project_new.html renders.
 type newProjectFormData struct {
 	Slug, Name, Description, Error string
-	FolderID                       string
-	FolderSelect                   []httpx.SelectOption
 }
 
 func newProjectPage(d Deps) fiber.Handler {
@@ -29,10 +27,7 @@ func newProjectPage(d Deps) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		// Opened from inside a folder (?folder=<id>), the new project is
-		// filed there unless another folder is chosen.
-		form := newProjectFormData{FolderID: c.Query("folder")}
-		return renderNewProjectFormWithCount(c, d, s, org, user, form, fiber.StatusOK)
+		return renderNewProjectFormWithCount(c, d, s, org, user, newProjectFormData{}, fiber.StatusOK)
 	}
 }
 
@@ -50,12 +45,6 @@ func submitNewProject(d Deps) fiber.Handler {
 			Name:        strings.TrimSpace(c.FormValue("name")),
 			Slug:        strings.TrimSpace(c.FormValue("slug")),
 			Description: strings.TrimSpace(c.FormValue("description")),
-			FolderID:    strings.TrimSpace(c.FormValue("folder_id")),
-		}
-		folderID, err := optionalUUID(form.FolderID)
-		if err != nil {
-			form.Error = "that folder no longer exists"
-			return renderNewProjectFormWithCount(c, d, s, org, user, form, fiber.StatusUnprocessableEntity)
 		}
 		if form.Name == "" || form.Slug == "" {
 			form.Error = "name and slug are required"
@@ -66,15 +55,13 @@ func submitNewProject(d Deps) fiber.Handler {
 			return renderNewProjectFormWithCount(c, d, s, org, user, form, fiber.StatusUnprocessableEntity)
 		}
 
-		p, err := repo.CreateProject(c.Context(), s, repo.NewProject{Slug: form.Slug, Name: form.Name, Description: form.Description, FolderID: folderID})
+		p, err := repo.CreateProject(c.Context(), s, repo.NewProject{Slug: form.Slug, Name: form.Name, Description: form.Description})
 		if err != nil {
 			switch {
 			case errors.Is(err, repo.ErrSlugTaken):
 				form.Error = "a project with that slug already exists"
 			case errors.Is(err, repo.ErrInvalidInput):
 				form.Error = "invalid input"
-			case errors.Is(err, repo.ErrNotFound):
-				form.Error = "that folder no longer exists"
 			default:
 				return err
 			}
@@ -90,11 +77,6 @@ func renderNewProjectFormWithCount(c *fiber.Ctx, d Deps, s tenant.Scope, org *ht
 	if err != nil {
 		return writeRepoErr(c, err)
 	}
-	folders, err := repo.ListFolders(c.Context(), s)
-	if err != nil {
-		return writeRepoErr(c, err)
-	}
-	form.FolderSelect = folderSelect(folderOptionsFor(folders), nil)
 	return renderNewProjectForm(c, d, org, user, len(projects), form, status)
 }
 

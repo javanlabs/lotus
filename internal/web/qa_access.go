@@ -76,7 +76,7 @@ func qaOwned(c *fiber.Ctx, s tenant.Scope, project *repo.Project, kind repo.QAKi
 }
 
 // qaNav is the sidebar and breadcrumb for a project's QA page. Members
-// follow the project's folder path through the project page; a guest has no
+// go through the project page; a guest has no
 // dashboard.read, so its path runs QA Tools → project instead. deeper are
 // the segments below the QA landing; the last segment is the current page
 // and is never a link.
@@ -89,20 +89,14 @@ func qaNav(c *fiber.Ctx, s tenant.Scope, project *repo.Project, deeper ...httpx.
 	if authz.IsProjectScoped(mustPrincipal(c)) {
 		trail = []httpx.NavCrumb{{Label: "QA Tools", Href: "/qa"}, {Label: project.Name, Href: qaBase(project)}}
 	} else {
-		folders, err := repo.ListFolders(c.Context(), s)
-		if err != nil {
-			return nil, err
-		}
-		trail = append(projectFolderPath(folders, project),
-			httpx.NavCrumb{Label: project.Name, Href: projectURL(project)},
-			httpx.NavCrumb{Label: "QA", Href: qaBase(project)})
+		trail = []httpx.NavCrumb{{Label: project.Name, Href: projectURL(project)}, {Label: "QA", Href: qaBase(project)}}
 	}
 	trail = append(trail, deeper...)
 	trail[len(trail)-1].Href = ""
 	return navWithTrail("qa_tools", len(projects), trail), nil
 }
 
-// qaFormError answers a rejected QA form the way folderFormError does: the
+// qaFormError answers a rejected QA form the way formError does: the
 // message inside the still-open dialog for htmx, the status otherwise.
 func qaFormError(c *fiber.Ctx, d Deps, status int, msg string) error {
 	if c.Get("HX-Request") == "" {
@@ -112,7 +106,7 @@ func qaFormError(c *fiber.Ctx, d Deps, status int, msg string) error {
 	return d.Renderer.RenderNamed(c, "form_error", msg)
 }
 
-func qaActor(c *fiber.Ctx) *uuid.UUID { return folderAuditActor(c) }
+func qaActor(c *fiber.Ctx) *uuid.UUID { return auditActor(c) }
 
 // redirectAfterCreate ends a successful create that should open what it
 // made. A plain post gets a redirect to it; an htmx post (a dialog) gets

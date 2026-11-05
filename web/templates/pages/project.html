@@ -9,26 +9,6 @@
   {{if .Data.CanQA}}
   <a href="{{.Data.URL}}/qa" class="btn-lotus btn-lotus-secondary">Test cases</a>
   {{end}}
-  {{if .Data.CanMove}}
-  {{template "lotus_modal_open" (dict "Name" "move-project" "Title" "Move to folder" "Trigger" "Move to folder" "Variant" "secondary")}}
-    <div class="lotus-modal-form">
-      <form method="post" action="{{.Data.URL}}/move" hx-post="{{.Data.URL}}/move"
-            hx-target="#move-project-error" hx-swap="innerHTML">
-        <div class="lotus-modal-body" style="display:flex;flex-direction:column;gap:14px">
-          <div id="move-project-error"></div>
-          <label style="display:flex;flex-direction:column;gap:6px">
-            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-label)">FOLDER</span>
-            {{template "lotus_select" (dict "Placeholder" "Top level" "Name" "folder_id" "Value" .Data.FolderValue "Label" "Folder" "Options" (selectOptions .Data.FolderSelect))}}
-          </label>
-        </div>
-        <div class="lotus-modal-foot">
-          <button type="button" class="btn-lotus btn-lotus-secondary" onclick="this.closest('dialog').close()">Cancel</button>
-          <button type="submit" class="btn-lotus btn-lotus-primary">Move</button>
-        </div>
-      </form>
-    </div>
-  {{template "lotus_modal_close" .}}
-  {{end}}
   {{if .Data.CanDelete}}
   {{template "lotus_modal_open" (dict "Name" "delete-project" "Title" "Delete project" "Trigger" "Delete project" "Variant" "danger-soft")}}
     <div class="lotus-modal-form">

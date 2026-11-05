@@ -19,7 +19,7 @@ func TestMetricTrail_ProjectThenComponentThenKind(t *testing.T) {
 	p := &repo.Project{ID: uuid.New(), Slug: "alurkerja", Name: "AlurKerja"}
 	c := &repo.Component{ID: uuid.New(), Slug: "authentication-service", Name: "Authentication"}
 
-	project := projectKindTrail(nil, p, "sonarqube", trailMenus{})
+	project := projectKindTrail(p, "sonarqube", trailMenus{})
 	if want := []httpx.NavCrumb{
 		{Label: "AlurKerja", Href: "/projects/alurkerja"},
 		{Label: "SonarQube"},
@@ -27,7 +27,7 @@ func TestMetricTrail_ProjectThenComponentThenKind(t *testing.T) {
 		t.Fatalf("project SonarQube trail = %+v, want %+v", project, want)
 	}
 
-	got := metricTrail(nil, p, c, "sonarqube", trailMenus{})
+	got := metricTrail(p, c, "sonarqube", trailMenus{})
 	if want := []httpx.NavCrumb{
 		{Label: "AlurKerja", Href: "/projects/alurkerja"},
 		{Label: "Authentication", Href: "/projects/alurkerja/components/authentication-service"},
@@ -36,7 +36,7 @@ func TestMetricTrail_ProjectThenComponentThenKind(t *testing.T) {
 		t.Fatalf("component SonarQube trail = %+v, want %+v", got, want)
 	}
 
-	syncs := metricTrail(nil, p, c, "sonarqube", trailMenus{}, httpx.NavCrumb{Label: "Syncs"})
+	syncs := metricTrail(p, c, "sonarqube", trailMenus{}, httpx.NavCrumb{Label: "Syncs"})
 	if want := []httpx.NavCrumb{
 		{Label: "AlurKerja", Href: "/projects/alurkerja"},
 		{Label: "Authentication", Href: "/projects/alurkerja/components/authentication-service"},
@@ -80,7 +80,7 @@ func TestTrailMenus_SwitchStaysOnTheKind(t *testing.T) {
 		t.Fatalf("component menu = %+v, want %+v", got, want)
 	}
 
-	trail := metricTrail(nil, &ak, &bpm, "sonarqube", trailMenus{Projects: []httpx.NavMenuItem{{Label: "x"}}, Components: got})
+	trail := metricTrail(&ak, &bpm, "sonarqube", trailMenus{Projects: []httpx.NavMenuItem{{Label: "x"}}, Components: got})
 	if len(trail[0].Menu) != 1 || len(trail[1].Menu) != 4 || trail[2].Menu != nil {
 		t.Errorf("menus on the wrong crumbs: %+v", trail)
 	}

@@ -157,7 +157,6 @@ func New(d Deps) *fiber.App {
 	// A project's page per integration — the KPI cards on the project page
 	// open these.
 	registerProjectMetricRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
-	registerFolderRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 
 	// Tenant host only (QA module, docs/superpowers/plans/2026-09-27-qa-phase-4.md):
 	// the QA overview and each project's QA area. Behind LOTUS_FEATURE_QA,

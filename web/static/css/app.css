@@ -433,12 +433,11 @@ body {
 }
 .lotus-repo-row:hover { background: var(--surface-row-hover); }
 
-/* A folder-view row is a <div>, not an <a>: its checkbox and the folder
-   actions button cannot legally sit inside a link. The name is the link,
-   and its ::after stretches over the whole row, so the row still opens its
-   folder or project anywhere it is clicked (middle-click and "open in new
-   tab" included). The checkbox and the actions button are raised above
-   that overlay. */
+/* A selectable row is a <div>, not an <a>: its checkbox and action buttons
+   cannot legally sit inside a link. The name is the link, and its ::after
+   stretches over the whole row, so the row still opens anywhere it is
+   clicked (middle-click and "open in new tab" included). The checkbox and
+   the buttons are raised above that overlay. */
 .lotus-repo-row-selectable { position: relative; }
 /* QA page header: title | segmented control | actions. The control sits in
    its own centred column and the actions in a right-aligned one, so moving
@@ -776,6 +775,18 @@ body {
 /* The All / tag chips above /dashboard and /projects
    (components/tag_filter.html): the segmented track, on its own row. */
 .lotus-tag-filter { margin-bottom: 14px; }
+/* A project's tag, shown as written: beside its name in the project list
+   and on its own page. */
+.lotus-tag {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: var(--radius-petal-xs);
+  background: var(--plum-a06);
+  color: var(--text-brand);
+  font: 500 10px / 16px var(--font-mono);
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
 
 /* A metric page's binding line (components/metric_header.html): what the
    open tab reads and through which connection, on the left; what can be
@@ -1028,11 +1039,6 @@ a.lotus-dash-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-
 }
 .lotus-pm-out { display: inline-flex; flex: none; color: var(--text-faint); }
 .lotus-pm-out:hover { color: var(--text-brand); }
-/* Drag and drop: the folder row or breadcrumb segment being dragged over. */
-.lotus-drop-target { background: var(--plum-a06); box-shadow: inset 0 0 0 2px var(--text-brand); }
-/* A breadcrumb segment is a drop target on the folder view; while hovered by
-   a drag it takes the row highlight above, padded so it reads as a chip. */
-.lotus-crumb-drop { padding: 2px 5px; margin: -2px -5px; border-radius: 5px; }
 
 .lotus-nav-item {
   display: flex;

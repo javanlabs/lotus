@@ -45,10 +45,6 @@ func componentPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		folders, err := repo.ListFolders(c.Context(), s)
-		if err != nil {
-			return writeRepoErr(c, err)
-		}
 
 		menus, err := loadTrailMenus(c.Context(), s, projects, project, comp, "")
 		if err != nil {
@@ -57,7 +53,7 @@ func componentPage(d Deps) fiber.Handler {
 
 		c.Type("html")
 		return renderPage(c, d, "pages/component.html", httpx.ViewData{
-			Title: projectTitle(project, comp.Name), Org: org, User: user, Nav: navWithTrail("projects", len(projects), componentTrail(folders, project, comp, menus)),
+			Title: projectTitle(project, comp.Name), Org: org, User: user, Nav: navWithTrail("projects", len(projects), componentTrail(project, comp, menus)),
 			Data: struct {
 				Component  repo.Component
 				Project    repo.Project

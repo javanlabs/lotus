@@ -14,7 +14,7 @@ import (
 	"github.com/uyab/lotus/internal/tenant"
 )
 
-// Section routes follow the folder routes (folders.go): form posts, a
+// Section routes follow the app's form conventions (forms.go): form posts, a
 // rejection inside the still-open dialog for htmx, a success with a flash
 // and redirectAfterMutation. Only archiving is audited — it takes every
 // case in the subtree with it; creating, renaming and moving are routine.

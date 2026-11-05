@@ -38,35 +38,14 @@
              :style="{ fontWeight: filter==='fail' ? 600 : 500, color: filter==='fail' ? '#43284E' : '#6B7280', background: filter==='fail' ? 'linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%)' : 'transparent', boxShadow: filter==='fail' ? 'var(--shadow-segment-thumb)' : 'none' }"
              @click="filter='fail'">Failing<span style="font:500 9.5px 'IBM Plex Mono',monospace;opacity:.7">{{.Data.FailingCount}}</span></div>
       </div>
-      <a href="/projects/new{{with .Data.CurrentFolderID}}?folder={{.}}{{end}}" class="btn-lotus btn-lotus-secondary">
+      <a href="/projects/new" class="btn-lotus btn-lotus-secondary">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#43284E"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>New project
       </a>
-      {{if and .Data.CanDeleteFolder .Data.CurrentFolderID}}
-      <form method="post" action="/folders/{{.Data.CurrentFolderID}}/delete" hx-post="/folders/{{.Data.CurrentFolderID}}/delete"
-            hx-target="#folder-delete-error" hx-swap="innerHTML" hx-confirm="Delete the folder {{.Data.CurrentFolderName}}?"
-            style="display:flex;align-items:center;gap:8px;margin:0">
-        {{if .Data.CurrentFolderDeleteBlocked}}<span style="font-size:11.5px;color:#6B7280">{{.Data.CurrentFolderDeleteBlocked}}</span>{{end}}
-        <span id="folder-delete-error"></span>
-        <button type="submit" class="btn-lotus btn-lotus-danger-soft" {{if .Data.CurrentFolderDeleteBlocked}}disabled{{end}}>Delete folder</button>
-      </form>
-      {{end}}
-      {{if .Data.CanCreateFolder}}
-      {{template "lotus_modal_open" (dict "Name" "new-folder" "Title" "New folder" "Trigger" "New folder" "Variant" "secondary")}}
-        {{template "folder_create_form" .Data}}
-      {{template "lotus_modal_close" .}}
-      {{end}}
     </div>
   </header>
 
+  {{template "tag_filter" .Data.Filter}}
   {{template "dashboard_block" .Data}}
-  {{if .Data.CanMoveProjects}}
-  {{template "move_projects_dialog" .Data}}
-  {{end}}
-  {{if .Data.CanEditFolder}}
-  {{range .Data.Rows}}{{if .IsFolder}}
-  {{template "folder_edit_dialog" (dict "Row" .)}}
-  {{end}}{{end}}
-  {{end}}
 </div>
 {{end}}
 

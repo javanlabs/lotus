@@ -90,7 +90,7 @@
     <nav aria-label="Breadcrumb" style="display:flex;flex-wrap:wrap;align-items:center;gap:2px 7px;margin-bottom:14px;font-size:11.5px;color:#6B7280;overflow-wrap:anywhere;min-width:0">
       <a href="{{if .Nav.Guest}}/qa/my{{else}}/dashboard{{end}}" aria-label="Lotus" style="display:inline-flex;align-items:center;padding:3px 5px;border-radius:5px">{{template "lotus_logo" (dict "ID" "bc" "Width" 20 "Height" 13)}}</a>
       <span style="color:#D1D5DB">/</span>
-      {{if and .Org .Nav.Trail}}<a href="{{if .Nav.Guest}}/qa/my{{else}}/projects{{end}}" style="color:#6B7280"{{if .Nav.OrgDrop}} class="lotus-crumb-drop" data-drop-folder=""{{end}}>{{.Org.Name}}</a>
+      {{if and .Org .Nav.Trail}}<a href="{{if .Nav.Guest}}/qa/my{{else}}/projects{{end}}" style="color:#6B7280">{{.Org.Name}}</a>
       {{else}}<span style="color:#6B7280">{{if .Org}}{{.Org.Name}}{{end}}</span>{{end}}
       {{range .Nav.Trail}}<span style="color:#D1D5DB">/</span>
       {{if .Menu}}
@@ -106,7 +106,7 @@
           {{range .Menu}}<a href="{{.Href}}" role="menuitem" class="lotus-crumb-item{{if .Current}} is-current{{end}}"{{if .Current}} aria-current="true"{{end}}><span class="lotus-crumb-item-label">{{.Label}}</span>{{if .Hint}}<span class="lotus-crumb-item-hint">{{.Hint}}</span>{{end}}</a>{{if .Sep}}<div class="lotus-crumb-sep" role="separator"></div>{{end}}{{end}}
         </div>
       </span>
-      {{else if .Href}}<a href="{{.Href}}" style="color:#6B7280"{{if .Drop}} class="lotus-crumb-drop" data-drop-folder="{{.DropFolder}}"{{end}}>{{.Label}}</a>
+      {{else if .Href}}<a href="{{.Href}}" style="color:#6B7280">{{.Label}}</a>
       {{else}}<span aria-current="page" style="color:#43284E;font-weight:600">{{.Label}}</span>{{end}}
       {{end}}
     </nav>

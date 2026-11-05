@@ -83,7 +83,7 @@ func (e qaEnv) get(t *testing.T, raw, path string) (int, string) {
 // post submits a form (htmx when hx is true) and returns the response.
 func (e qaEnv) post(t *testing.T, raw, path string, form url.Values, hx bool) (*http.Response, string) {
 	t.Helper()
-	resp, err := e.app.Test(folderFormReq(e.host, path, raw, form, hx), 30_000)
+	resp, err := e.app.Test(formPostReq(e.host, path, raw, form, hx), 30_000)
 	if err != nil {
 		t.Fatalf("POST %s: %v", path, err)
 	}

@@ -311,10 +311,6 @@ func projectMetricPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		folders, err := repo.ListFolders(c.Context(), s)
-		if err != nil {
-			return writeRepoErr(c, err)
-		}
 		comps, err := repo.ListComponents(c.Context(), s, project.ID, false)
 		if err != nil {
 			return writeRepoErr(c, err)
@@ -374,7 +370,7 @@ func projectMetricPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		trail := projectKindTrail(folders, project, kind, menus)
+		trail := projectKindTrail(project, kind, menus)
 		c.Type("html")
 		return renderPage(c, d, "pages/project_metric.html", httpx.ViewData{
 			Title: projectTitle(project, kindLabels[kind]), Org: org, User: user,

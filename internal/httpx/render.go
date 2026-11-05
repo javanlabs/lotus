@@ -70,11 +70,6 @@ type User struct {
 type NavCrumb struct {
 	Label string
 	Href  string
-	// Drop makes the crumb a drag-and-drop target on the folder view:
-	// dropping a project or folder on it moves it into DropFolder (a folder
-	// id, or "" for the top level).
-	Drop       bool
-	DropFolder string
 	// Menu, when set, puts a chevron beside the crumb that opens a list
 	// of its siblings — the other projects, the project's other
 	// components — so the reader can switch without going back up.
@@ -112,10 +107,6 @@ type Nav struct {
 	// Guest trims the chrome for a guest: the logo and the organization
 	// crumb lead to /qa/my, and the user menu has no Settings.
 	Guest bool
-	// Below the top level (whenever Trail is set) the organization's name
-	// is the first link, back to its projects. OrgDrop also makes it a
-	// drag-and-drop target on the folder view, meaning "the top level".
-	OrgDrop bool
 }
 
 // NavItem is one sidebar link. Href empty means "not built yet" — the

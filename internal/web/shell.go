@@ -108,21 +108,21 @@ type trailMenus struct {
 	Projects, Components []httpx.NavMenuItem
 }
 
-// projectTrail is the breadcrumb path for a project page — the same path
-// the folder view shows: every folder down to the project, then the
-// project itself as the current page.
-func projectTrail(folders []repo.Folder, project *repo.Project, menus trailMenus) []httpx.NavCrumb {
-	return append(projectFolderPath(folders, project), httpx.NavCrumb{Label: project.Name, Menu: menus.Projects})
+// projectTrail is the breadcrumb path for a project page: the project
+// itself, as the current page, right after the organization. Projects are
+// one flat list, so nothing sits between them.
+func projectTrail(project *repo.Project, menus trailMenus) []httpx.NavCrumb {
+	return []httpx.NavCrumb{{Label: project.Name, Menu: menus.Projects}}
 }
 
-// componentTrail is the path for a component's own page — the project's
-// folder path, then project → component. It is drawn only for a component
-// with nothing bound; one with a binding opens on a metric page, whose
-// path is metricTrail.
-func componentTrail(folders []repo.Folder, project *repo.Project, component *repo.Component, menus trailMenus) []httpx.NavCrumb {
-	return append(projectFolderPath(folders, project),
-		httpx.NavCrumb{Label: project.Name, Href: projectURL(project), Menu: menus.Projects},
-		httpx.NavCrumb{Label: component.Name, Menu: menus.Components})
+// componentTrail is the path for a component's own page: project →
+// component. It is drawn only for a component with nothing bound; one with
+// a binding opens on a metric page, whose path is metricTrail.
+func componentTrail(project *repo.Project, component *repo.Component, menus trailMenus) []httpx.NavCrumb {
+	return []httpx.NavCrumb{
+		{Label: project.Name, Href: projectURL(project), Menu: menus.Projects},
+		{Label: component.Name, Menu: menus.Components},
+	}
 }
 
 // metricTrail is the path for a component's page for one kind, and
@@ -132,11 +132,12 @@ func componentTrail(folders []repo.Folder, project *repo.Project, component *rep
 // component crumbs are dropdowns, so switching to another component's
 // SonarQube is one pick, and the component menu's "All components" leads
 // back to the project's page for the kind.
-func metricTrail(folders []repo.Folder, project *repo.Project, component *repo.Component, kind string, menus trailMenus, deeper ...httpx.NavCrumb) []httpx.NavCrumb {
-	trail := append(projectFolderPath(folders, project),
-		httpx.NavCrumb{Label: project.Name, Href: projectURL(project), Menu: menus.Projects},
-		httpx.NavCrumb{Label: component.Name, Href: componentURL(project, component), Menu: menus.Components},
-		httpx.NavCrumb{Label: kindLabels[kind]})
+func metricTrail(project *repo.Project, component *repo.Component, kind string, menus trailMenus, deeper ...httpx.NavCrumb) []httpx.NavCrumb {
+	trail := []httpx.NavCrumb{
+		{Label: project.Name, Href: projectURL(project), Menu: menus.Projects},
+		{Label: component.Name, Href: componentURL(project, component), Menu: menus.Components},
+		{Label: kindLabels[kind]},
+	}
 	if len(deeper) == 0 {
 		return trail
 	}
@@ -145,13 +146,13 @@ func metricTrail(folders []repo.Folder, project *repo.Project, component *repo.C
 }
 
 // projectKindTrail is the path for a project's page for one kind: the
-// project's folder path, the project, then the kind as the current page.
-// Picking a component from the project's page for a kind puts the
-// component between them (metricTrail).
-func projectKindTrail(folders []repo.Folder, project *repo.Project, kind string, menus trailMenus) []httpx.NavCrumb {
-	return append(projectFolderPath(folders, project),
-		httpx.NavCrumb{Label: project.Name, Href: projectURL(project), Menu: menus.Projects},
-		httpx.NavCrumb{Label: kindLabels[kind]})
+// project, then the kind as the current page. Picking a component from the
+// project's page for a kind puts the component between them (metricTrail).
+func projectKindTrail(project *repo.Project, kind string, menus trailMenus) []httpx.NavCrumb {
+	return []httpx.NavCrumb{
+		{Label: project.Name, Href: projectURL(project), Menu: menus.Projects},
+		{Label: kindLabels[kind]},
+	}
 }
 
 // projectMenu lists the organization's projects for the project crumb.
@@ -223,18 +224,6 @@ func loadTrailMenus(ctx context.Context, s tenant.Scope, projects []repo.Project
 	}
 	menus.Components = componentMenu(project, comps, component, kind, bound)
 	return menus, nil
-}
-
-// projectFolderPath is every folder the project sits in, outermost first,
-// each linking to that folder in the folder view. The top level needs no
-// crumb of its own: the organization's name before the trail links there.
-func projectFolderPath(folders []repo.Folder, project *repo.Project) []httpx.NavCrumb {
-	crumbs := newFolderView(nil, folders, nil, parentKey(project.FolderID)).crumbs()
-	out := make([]httpx.NavCrumb, 0, len(crumbs)-1)
-	for _, c := range crumbs[1:] {
-		out = append(out, httpx.NavCrumb{Label: c.Name, Href: c.Href})
-	}
-	return out
 }
 
 // iconQATools: a clipboard with a check — test plans and runs.

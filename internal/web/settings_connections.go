@@ -276,7 +276,7 @@ func editConnectionUI(d Deps) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		reject := func(status int, msg string) error { return folderFormError(c, d, status, msg) }
+		reject := func(status int, msg string) error { return formError(c, d, status, msg) }
 
 		name := strings.TrimSpace(c.FormValue("name"))
 		if name == "" {

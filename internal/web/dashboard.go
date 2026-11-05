@@ -30,9 +30,28 @@ func dashboardPage(d Deps) fiber.Handler {
 			return err
 		}
 
-		projects, err := repo.ListProjects(c.Context(), s, false)
+		all, err := repo.ListProjects(c.Context(), s, false)
 		if err != nil {
 			return writeRepoErr(c, err)
+		}
+		// One flat list narrowed by the tag chips. A ?folder= left in an old
+		// bookmark is simply ignored: folders are not part of the UI any more.
+		filter, err := loadTagFilter(c, s, "/projects")
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+		keep, err := filter.projectFilter(c.Context(), s)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+		projects := all
+		if keep != nil {
+			projects = make([]repo.Project, 0, len(keep))
+			for _, p := range all {
+				if keep[p.ID] {
+					projects = append(projects, p)
+				}
+			}
 		}
 
 		var components []componentInfo
@@ -55,36 +74,24 @@ func dashboardPage(d Deps) fiber.Handler {
 		for _, m := range metricRows {
 			metrics[m.ComponentID] = m
 		}
-
-		folders, err := repo.ListFolders(c.Context(), s)
+		tags, err := repo.ProjectTagsByProject(c.Context(), s)
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
 
-		// ?folder=<id> opens one folder of the folder view. A malformed id,
-		// or one this organization cannot see (RLS already hid it from
-		// ListFolders), is a 404 like any other missing resource.
-		var current *uuid.UUID
-		if q := c.Query("folder"); q != "" {
-			id, err := uuid.Parse(q)
-			if err != nil || !hasFolder(folders, id) {
-				return fiber.ErrNotFound
-			}
-			current = &id
-		}
-
 		subtitle := fmt.Sprintf("%d project%s · %d component%s across %s", len(projects), plural(len(projects), "", "s"), len(components), plural(len(components), "", "s"), org.Name)
-		vm := buildProjectDashboardViewModel(subtitle, projects, folders, components, metrics, current)
-		p := mustPrincipal(c)
-		vm.CanCreateFolder = p.Can("folder.create")
-		vm.CanEditFolder = p.Can("folder.update")
-		vm.CanDeleteFolder = p.Can("folder.delete")
-		vm.CanMoveProjects = p.Can("project.update")
+		vm := buildProjectDashboardViewModel(subtitle, projects, tags, components, metrics)
+		vm.Filter = filter
+		if len(all) > 0 {
+			// A filter that matches nothing still shows the list (and the
+			// chips to get out of it), never "No projects yet".
+			vm.Empty, vm.NoProjects = false, false
+		}
 
 		c.Type("html")
 		return renderPage(c, d, "pages/projects.html", httpx.ViewData{
 			Title: "Projects", Org: org, User: user,
-			Nav:  folderNav(len(projects), vm),
+			Nav:  buildNav("projects", len(all)),
 			Data: vm,
 		})
 	}
@@ -108,23 +115,4 @@ func registerDashboardRoutes(app *fiber.App, d Deps, requireSession, loadPrincip
 	// work, as it is from the project list.
 	app.Get("/dashboard", tenant.RequireTenant(), requireSession, loadPrincipal,
 		guestHome(d), authz.Require("dashboard.read"), homeDashboardPage(d))
-}
-
-func hasFolder(folders []repo.Folder, id uuid.UUID) bool {
-	for _, f := range folders {
-		if f.ID == id {
-			return true
-		}
-	}
-	return false
-}
-
-// folderNav is the folder view's navigation: the open folder's path as the
-// breadcrumb, with the organization's name before it — linking back to the
-// top level and, for anyone who may move things, accepting drops there.
-func folderNav(projectCount int, vm dashboardViewModel) *httpx.Nav {
-	canDrop := vm.CanMoveProjects || vm.CanEditFolder
-	nav := navWithTrail("projects", projectCount, folderTrail(vm.Crumbs, canDrop))
-	nav.OrgDrop = canDrop && len(nav.Trail) > 0
-	return nav
 }

@@ -8,12 +8,10 @@
      (passed as "."), differing only in scope (every component in the org
      vs. one project's components) and in what wraps it (title, empty
      state, action button), which stay page-specific. Caller must wrap
-     this in an element carrying `filter` and, when Tree is set, the rest
-     of lotusTree()'s state — the filter buttons and row visibility both
-     reference it. A project's own page wraps it in `x-data="{filter:'all'}"`;
-     the organization dashboard (Tree) wraps it in `x-data="lotusTree()"`,
-     which also carries selection and drag-and-drop state the filter-only
-     object does not. */}}
+     this in an element carrying `filter` — the filter buttons and row
+     visibility both reference it: a project's own page wraps it in
+     `x-data="{filter:'all'}"`, the organization's project list in
+     `x-data="lotusTree()"`. */}}
 {{define "dashboard_block"}}
   {{if .ShowSummary}}
   {{template "metric_tabs" (dict "Active" "score" "Tabs" .MetricTabs)}}
@@ -26,22 +24,13 @@
       <div style="font-size:13px;font-weight:600;color:#43284E">{{.TableTitle}}</div>
       <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF" x-text="label"></div>
       <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
-        {{if .CanMoveProjects}}
-        <span x-show="selecting" x-cloak style="font-size:12px;color:#43284E"><strong x-text="selectedCount()"></strong> selected</span>
-        <button type="button" x-show="selecting" x-cloak :disabled="selectedCount() === 0" class="btn-lotus btn-lotus-secondary"
-                onclick="document.getElementById('move-projects').showModal()">Move to folder</button>
-        <span x-show="!selecting">{{template "status_legend" .}}</span>
-        <button type="button" class="btn-lotus btn-lotus-secondary" @click="toggleSelecting()" x-text="selecting ? 'Cancel' : 'Select'">Select</button>
-        {{else}}
         {{template "status_legend" .}}
-        {{end}}
       </div>
     </div>
 
     <div style="overflow-x:auto">
     <div class="lotus-inset-4-top lotus-table-head" style="min-width:700px;grid-template-columns:{{.GridTemplate}}">
-      {{if .CanMoveProjects}}<div class="lotus-row-select"><input type="checkbox" x-show="selecting" x-cloak aria-label="Select all visible projects"
-           :checked="allVisibleSelected($refs.rows)" @change="$event.target.checked ? selectVisible($refs.rows) : clearSelection()"></div>{{else if .Tree}}<div></div>{{else}}<div>#</div>{{end}}
+      <div>#</div>
       <div @click="sortBy(1,'text','{{.RowHeading}}')" :title="hint(1)" style="cursor:pointer;user-select:none">{{.RowHeading}}<span x-text="arrow(1)" style="opacity:.75"></span></div>
       <div @click="sortBy(2,'num','score')" :title="hint(2)" style="cursor:pointer;user-select:none">SCORE<span x-text="arrow(2)" style="opacity:.75"></span></div>
       {{if .ShowTrend}}<div>TREND · 14D</div>{{end}}
@@ -50,27 +39,23 @@
     </div>
 
     <div x-ref="rows" style="display:contents">
-    {{if .Tree}}
-    {{range .Rows}}{{template "folder_view_row" (dict "R" . "VM" $ "List" "all")}}{{end}}
-    {{range .FailingRows}}{{template "folder_view_row" (dict "R" . "VM" $ "List" "fail")}}{{end}}
-    {{else}}
     {{range .Rows}}
     <a href="{{.Href}}" class="lotus-repo-row" style="text-decoration:none;color:inherit" x-show="filter==='all' || filter==='{{.Tone}}'">
       <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.N}}</div>
       <div data-sort="{{.Name}}" style="display:flex;align-items:center;gap:8px;min-width:0">
         {{template "status_dot" .Tone}}
         <span style="font-size:12.5px;font-weight:600;color:#111827;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
+        {{range .Tags}}<span class="lotus-tag">{{.Name}}</span>{{end}}
         {{if .Subtext}}<span style="font:400 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF;flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Subtext}}</span>{{end}}
       </div>
       {{template "project_row_metrics" .}}
     </a>
     {{end}}
-    {{end}}
     </div>
     </div>
 
     <div style="display:flex;align-items:center;padding:9px 14px;font-size:11px;color:#6B7280">
-      {{if .Tree}}
+      {{if .ProjectList}}
       <span x-show="filter==='all'">Showing {{.RowCount}} of {{.RowCount}}</span>
       <span x-show="filter==='fail'" x-cloak>Showing {{.FailingCount}} failing of {{.RowCount}}</span>
       {{else}}
@@ -91,8 +76,7 @@
 
 {{/* project_row_metrics is a project or component row's cells after its
      name: the score with its bar, the optional trend, and one badge per
-     integration column. Shared by the link row and the selectable row so
-     the two can never drift apart. Takes "." = a dashboardRow. */}}
+     integration column. Takes "." = a dashboardRow. */}}
 {{define "project_row_metrics"}}
       <div data-sort="{{if .ScoreValue}}{{.ScoreValue}}{{end}}" style="display:flex;align-items:center;gap:7px">
         <span class="lotus-text-{{.Tone}}" style="font:600 12px 'IBM Plex Mono',monospace;width:20px">{{.Score}}</span>
@@ -109,58 +93,4 @@
       {{with .Updated}}<div data-sort="{{if .Sort}}{{.Sort}}{{end}}" style="display:flex;align-items:center;gap:6px;min-width:0;font:400 11px 'IBM Plex Mono',monospace;color:#6B7280;white-space:nowrap">
         <span title="{{.Title}}">{{.Text}}</span>
       </div>{{end}}
-{{end}}
-
-{{/* folder_view_row is one row of the organization dashboard's folder view:
-     a folder or a project, flat — the view shows one level at a time.
-     The name is a link stretched over the whole row, so the row opens its
-     folder or project; being a <div> rather than an <a> lets it carry a
-     selection checkbox and the folder actions button.
-
-     Rows can be dragged by whoever may move them, and folder rows accept
-     drops (lotusTree's dragStart/dragOver/drop). "List" says which filter
-     shows the row: "all" for the level's contents, "fail" for the Failing
-     list. The page opens on "all", so a "fail" row is x-cloak: hidden from
-     the first paint, not only once Alpine runs, or every failing project
-     flashes up a second time. Takes (dict "R" <dashboardRow> "VM" <view
-     model> "List" …). */}}
-{{define "folder_view_row"}}
-{{$r := .R}}{{$vm := .VM}}
-{{$canDrag := or (and $r.IsFolder $vm.CanEditFolder) (and (not $r.IsFolder) $vm.CanMoveProjects)}}
-<div class="lotus-repo-row lotus-repo-row-selectable" data-node="{{$r.NodeID}}"
-     data-kind="{{if $r.IsFolder}}folder{{else}}project{{end}}" {{if $r.IsFolder}}data-folder="1"{{end}}
-     x-show="filter==='{{.List}}'"{{if ne .List "all"}} x-cloak{{end}}
-     {{if $canDrag}}draggable="true" @dragstart="dragStart($event, $el)" @dragend="dragEnd()"{{end}}
-     {{if and $r.IsFolder (or $vm.CanMoveProjects $vm.CanEditFolder)}}@dragover="dragOver($event, $el.dataset.node)" @dragleave="dragLeave($event, $el.dataset.node)" @drop="drop($event, $el.dataset.node)"
-     :class="{ 'lotus-drop-target': dropTarget === $el.dataset.node }"{{end}}>
-  {{if and (not $r.IsFolder) $vm.CanMoveProjects}}
-  <div class="lotus-row-select" data-no-number><input type="checkbox" x-show="selecting" x-cloak data-project-select data-id="{{$r.NodeID}}" aria-label="Select {{$r.Name}}"
-       :checked="isSelected($el.dataset.id)" @change="toggleSelect($el.dataset.id)"></div>
-  {{else}}
-  <div data-no-number></div>
-  {{end}}
-  <div data-sort="{{$r.Name}}" style="display:flex;align-items:center;gap:8px;min-width:0">
-    {{template "status_dot" $r.Tone}}
-    {{if $r.IsFolder}}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none;color:#43284E"><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.5" d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"></path></svg>{{end}}
-    <a href="{{$r.Href}}" class="lotus-row-link" draggable="false"
-       style="font-size:12.5px;{{if $r.IsFolder}}font-weight:700;color:#43284E{{else}}font-weight:600;color:#111827{{end}};flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{$r.Name}}</a>
-    {{if $r.Subtext}}<span style="font:400 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF;flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{$r.Subtext}}</span>{{end}}
-    {{if and $r.IsFolder $vm.CanEditFolder}}
-    <button type="button" class="lotus-row-action" aria-label="Folder actions for {{$r.Name}}"
-            onclick="document.getElementById('folder-edit-{{$r.NodeID}}').showModal()"
-            style="margin-left:auto;flex:none;border:none;background:none;padding:2px 6px;cursor:pointer;color:#9CA3AF;font-size:14px;line-height:1">&middot;&middot;&middot;</button>
-    {{end}}
-  </div>
-  {{if $r.IsFolder}}
-  <div data-sort="{{if $r.ScoreValue}}{{$r.ScoreValue}}{{end}}" style="display:flex;align-items:center;gap:7px;min-width:0">
-    <span class="lotus-text-{{$r.BarTone}}" style="font:600 11px 'IBM Plex Mono',monospace;white-space:nowrap">{{$r.Score}}</span>
-    <span style="flex:1;height:4px;border-radius:2px;background:#F3F4F6;overflow:hidden;display:block">
-      <span class="lotus-bar-{{$r.BarTone}}" style="display:block;height:100%;width:{{$r.ScorePct}}"></span>
-    </span>
-  </div>
-  {{range $r.Cells}}<div data-sort="{{if .Sort}}{{.Sort}}{{end}}" style="display:flex;justify-content:center;min-width:0">{{template "status_badge" .}}</div>{{end}}
-  {{else}}
-  {{template "project_row_metrics" $r}}
-  {{end}}
-</div>
 {{end}}
