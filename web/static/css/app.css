@@ -1594,3 +1594,70 @@ a.lotus-dash-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-
   pointer-events: none;
 }
 .lotus-chart-at { font: 400 10px var(--font-mono); color: var(--text-muted); }
+
+/* The public status page (pages/status.html): one project's verdict for a
+   day, a 30-day strip and its components, read by a client with no app
+   shell. It is printed and screenshotted as the weekly report, so its
+   colours must survive printing (print-color-adjust) and nothing on it
+   may depend on hover. */
+.lotus-status { max-width: 880px; margin: 0 auto; padding: 36px 20px 48px; color: var(--text-primary); }
+.lotus-status * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.lotus-status-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; }
+.lotus-status-title { flex: 1; min-width: 220px; }
+.lotus-status-org { font: 500 11px var(--font-mono); color: var(--text-muted); }
+.lotus-status-title h1 { margin: 4px 0 0; font-size: 26px; font-weight: 700; letter-spacing: -.02em; color: var(--text-brand); }
+.lotus-status-date { display: flex; align-items: center; gap: 8px; margin: 0; }
+.lotus-status-date label { font: 600 10.5px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-label); }
+.lotus-status-date .lotus-input { width: 160px; height: 30px; }
+.lotus-status-verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 22px;
+  padding: 20px 22px;
+  border-radius: var(--radius-petal-xs);
+  background: var(--status-none-bg);
+  color: var(--status-none);
+}
+.lotus-status-verdict.is-pass { background: var(--status-pass-bg); color: var(--status-pass); }
+.lotus-status-verdict.is-fail { background: var(--status-fail-bg); color: var(--status-fail); }
+.lotus-status-verdict-date { font: 500 11px var(--font-mono); color: var(--text-muted); }
+.lotus-status-verdict-main { display: flex; align-items: baseline; gap: 14px; }
+.lotus-status-score { font-size: 40px; font-weight: 700; line-height: 1; letter-spacing: -.03em; }
+.lotus-status-word { font-size: 22px; font-weight: 700; }
+.lotus-status-section { margin-top: 26px; }
+.lotus-status-section h2 { margin: 0 0 10px; font: 600 10.5px var(--font-mono); letter-spacing: .08em; color: var(--text-label); }
+.lotus-status-strip { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 3px; }
+.lotus-status-cell { display: block; height: 30px; border-radius: 3px; background: var(--status-none-bg); }
+.lotus-status-cell.is-pass { background: var(--status-pass); }
+.lotus-status-cell.is-fail { background: var(--status-fail); }
+.lotus-status-cell.is-selected { outline: 2px solid var(--text-brand); outline-offset: 2px; }
+.lotus-status-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-ring); }
+.lotus-status-legend { display: flex; gap: 14px; margin-top: 10px; font-size: 11px; color: var(--text-muted); }
+.lotus-status-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.lotus-status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--status-none-bg); }
+.lotus-status-dot.is-pass { background: var(--status-pass); }
+.lotus-status-dot.is-fail { background: var(--status-fail); }
+/* One column per integration, as many as bindableKinds holds: the name
+   column is set, the rest flow in. */
+.lotus-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr);
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-hairline);
+  font-size: 12.5px;
+  break-inside: avoid;
+}
+.lotus-status-row-head { border-top: 0; font: 600 10.5px var(--font-mono); letter-spacing: .06em; color: var(--text-label); }
+.lotus-status-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lotus-status-empty { margin: 0; font-size: 12.5px; color: var(--text-muted); }
+.lotus-status-foot { margin-top: 32px; font: 400 11px var(--font-mono); color: var(--text-muted); }
+@media print {
+  .lotus-status { padding: 0; max-width: none; }
+  .lotus-status-noprint { display: none !important; }
+  .lotus-status-date .lotus-input { border: 0; padding: 0; background: none; }
+}

@@ -1,0 +1,67 @@
+{{define "content"}}
+{{$d := .Data}}
+{{/* The public status page (internal/web/status_page.go): one project's
+     verdict for one day, read by a client with no login. Standalone — no
+     app shell, no links into the app — and laid out to read the same when
+     printed or screenshotted, since that is how the weekly report reaches
+     the client. Only the strip's own day links lead anywhere. */}}
+<main class="lotus-status" data-testid="status-page">
+  <header class="lotus-status-head">
+    <div class="lotus-status-title">
+      <div class="lotus-status-org">{{$d.OrgName}} · Quality report</div>
+      <h1>{{$d.ProjectName}}</h1>
+    </div>
+    <form method="get" class="lotus-status-date">
+      <label for="status-date">Date</label>
+      <input type="date" id="status-date" name="date" value="{{$d.DateValue}}" max="{{$d.MaxDate}}" required
+             class="lotus-input" data-testid="status-date">
+      <button type="submit" class="btn-lotus btn-lotus-secondary btn-lotus-sm lotus-status-noprint">Show</button>
+    </form>
+  </header>
+
+  <section class="lotus-status-verdict is-{{$d.Tone}}" data-testid="status-verdict" aria-label="Verdict for {{$d.Date}}">
+    <div class="lotus-status-verdict-date">{{$d.Date}}</div>
+    <div class="lotus-status-verdict-main">
+      {{if $d.Score}}<span class="lotus-status-score" data-testid="status-score">{{$d.Score}}</span>{{end}}
+      <span class="lotus-status-word" data-testid="status-word">{{$d.Verdict}}</span>
+    </div>
+  </section>
+
+  <section class="lotus-status-section">
+    <h2>LAST 30 DAYS · {{$d.StripStart}} – {{$d.StripEnd}}</h2>
+    <div class="lotus-status-strip" data-testid="status-strip">
+      {{range $d.Cells}}
+      <a href="{{.Href}}" class="lotus-status-cell is-{{.Tone}}{{if .Selected}} is-selected{{end}}"
+         aria-label="{{.Label}}" title="{{.Label}}"{{if .Selected}} aria-current="date"{{end}}></a>
+      {{end}}
+    </div>
+    <div class="lotus-status-legend">
+      <span><i class="lotus-status-dot is-pass"></i>Passed</span>
+      <span><i class="lotus-status-dot is-fail"></i>Failed</span>
+      <span><i class="lotus-status-dot is-none"></i>No data</span>
+    </div>
+  </section>
+
+  <section class="lotus-status-section">
+    <h2>COMPONENTS ON {{$d.Date}}</h2>
+    {{if $d.Rows}}
+    <div class="lotus-status-table" role="table" data-testid="status-components">
+      <div class="lotus-status-row lotus-status-row-head" role="row">
+        <span role="columnheader">Component</span>
+        {{range $d.Columns}}<span role="columnheader">{{.}}</span>{{end}}
+      </div>
+      {{range $d.Rows}}
+      <div class="lotus-status-row" role="row">
+        <span role="cell" class="lotus-status-name">{{.Name}}</span>
+        {{range .Cells}}<span role="cell"><span class="lotus-badge lotus-badge-{{.Tone}}">{{.Text}}</span></span>{{end}}
+      </div>
+      {{end}}
+    </div>
+    {{else}}
+    <p class="lotus-status-empty">No data recorded for this date.</p>
+    {{end}}
+  </section>
+
+  <footer class="lotus-status-foot">{{if $d.UpdatedAt}}Updated {{$d.UpdatedAt}} · {{end}}Powered by Lotus</footer>
+</main>
+{{end}}

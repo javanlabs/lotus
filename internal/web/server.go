@@ -156,6 +156,9 @@ func New(d Deps) *fiber.App {
 	registerProjectPageDetailRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerProjectTagRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerStatusPublishRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+	// The public status page itself: no session, like a QA share link,
+	// but not behind LOTUS_FEATURE_QA.
+	registerStatusPageRoutes(app, d)
 	// A project's page per integration — the KPI cards on the project page
 	// open these.
 	registerProjectMetricRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))

@@ -1,0 +1,143 @@
+package web
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/uyab/lotus/internal/collector"
+	"github.com/uyab/lotus/internal/repo"
+)
+
+// The public status page's view, built without I/O from a project's
+// recorded days (repo.ProjectStatusDays) so it is tested without a
+// database. A day's value is the newest recorded day on or before it,
+// carried forward without expiring (spec §6.4); a day before the first
+// record is No data, never Passed.
+
+// wib is the status page's day boundary: Jakarta, which keeps no daylight
+// saving, so a fixed zone needs no tz database.
+var wib = time.FixedZone("WIB", 7*3600)
+
+// statusStripDays is how many days the strip shows, ending on the
+// selected one.
+const statusStripDays = 30
+
+// parseStatusDate is the WIB day ?date= asks for, or today when it is
+// empty, malformed or still in the future.
+func parseStatusDate(raw string, now time.Time) time.Time {
+	n := now.In(wib)
+	today := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, wib)
+	d, err := time.ParseInLocation(time.DateOnly, raw, wib)
+	if err != nil || d.After(today) {
+		return today
+	}
+	return d
+}
+
+// statusCell is one day of the strip.
+type statusCell struct {
+	Day      time.Time
+	Tone     string // "pass" | "fail" | "none"
+	Label    string // "28 Oct 2026 · Failed", so state is never colour alone
+	Href     string
+	Selected bool
+}
+
+// statusKindCell is one integration's headline for one component.
+type statusKindCell struct{ Text, Tone string }
+
+type statusRow struct {
+	Name  string
+	Cells []statusKindCell
+}
+
+type statusView struct {
+	OrgName, ProjectName string
+	Date                 string // "2 Nov 2026"
+	DateValue            string // "2026-11-02", the date input's value
+	MaxDate              string // today, the date input's max (set by the handler)
+	Score                string // empty with no data
+	Verdict, Tone        string
+	Cells                []statusCell
+	StripStart, StripEnd string
+	Columns              []string
+	Rows                 []statusRow
+	UpdatedAt            string // empty with no data
+}
+
+// statusDayVerdict reads a recorded status. Anything but pass or fail —
+// unknown, or no row at all — is No data.
+func statusDayVerdict(status string) (verdict, tone string) {
+	switch collector.Status(status) {
+	case collector.StatusPass:
+		return "Passed", "pass"
+	case collector.StatusFail:
+		return "Failed", "fail"
+	default:
+		return "No data", "none"
+	}
+}
+
+// dayOnOrBefore is the newest of days (ascending) on or before day, or nil.
+func dayOnOrBefore(days []repo.ProjectStatusDay, day time.Time) *repo.ProjectStatusDay {
+	key := day.Format(time.DateOnly)
+	var found *repo.ProjectStatusDay
+	for i := range days {
+		if days[i].Day.Format(time.DateOnly) > key {
+			break
+		}
+		found = &days[i]
+	}
+	return found
+}
+
+func buildStatusView(orgName string, p *repo.Project, days []repo.ProjectStatusDay, selected time.Time) statusView {
+	v := statusView{
+		OrgName: orgName, ProjectName: p.Name,
+		Date: selected.Format("2 Jan 2006"), DateValue: selected.Format(time.DateOnly),
+	}
+
+	start := selected.AddDate(0, 0, -(statusStripDays - 1))
+	v.StripStart, v.StripEnd = start.Format("2 Jan"), selected.Format("2 Jan 2006")
+	v.Cells = make([]statusCell, 0, statusStripDays)
+	for d := start; !d.After(selected); d = d.AddDate(0, 0, 1) {
+		status := ""
+		if row := dayOnOrBefore(days, d); row != nil {
+			status = row.Status
+		}
+		verdict, tone := statusDayVerdict(status)
+		v.Cells = append(v.Cells, statusCell{
+			Day: d, Tone: tone, Label: d.Format("2 Jan 2006") + " · " + verdict,
+			Href:     "/status/" + p.Slug + "?date=" + d.Format(time.DateOnly),
+			Selected: d.Equal(selected),
+		})
+	}
+
+	for _, k := range bindableKinds {
+		v.Columns = append(v.Columns, kindLabels[k])
+	}
+
+	row := dayOnOrBefore(days, selected)
+	if row == nil {
+		v.Verdict, v.Tone = statusDayVerdict("")
+		return v
+	}
+	v.Verdict, v.Tone = statusDayVerdict(row.Status)
+	if v.Tone != "none" && row.Score != nil {
+		v.Score = fmt.Sprintf("%d", *row.Score)
+	}
+	v.UpdatedAt = row.UpdatedAt.In(wib).Format("2 Jan 2006 15:04") + " WIB"
+	for _, comp := range row.Components {
+		r := statusRow{Name: comp.Name, Cells: make([]statusKindCell, 0, len(bindableKinds))}
+		for _, k := range bindableKinds {
+			kh, ok := comp.Kinds[k]
+			if !ok {
+				r.Cells = append(r.Cells, statusKindCell{Text: "–", Tone: "none"})
+				continue
+			}
+			r.Cells = append(r.Cells, statusKindCell{Text: homeMapCellLabel(k, kh), Tone: toneOf(collector.Status(kh.Status))})
+		}
+		v.Rows = append(v.Rows, r)
+	}
+	return v
+}
