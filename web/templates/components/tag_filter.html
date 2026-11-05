@@ -1,0 +1,13 @@
+{{/* tag_filter is the All / tag chips at the top of /dashboard and
+     /projects (internal/web/tagfilter.go). Takes a tagFilter. Each chip is
+     a link that toggles its tag in the URL, so the view can be bookmarked;
+     aria-pressed says which are on. Rendered only when the organization
+     has a tag at all — All alone would filter nothing. */}}
+{{define "tag_filter"}}{{if .Chips}}
+<nav class="lotus-seg lotus-tag-filter" aria-label="Filter by tag" data-testid="tag-filter">
+  <a href="{{.All.Href}}" role="button" class="lotus-seg-item{{if .All.Active}} is-active{{end}}" aria-pressed="{{if .All.Active}}true{{else}}false{{end}}">{{.All.Name}}</a>
+  {{range .Chips}}
+  <a href="{{.Href}}" role="button" class="lotus-seg-item{{if .Active}} is-active{{end}}" aria-pressed="{{if .Active}}true{{else}}false{{end}}">{{.Name}}</a>
+  {{end}}
+</nav>
+{{end}}{{end}}

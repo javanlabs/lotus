@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/uyab/lotus/internal/dbtest"
@@ -64,7 +65,7 @@ func TestOrgDailyTrends_CarriesForwardAndCombinesAcrossBindings(t *testing.T) {
 		"avg": {10, 40, 40},
 		"sum": {10, 80, 80},
 	} {
-		got, err := repo.OrgDailyTrends(context.Background(), scope, map[string]string{"k": combine}, 3, now)
+		got, err := repo.OrgDailyTrends(context.Background(), scope, map[string]string{"k": combine}, 3, now, nil)
 		if err != nil {
 			t.Fatalf("OrgDailyTrends: %v", err)
 		}
@@ -84,7 +85,7 @@ func TestOrgDailyTrends_NoReadingsMeansNoValues(t *testing.T) {
 	t.Parallel()
 	db := dbtest.Open(t)
 	orgID, _, _ := seedMFFixture(t, db, "acme-org-trends-empty", "gitlab")
-	got, err := repo.OrgDailyTrends(context.Background(), tenant.FromRun(db, orgID), map[string]string{"k": "avg"}, 3, time.Now())
+	got, err := repo.OrgDailyTrends(context.Background(), tenant.FromRun(db, orgID), map[string]string{"k": "avg"}, 3, time.Now(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,5 +93,70 @@ func TestOrgDailyTrends_NoReadingsMeansNoValues(t *testing.T) {
 		if p.HasValue {
 			t.Errorf("point = %+v", p)
 		}
+	}
+}
+
+// The dashboard's tag filter narrows the trends to the chosen projects;
+// nil keeps every project.
+func TestOrgDailyTrends_NarrowsToTheGivenProjects(t *testing.T) {
+	t.Parallel()
+	db := dbtest.Open(t)
+	orgID, componentID, first := seedMFFixture(t, db, "acme-org-trends-narrow", "gitlab")
+	scope := tenant.FromRun(db, orgID)
+
+	var today time.Time
+	if err := db.Get(&today, `SELECT date_trunc('day', now())`); err != nil {
+		t.Fatal(err)
+	}
+	var firstProject, secondProject uuid.UUID
+	withOrgTxMF(t, db, orgID, func(tx *sqlx.Tx) {
+		var connID uuid.UUID
+		if err := tx.Get(&connID, `SELECT connection_id FROM metric_bindings WHERE id = $1`, first); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Get(&firstProject, `SELECT project_id FROM components WHERE id = $1`, componentID); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Get(&secondProject, `INSERT INTO projects (org_id, slug, name) VALUES ($1, 'q', 'Q') RETURNING id`, orgID); err != nil {
+			t.Fatal(err)
+		}
+		var comp, second uuid.UUID
+		if err := tx.Get(&comp, `INSERT INTO components (org_id, project_id, slug, name, kind) VALUES ($1,$2,'c2','C2','backend') RETURNING id`, orgID, secondProject); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Get(&second, `INSERT INTO metric_bindings (org_id, component_id, connection_id, kind, external_key)
+			VALUES ($1,$2,$3,'gitlab','y') RETURNING id`, orgID, comp, connID); err != nil {
+			t.Fatal(err)
+		}
+		for binding, v := range map[uuid.UUID]float64{first: 10, second: 30} {
+			if _, err := tx.Exec(`INSERT INTO metric_facts (org_id, binding_id, component_id, key, value_num, unit, collected_at)
+				SELECT $1, id, component_id, 'k', $3::float8, '%', $4 FROM metric_bindings WHERE id = $2`,
+				orgID, binding, v, today.Add(time.Hour)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+
+	now := today.Add(12 * time.Hour)
+	lastValue := func(projectIDs []uuid.UUID) float64 {
+		t.Helper()
+		got, err := repo.OrgDailyTrends(context.Background(), scope, map[string]string{"k": "sum"}, 1, now, projectIDs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := got["k"][0]
+		if !p.HasValue {
+			t.Fatalf("projects %v: no value", projectIDs)
+		}
+		return p.Value
+	}
+	if got := lastValue([]uuid.UUID{secondProject}); got != 30 {
+		t.Errorf("narrowed to the second project = %v, want 30", got)
+	}
+	if got := lastValue([]uuid.UUID{firstProject}); got != 10 {
+		t.Errorf("narrowed to the first project = %v, want 10", got)
+	}
+	if got := lastValue(nil); got != 40 {
+		t.Errorf("every project = %v, want 40", got)
 	}
 }

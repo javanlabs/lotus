@@ -109,6 +109,9 @@ type homeDashboard struct {
 	TopsMonth string
 	Activity  []homeEvent
 	Viz       homeViz
+	// Filter is the All / tag chips; the page's project-scoped panels are
+	// already narrowed to its selection.
+	Filter tagFilter
 }
 
 func buildHomeDashboard(in homeInputs) homeDashboard {
@@ -359,10 +362,26 @@ func homeDashboardPage(d Deps) fiber.Handler {
 		if err != nil {
 			return writeRepoErr(c, err)
 		}
-		in.ProjectCount = len(projects)
+		filter, err := loadTagFilter(c, s, "/dashboard")
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+		// keep is nil for All. Connections are org-wide and the QA workload
+		// and activity feed are about people, so those stay unfiltered.
+		keep, err := filter.projectFilter(ctx, s)
+		if err != nil {
+			return writeRepoErr(c, err)
+		}
+		kept := func(projectID uuid.UUID) bool { return keep == nil || keep[projectID] }
+		for _, pr := range projects {
+			if kept(pr.ID) {
+				in.ProjectCount++
+			}
+		}
 		if in.Components, err = repo.ListLiveComponents(ctx, s); err != nil {
 			return writeRepoErr(c, err)
 		}
+		in.Components = slices.DeleteFunc(in.Components, func(lc repo.LiveComponent) bool { return !kept(lc.ProjectID) })
 		metricRows, err := repo.ListComponentMetricsForOrg(ctx, s)
 		if err != nil {
 			return writeRepoErr(c, err)
@@ -380,8 +399,10 @@ func homeDashboardPage(d Deps) fiber.Handler {
 		if in.FailingBindings, err = repo.ListFailingBindings(ctx, s, failingBindingAfter); err != nil {
 			return writeRepoErr(c, err)
 		}
+		in.FailingBindings = slices.DeleteFunc(in.FailingBindings, func(b repo.FailingBinding) bool { return !kept(b.ProjectID) })
 
-		if in.Trends, err = repo.OrgDailyTrends(ctx, s, homeTrendCombine(), homeTrendDays, now); err != nil {
+		keepIDs := projectIDList(keep)
+		if in.Trends, err = repo.OrgDailyTrends(ctx, s, homeTrendCombine(), homeTrendDays, now, keepIDs); err != nil {
 			return writeRepoErr(c, err)
 		}
 		in.TrendKeys = map[string]repo.MetricKey{}
@@ -396,7 +417,7 @@ func homeDashboardPage(d Deps) fiber.Handler {
 		}
 
 		if in.CanQA {
-			summaries, err := repo.ListQAProjectSummaries(ctx, s, nil)
+			summaries, err := repo.ListQAProjectSummaries(ctx, s, keepIDs)
 			if err != nil {
 				return writeRepoErr(c, err)
 			}
@@ -404,12 +425,13 @@ func homeDashboardPage(d Deps) fiber.Handler {
 				in.OpenIssues += r.OpenIssues
 				in.OpenPlans += r.OpenPlans
 			}
-			if in.AssignedToMe, err = repo.CountMyQAItems(ctx, s, p.UserID, nil); err != nil {
+			if in.AssignedToMe, err = repo.CountMyQAItems(ctx, s, p.UserID, keepIDs); err != nil {
 				return writeRepoErr(c, err)
 			}
 			if in.SevereIssues, err = repo.ListOpenQAIssuesBySeverity(ctx, s, severeIssueSeverities); err != nil {
 				return writeRepoErr(c, err)
 			}
+			in.SevereIssues = slices.DeleteFunc(in.SevereIssues, func(is repo.QAIssueSummary) bool { return !kept(is.ProjectID) })
 			month, err := repo.CurrentQAMonth(ctx, s)
 			if err != nil {
 				return writeRepoErr(c, err)
@@ -422,10 +444,12 @@ func homeDashboardPage(d Deps) fiber.Handler {
 			}
 		}
 
+		dash := buildHomeDashboard(in)
+		dash.Filter = filter
 		c.Type("html")
 		return renderPage(c, d, "pages/dashboard.html", httpx.ViewData{
 			Title: "Dashboard", Org: org, User: user, Nav: buildNav("dashboard", len(projects)),
-			Data: buildHomeDashboard(in),
+			Data: dash,
 		})
 	}
 }

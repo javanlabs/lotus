@@ -155,8 +155,10 @@ func ListRecentQAIssueActivity(ctx context.Context, s tenant.Scope, limit int) (
 // combined across bindings by combine (keyed by metric key; "sum" adds,
 // anything else averages). A day before any binding has a reading has no
 // value. It reads every binding at once, so the dashboard's trends cost
-// two queries rather than one per binding.
-func OrgDailyTrends(ctx context.Context, s tenant.Scope, combine map[string]string, days int, now time.Time) (map[string][]Point, error) {
+// two queries rather than one per binding. projectIDs nil means every
+// project; otherwise only bindings of those projects count (the
+// dashboard's tag filter).
+func OrgDailyTrends(ctx context.Context, s tenant.Scope, combine map[string]string, days int, now time.Time, projectIDs []uuid.UUID) (map[string][]Point, error) {
 	if days < 1 {
 		days = 1
 	}
@@ -176,7 +178,12 @@ func OrgDailyTrends(ctx context.Context, s tenant.Scope, combine map[string]stri
 		JOIN components c ON c.id = mb.component_id
 		JOIN projects p ON p.id = c.project_id
 		CROSS JOIN unnest($1::text[]) AS k(key)`
-	const liveWhere = `mb.deleted_at IS NULL AND mb.enabled AND c.archived_at IS NULL AND p.archived_at IS NULL`
+	// projects is the placeholder holding projectIDs, the last argument of
+	// each query; NULL keeps every project.
+	liveWhere := func(projects string) string {
+		return `mb.deleted_at IS NULL AND mb.enabled AND c.archived_at IS NULL AND p.archived_at IS NULL
+			AND (` + projects + `::uuid[] IS NULL OR p.id = ANY(` + projects + `))`
+	}
 	var firstDay time.Time
 	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
 		if err := tx.GetContext(ctx, &firstDay, `SELECT date_trunc('day', $1::timestamptz) - ($2::int - 1) * interval '1 day'`, now, days); err != nil {
@@ -188,13 +195,13 @@ func OrgDailyTrends(ctx context.Context, s tenant.Scope, combine map[string]stri
 			    SELECT mb.id AS binding_id, k.key, date_trunc('day', f.collected_at) AS day, f.value_num AS value, f.collected_at AS at, 0 AS tier
 			    `+live+`
 			    JOIN metric_facts f ON f.binding_id = mb.id AND f.key = k.key
-			    WHERE `+liveWhere+` AND f.value_num IS NOT NULL AND f.collected_at >= $2 AND f.collected_at <= $3
+			    WHERE `+liveWhere("$4")+` AND f.value_num IS NOT NULL AND f.collected_at >= $2 AND f.collected_at <= $3
 			    UNION ALL
 			    SELECT mb.id, k.key, d.bucket, d.value_last, d.bucket, 1
 			    `+live+`
 			    JOIN metric_facts_daily d ON d.binding_id = mb.id AND d.key = k.key
-			    WHERE `+liveWhere+` AND d.value_last IS NOT NULL AND d.bucket >= $2
-			) r ORDER BY binding_id, key, day, tier, at DESC`, pq.Array(keys), firstDay, now); err != nil {
+			    WHERE `+liveWhere("$4")+` AND d.value_last IS NOT NULL AND d.bucket >= $2
+			) r ORDER BY binding_id, key, day, tier, at DESC`, pq.Array(keys), firstDay, now, projectIDs); err != nil {
 			return err
 		}
 		return tx.SelectContext(ctx, &seeds, `
@@ -211,7 +218,7 @@ func OrgDailyTrends(ctx context.Context, s tenant.Scope, combine map[string]stri
 			         ORDER BY bucket DESC LIMIT 1)
 			    ) newest ORDER BY at DESC LIMIT 1
 			) prior
-			WHERE `+liveWhere, pq.Array(keys), firstDay)
+			WHERE `+liveWhere("$3"), pq.Array(keys), firstDay, projectIDs)
 	})
 	if err != nil && !isNoRows(err) {
 		return nil, err

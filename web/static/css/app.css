@@ -773,6 +773,10 @@ body {
   box-shadow: var(--shadow-segment-thumb);
 }
 
+/* The All / tag chips above /dashboard and /projects
+   (components/tag_filter.html): the segmented track, on its own row. */
+.lotus-tag-filter { margin-bottom: 14px; }
+
 /* A metric page's binding line (components/metric_header.html): what the
    open tab reads and through which connection, on the left; what can be
    done to the binding, on the right. Plain text on the page — no card —
