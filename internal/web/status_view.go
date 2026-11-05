@@ -20,18 +20,34 @@ import (
 // saving, so a fixed zone needs no tz database.
 var wib = time.FixedZone("WIB", 7*3600)
 
-// statusStripDays is how many days the strip shows, ending on the
-// selected one.
+// statusStripDays is how many days the strip shows. The strip is fixed:
+// it always ends today, whichever day is selected, so picking a day
+// highlights a bar instead of moving the strip under the reader.
 const statusStripDays = 30
 
-// parseStatusDate is the WIB day ?date= asks for, or today when it is
-// empty, malformed or still in the future.
-func parseStatusDate(raw string, now time.Time) time.Time {
+// statusToday is now's WIB day, at midnight.
+func statusToday(now time.Time) time.Time {
 	n := now.In(wib)
-	today := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, wib)
+	return time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, wib)
+}
+
+// statusStripStart is the strip's first day: today's, statusStripDays-1
+// days back.
+func statusStripStart(today time.Time) time.Time {
+	return today.AddDate(0, 0, -(statusStripDays - 1))
+}
+
+// parseStatusDate is the WIB day ?date= asks for, kept inside the strip:
+// today when it is empty, malformed or still in the future, and the
+// strip's first day when it is older than that.
+func parseStatusDate(raw string, now time.Time) time.Time {
+	today := statusToday(now)
 	d, err := time.ParseInLocation(time.DateOnly, raw, wib)
 	if err != nil || d.After(today) {
 		return today
+	}
+	if start := statusStripStart(today); d.Before(start) {
+		return start
 	}
 	return d
 }
@@ -106,15 +122,18 @@ func dayOnOrBefore(days []repo.ProjectStatusDay, day time.Time) *repo.ProjectSta
 	return found
 }
 
-func buildStatusView(orgName string, p *repo.Project, days []repo.ProjectStatusDay, selected time.Time) statusView {
+// buildStatusView is the page for selected: the strip of the 30 days ending
+// today with selected's bar highlighted, and selected's verdict and
+// components. days must cover the strip (statusStripStart(today)..today).
+func buildStatusView(orgName string, p *repo.Project, days []repo.ProjectStatusDay, today, selected time.Time) statusView {
 	v := statusView{
 		OrgName: orgName, ProjectName: p.Name,
 		Date: selected.Format("2 Jan 2006"),
 	}
 
-	start := selected.AddDate(0, 0, -(statusStripDays - 1))
+	start := statusStripStart(today)
 	v.Cells = make([]statusCell, 0, statusStripDays)
-	for d := start; !d.After(selected); d = d.AddDate(0, 0, 1) {
+	for d := start; !d.After(today); d = d.AddDate(0, 0, 1) {
 		status := ""
 		if row := dayOnOrBefore(days, d); row != nil {
 			status = row.Status

@@ -12,6 +12,23 @@ async function signIn(page: Page, prefix: string) {
   return { orgId, origin };
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// The WIB (UTC+7) day `offset` days from today, as the status page names
+// it: ?date= value, bar label ("2 Nov 2026"), day of the month and month
+// marker ("NOV").
+function wibDay(offset: number) {
+  const now = new Date(Date.now() + 7 * 3600_000);
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset));
+  const month = MONTHS[d.getUTCMonth()];
+  return {
+    iso: d.toISOString().slice(0, 10),
+    label: `${d.getUTCDate()} ${month} ${d.getUTCFullYear()}`,
+    dayNum: d.getUTCDate(),
+    month: month.toUpperCase(),
+  };
+}
+
 async function seedProject(orgId: string, published: boolean): Promise<string> {
   return withDB(async (c) => {
     const r = await c.query<{ id: string }>(
@@ -59,52 +76,66 @@ test('the strip picks a day', async ({ browser }) => {
   const { orgId, subdomain } = await seedOwnerSession('status-dates-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   const projectId = await seedProject(orgId, true);
+  // The strip always ends on the server's today (WIB), so the seeded days
+  // are placed relative to it: a failure 12 days ago, a pass 7 days ago.
   await withDB(async (c) => {
-    const day = async (d: string, status: string, score: number, kinds: object) =>
+    const day = async (offset: number, status: string, score: number, kinds: object) =>
       c.query(
         `INSERT INTO project_status_days (org_id, project_id, day, status, score, components)
          VALUES ($1, $2, $3::date, $4, $5, $6::jsonb)`,
-        [orgId, projectId, d, status, score, JSON.stringify([{ name: 'ledger-api', kinds }])],
+        [orgId, projectId, wibDay(offset).iso, status, score, JSON.stringify([{ name: 'ledger-api', kinds }])],
       );
-    await day('2026-10-20', 'fail', 62, { sonarqube: { status: 'fail', score: 62, grade: 'D' } });
-    await day('2026-10-25', 'pass', 84, { sonarqube: { status: 'pass', score: 84, grade: 'A' } });
+    await day(-12, 'fail', 62, { sonarqube: { status: 'fail', score: 62, grade: 'D' } });
+    await day(-7, 'pass', 84, { sonarqube: { status: 'pass', score: 84, grade: 'A' } });
   });
+  const bar = (page: Page, offset: number, verdict: string) =>
+    page.getByRole('link', { name: `${wibDay(offset).label} · ${verdict}`, exact: true });
 
   const client = await browser.newContext();
   const page = await client.newPage();
-  await page.goto(`${origin}/status/pay?date=2026-10-22`);
+  // Ten days ago: the failure 12 days ago carried forward.
+  await page.goto(`${origin}/status/pay?date=${wibDay(-10).iso}`);
   await expect(page.getByTestId('status-word')).toHaveText('Failed');
   await expect(page.getByTestId('status-score')).toHaveText('62');
   await expect(page.getByTestId('status-components')).toContainText('ledger-api');
-  await expect(page.getByRole('link', { name: '22 Oct 2026 · Failed' })).toHaveAttribute('aria-current', 'date');
-  // Sep 23 – Oct 22: every bar carries its day of the month inside it;
-  // the month is marked on the first bar and on Oct 1 only.
-  const strip = page.getByTestId('status-strip');
-  await expect(strip.getByTestId('status-strip-day')).toHaveCount(30);
-  await expect(strip.getByTestId('status-strip-day').first()).toHaveText('23');
-  await expect(strip.getByTestId('status-strip-day').nth(8)).toHaveText('1');
-  await expect(strip.getByTestId('status-strip-day').last()).toHaveText('22');
-  await expect(strip.getByTestId('status-strip-month')).toHaveText(['SEP', 'OCT']);
-  await expect(page.getByRole('link', { name: '23 Sep 2026 · No data', exact: true }).getByTestId('status-strip-month')).toHaveText('SEP');
-  await expect(page.getByRole('link', { name: '1 Oct 2026 · No data', exact: true }).getByTestId('status-strip-month')).toHaveText('OCT');
+  await expect(bar(page, -10, 'Failed')).toHaveAttribute('aria-current', 'date');
   await expect(page.getByTestId('status-date')).toHaveCount(0);
 
-  // The strip is the 30 days ending on the selected date, so Oct 25 is a
-  // cell from a later date, where Oct 25's pass is still carried forward.
-  await page.goto(`${origin}/status/pay?date=2026-10-31`);
-  await expect(page.getByTestId('status-word')).toHaveText('Passed');
-  await page.getByRole('link', { name: '25 Oct 2026 · Passed' }).click();
-  await expect(page).toHaveURL(`${origin}/status/pay?date=2026-10-25`);
+  // The strip is still the 30 days ending today, not ending on the
+  // selected day: today's bar is there (passing), just not highlighted.
+  const strip = page.getByTestId('status-strip');
+  await expect(strip.getByRole('link')).toHaveCount(30);
+  await expect(bar(page, 0, 'Passed')).not.toHaveAttribute('aria-current', 'date');
+  await expect(strip.locator('[aria-current]')).toHaveCount(1);
+  // Every bar carries its day of the month inside it; the month is marked
+  // on the first bar and on each 1st.
+  const days = Array.from({ length: 30 }, (_, i) => wibDay(i - 29));
+  await expect(strip.getByTestId('status-strip-day')).toHaveText(days.map((d) => String(d.dayNum)));
+  await expect(strip.getByTestId('status-strip-month')).toHaveText(
+    days.filter((d, i) => i === 0 || d.dayNum === 1).map((d) => d.month),
+  );
+  await expect(bar(page, -29, 'No data').getByTestId('status-strip-month')).toHaveText(days[0].month);
+
+  // Clicking a bar selects its day and leaves the strip where it is.
+  await bar(page, -7, 'Passed').click();
+  await expect(page).toHaveURL(`${origin}/status/pay?date=${wibDay(-7).iso}`);
   await expect(page.getByTestId('status-word')).toHaveText('Passed');
   await expect(page.getByTestId('status-score')).toHaveText('84');
-  await page.getByRole('link', { name: '22 Oct 2026 · Failed' }).click();
-  await expect(page).toHaveURL(`${origin}/status/pay?date=2026-10-22`);
+  await expect(bar(page, -7, 'Passed')).toHaveAttribute('aria-current', 'date');
+  await expect(strip.getByTestId('status-strip-day').first()).toHaveText(String(days[0].dayNum));
+  await expect(strip.getByTestId('status-strip-day').last()).toHaveText(String(days[29].dayNum));
+  await bar(page, -10, 'Failed').click();
+  await expect(page).toHaveURL(`${origin}/status/pay?date=${wibDay(-10).iso}`);
   await expect(page.getByTestId('status-score')).toHaveText('62');
 
-  // Any day is still one ?date= away, even outside the strip.
-  await page.goto(`${origin}/status/pay?date=2026-09-01`);
+  // A day older than the strip is its first day; one in the future is today.
+  await page.goto(`${origin}/status/pay?date=2020-01-01`);
+  await expect(bar(page, -29, 'No data')).toHaveAttribute('aria-current', 'date');
   await expect(page.getByTestId('status-word')).toHaveText('No data');
   await expect(page.getByTestId('status-score')).toHaveCount(0);
   await expect(page.getByTestId('status-components')).toHaveCount(0);
+  await page.goto(`${origin}/status/pay?date=2099-01-01`);
+  await expect(bar(page, 0, 'Passed')).toHaveAttribute('aria-current', 'date');
+  await expect(page.getByTestId('status-score')).toHaveText('84');
   await client.close();
 });

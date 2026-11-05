@@ -14,9 +14,10 @@ import (
 
 // The public status page, GET /status/<project-slug>?date=YYYY-MM-DD
 // (docs/superpowers/specs/2026-11-03-tags-and-status-page-design.md §6):
-// a project's verdict for one day, the 30 days before it and its
-// components, for a client. No session; it answers only for a live project
-// whose owner or admin published it (projects.status_page_enabled_at).
+// a project's verdict and components for one day of the last 30, and the
+// strip of those 30 days ending today, for a client. No session; it
+// answers only for a live project whose owner or admin published it
+// (projects.status_page_enabled_at).
 // Everything else — an unknown slug, a deleted project, a page turned off,
 // another organization's project (RLS) — is the same 404, so a guessed
 // slug reveals nothing.
@@ -49,13 +50,14 @@ func statusPage(d Deps) fiber.Handler {
 			return err
 		}
 
-		selected := parseStatusDate(c.Query("date"), time.Now())
-		days, err := repo.ProjectStatusDays(c.Context(), s, project.ID,
-			selected.AddDate(0, 0, -(statusStripDays-1)), selected)
+		now := time.Now()
+		today := statusToday(now)
+		selected := parseStatusDate(c.Query("date"), now)
+		days, err := repo.ProjectStatusDays(c.Context(), s, project.ID, statusStripStart(today), today)
 		if err != nil {
 			return err
 		}
-		view := buildStatusView(org.Name, project, days, selected)
+		view := buildStatusView(org.Name, project, days, today, selected)
 
 		c.Type("html")
 		return d.Renderer.Render(c, "pages/status.html", httpx.ViewData{

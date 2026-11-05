@@ -29,16 +29,79 @@ func TestParseStatusDate(t *testing.T) {
 	// 23:30 UTC on 1 Nov is already 2 Nov in Jakarta.
 	now := time.Date(2026, 11, 1, 23, 30, 0, 0, time.UTC)
 	today := wibDay(2026, 11, 2)
+	if got := statusToday(now); !got.Equal(today) {
+		t.Fatalf("statusToday = %v, want %v", got, today)
+	}
+	// Empty, invalid or future: today.
 	for _, raw := range []string{"", "nope", "2026-13-01", "2099-01-01", "2026-11-03"} {
 		if got := parseStatusDate(raw, now); !got.Equal(today) {
 			t.Errorf("parseStatusDate(%q) = %v, want today %v", raw, got, today)
 		}
 	}
-	if got := parseStatusDate("2026-10-28", now); !got.Equal(wibDay(2026, 10, 28)) {
-		t.Errorf("parseStatusDate(2026-10-28) = %v", got)
+	// Inside the strip (Oct 4 – Nov 2), including both ends: as asked.
+	for _, want := range []time.Time{wibDay(2026, 10, 4), wibDay(2026, 10, 28), today} {
+		if got := parseStatusDate(want.Format(time.DateOnly), now); !got.Equal(want) {
+			t.Errorf("parseStatusDate(%s) = %v, want %v", want.Format(time.DateOnly), got, want)
+		}
 	}
-	if got := parseStatusDate("2026-11-02", now); !got.Equal(today) {
-		t.Errorf("today itself = %v, want %v", got, today)
+	// Older than the strip: its first day.
+	for _, raw := range []string{"2026-10-03", "2026-09-01", "2020-01-01"} {
+		if got := parseStatusDate(raw, now); !got.Equal(wibDay(2026, 10, 4)) {
+			t.Errorf("parseStatusDate(%q) = %v, want the strip's first day 2026-10-04", raw, got)
+		}
+	}
+}
+
+// The strip ends today whichever day is selected; the selected day only
+// moves the highlight, the verdict and the components.
+func TestBuildStatusView_StripIsFixedToToday(t *testing.T) {
+	t.Parallel()
+	p := &repo.Project{Slug: "pay"}
+	s62, s84 := 62, 84
+	days := []repo.ProjectStatusDay{
+		statusDay("2026-10-20", "fail", &s62, repo.StatusDayComponent{Name: "ledger-api"}),
+		statusDay("2026-10-25", "pass", &s84),
+	}
+	today, selected := wibDay(2026, 11, 2), wibDay(2026, 10, 22)
+
+	v := buildStatusView("Acme", p, days, today, selected)
+	if len(v.Cells) != statusStripDays {
+		t.Fatalf("%d cells, want %d", len(v.Cells), statusStripDays)
+	}
+	if first, last := v.Cells[0].Day, v.Cells[len(v.Cells)-1].Day; !first.Equal(wibDay(2026, 10, 4)) || !last.Equal(today) {
+		t.Fatalf("strip = %s..%s, want 2026-10-04..2026-11-02", first.Format(time.DateOnly), last.Format(time.DateOnly))
+	}
+	var sel []int
+	for i, c := range v.Cells {
+		if c.Selected {
+			sel = append(sel, i)
+		}
+	}
+	if !slices.Equal(sel, []int{18}) || !v.Cells[18].Day.Equal(selected) {
+		t.Fatalf("selected cells = %v, want only 18 (Oct 22)", sel)
+	}
+	// The verdict is the selected day's (Oct 20 carried to Oct 22), not
+	// today's (Oct 25 carried to Nov 2).
+	if v.Date != "22 Oct 2026" || v.Verdict != "Failed" || v.Score != "62" {
+		t.Errorf("verdict = %q %q %q, want 22 Oct 2026 Failed 62", v.Date, v.Verdict, v.Score)
+	}
+	if len(v.Rows) != 1 || v.Rows[0].Name != "ledger-api" {
+		t.Errorf("rows = %+v, want Oct 20's ledger-api", v.Rows)
+	}
+	// The bars still read their own days: after Oct 25 they pass.
+	if got := v.Cells[29].Tone; got != "pass" {
+		t.Errorf("today's bar = %q, want pass", got)
+	}
+
+	// Another selected day: the very same strip, the highlight moved.
+	w := buildStatusView("Acme", p, days, today, wibDay(2026, 10, 4))
+	for i := range v.Cells {
+		if !w.Cells[i].Day.Equal(v.Cells[i].Day) || w.Cells[i].Tone != v.Cells[i].Tone || w.Cells[i].Month != v.Cells[i].Month {
+			t.Fatalf("cell %d differs between selections: %+v vs %+v", i, w.Cells[i], v.Cells[i])
+		}
+		if w.Cells[i].Selected != (i == 0) {
+			t.Errorf("Oct 4 selected: cell %d Selected = %v", i, w.Cells[i].Selected)
+		}
 	}
 }
 
@@ -56,7 +119,7 @@ func TestBuildStatusView_CarriesTheLastDayForward(t *testing.T) {
 	s62, s84 := 62, 84
 	days := []repo.ProjectStatusDay{statusDay("2026-10-20", "fail", &s62), statusDay("2026-10-25", "pass", &s84)}
 
-	v := buildStatusView("PT Javan Cipta Solusi", p, days, wibDay(2026, 11, 2))
+	v := buildStatusView("PT Javan Cipta Solusi", p, days, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
 	if v.Verdict != "Passed" || v.Tone != "pass" || v.Score != "84" {
 		t.Fatalf("verdict = %q %q %q, want Passed pass 84 (Oct 25 carried to Nov 2)", v.Verdict, v.Tone, v.Score)
 	}
@@ -103,7 +166,7 @@ func TestBuildStatusView_CarriesTheLastDayForward(t *testing.T) {
 func TestBuildStatusView_CarriesPastTheLastRecordedDay(t *testing.T) {
 	t.Parallel()
 	s := 40
-	v := buildStatusView("Acme", &repo.Project{Slug: "pay"}, []repo.ProjectStatusDay{statusDay("2026-06-01", "fail", &s)}, wibDay(2026, 11, 2))
+	v := buildStatusView("Acme", &repo.Project{Slug: "pay"}, []repo.ProjectStatusDay{statusDay("2026-06-01", "fail", &s)}, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
 	if v.Verdict != "Failed" || v.Score != "40" {
 		t.Fatalf("verdict = %q %q, want the June row carried forward", v.Verdict, v.Score)
 	}
@@ -116,7 +179,7 @@ func TestBuildStatusView_CarriesPastTheLastRecordedDay(t *testing.T) {
 
 func TestBuildStatusView_NoDataIsNeverPassed(t *testing.T) {
 	t.Parallel()
-	v := buildStatusView("Acme", &repo.Project{Slug: "pay"}, nil, wibDay(2026, 11, 2))
+	v := buildStatusView("Acme", &repo.Project{Slug: "pay"}, nil, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
 	if v.Verdict != "No data" || v.Tone != "none" || v.Score != "" {
 		t.Fatalf("no rows: verdict %q tone %q score %q, want No data, none, empty", v.Verdict, v.Tone, v.Score)
 	}
@@ -132,7 +195,7 @@ func TestBuildStatusView_NoDataIsNeverPassed(t *testing.T) {
 	// A recorded unknown day (nothing measured) is No data too, even with
 	// a score left on it.
 	s := 90
-	v = buildStatusView("Acme", &repo.Project{Slug: "pay"}, []repo.ProjectStatusDay{statusDay("2026-11-02", "unknown", &s)}, wibDay(2026, 11, 2))
+	v = buildStatusView("Acme", &repo.Project{Slug: "pay"}, []repo.ProjectStatusDay{statusDay("2026-11-02", "unknown", &s)}, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
 	if v.Verdict != "No data" || v.Tone != "none" || v.Score != "" || v.Cells[29].Tone != "none" {
 		t.Fatalf("unknown day: verdict %q tone %q score %q cell %q", v.Verdict, v.Tone, v.Score, v.Cells[29].Tone)
 	}
@@ -167,39 +230,39 @@ func TestBuildStatusView_StripLabels(t *testing.T) {
 	p := &repo.Project{Slug: "pay"}
 	for _, tc := range []struct {
 		name        string
-		selected    time.Time
+		today       time.Time
 		first, last string
 		wantMarked  []string
 		markedAt    []int
 	}{
 		{
-			name: "crosses a month", selected: wibDay(2026, 11, 5),
+			name: "crosses a month", today: wibDay(2026, 11, 5),
 			first: "OCT 7", last: "5", wantMarked: []string{"OCT 7", "NOV 1"}, markedAt: []int{0, 25},
 		},
 		{
-			name: "crosses a year", selected: wibDay(2027, 1, 10),
+			name: "crosses a year", today: wibDay(2027, 1, 10),
 			first: "DEC 12", last: "10", wantMarked: []string{"DEC 12", "JAN 1"}, markedAt: []int{0, 20},
 		},
 		{
 			// 30 days inside one month: only the first bar is marked.
-			name: "one month", selected: wibDay(2026, 10, 31),
+			name: "one month", today: wibDay(2026, 10, 31),
 			first: "OCT 2", last: "31", wantMarked: []string{"OCT 2"}, markedAt: []int{0},
 		},
 		{
 			// The strip starts on the 1st: one marker, not two.
-			name: "starts on the first", selected: wibDay(2026, 10, 30),
+			name: "starts on the first", today: wibDay(2026, 10, 30),
 			first: "OCT 1", last: "30", wantMarked: []string{"OCT 1"}, markedAt: []int{0},
 		},
 		{
 			// February is shorter than the strip, so the strip touches
 			// three months.
-			name: "spans three months", selected: wibDay(2027, 3, 1),
+			name: "spans three months", today: wibDay(2027, 3, 1),
 			first: "JAN 31", last: "MAR 1", wantMarked: []string{"JAN 31", "FEB 1", "MAR 1"}, markedAt: []int{0, 1, 29},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			v := buildStatusView("Acme", p, nil, tc.selected)
+			v := buildStatusView("Acme", p, nil, tc.today, tc.today)
 			labels := stripLabels(v.Cells)
 			if len(labels) != statusStripDays {
 				t.Fatalf("%d labels, want %d", len(labels), statusStripDays)
@@ -235,7 +298,7 @@ func TestBuildStatusView_ColumnsFollowBindableKinds(t *testing.T) {
 		Name:  "API",
 		Kinds: map[string]repo.KindHeadline{"gitlab": {Status: "pass", Score: &gitlabScore}},
 	})
-	v := buildStatusView("Acme", &repo.Project{Slug: "pay"}, []repo.ProjectStatusDay{day}, wibDay(2026, 11, 2))
+	v := buildStatusView("Acme", &repo.Project{Slug: "pay"}, []repo.ProjectStatusDay{day}, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
 	if !slices.Equal(v.Columns, want) {
 		t.Fatalf("columns = %v, want %v", v.Columns, want)
 	}

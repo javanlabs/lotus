@@ -33,9 +33,12 @@
     {{/* Each bar carries its own date inside it: the day of the month,
          and above it the month where one starts. The text is
          aria-hidden — the bar's own label already reads the full date.
-         On phones the strip scrolls sideways; x-init opens it at the end,
-         on the selected day (always the last bar). */}}
-    <div class="lotus-status-strip" data-testid="status-strip" x-data x-init="$el.scrollLeft = $el.scrollWidth">
+         The strip always ends today; the selected day is whichever bar is
+         highlighted. On phones the strip scrolls sideways, and x-init
+         centres the selected bar in it by setting the strip's own
+         scrollLeft (scrollIntoView could scroll the page too). */}}
+    <div class="lotus-status-strip" data-testid="status-strip" x-data
+         x-init="const s = $el.querySelector('[aria-current]'); if (s) $el.scrollLeft += s.getBoundingClientRect().left - $el.getBoundingClientRect().left - ($el.clientWidth - s.offsetWidth) / 2">
       {{range $d.Cells}}
       <a href="{{.Href}}" class="lotus-status-cell is-{{.Tone}}{{if .Selected}} is-selected{{end}}"
          aria-label="{{.Label}}" title="{{.Label}}"{{if .Selected}} aria-current="date"{{end}}>

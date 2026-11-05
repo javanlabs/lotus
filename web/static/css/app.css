@@ -1764,10 +1764,9 @@ a.lotus-dash-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-
 .lotus-status-cell.is-selected .lotus-status-daynum { font-weight: 700; }
 /* Phone widths: 30 columns would be too narrow for their labels, so the
    strip keeps a readable column width and scrolls sideways instead, with
-   no visible scrollbar. It opens scrolled to the end (x-init in
-   status.html), where the selected day is. The 4px padding, taken back by
-   the negative margin, keeps the selected bar's outline from being clipped
-   by the scroll box. */
+   no visible scrollbar. It opens with the selected day centred (x-init in
+   status.html). The 4px padding, taken back by the negative margin, keeps
+   the selected bar's outline from being clipped by the scroll box. */
 @media (max-width: 560px) {
   .lotus-status-strip {
     grid-template-columns: repeat(30, minmax(24px, 1fr));
