@@ -146,6 +146,9 @@ func runOnce(ctx context.Context, db *sqlx.DB, opts Options) {
 		if err := DropOldPartitions(ctx, db, now.Add(-headlineAge)); err != nil {
 			log.Printf("retention: drop old partitions: %v", err)
 		}
+		if err := DeleteOldProjectStatusDays(ctx, db, now.Add(-headlineAge)); err != nil {
+			log.Printf("retention: delete old project status days: %v", err)
+		}
 	}
 	if err := DeleteOldSyncRuns(ctx, db, now.Add(-opts.SyncRunAge)); err != nil {
 		log.Printf("retention: delete old sync_runs: %v", err)
@@ -299,5 +302,14 @@ func monthFromPartitionName(table, name string) (time.Time, bool) {
 // DELETE, not a tenant.Scope operation.
 func DeleteOldSyncRuns(ctx context.Context, db *sqlx.DB, cutoff time.Time) error {
 	_, err := db.ExecContext(ctx, `DELETE FROM sync_runs WHERE created_at < $1`, cutoff)
+	return err
+}
+
+// DeleteOldProjectStatusDays removes every organization's recorded status
+// days (the public status page's history) before cutoff's date. They are
+// kept as long as the snapshots they were recorded alongside, so a day
+// past retention reads "No data" on the page.
+func DeleteOldProjectStatusDays(ctx context.Context, db *sqlx.DB, cutoff time.Time) error {
+	_, err := db.ExecContext(ctx, `DELETE FROM project_status_days WHERE day < $1::date`, cutoff.Format(time.DateOnly))
 	return err
 }

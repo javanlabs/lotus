@@ -147,6 +147,9 @@ func UpdateComponent(ctx context.Context, s tenant.Scope, id uuid.UUID, in Compo
 	return &out, nil
 }
 
+// SetComponentArchived archives or restores a component. Its project's
+// status for today is rewritten at once (an archived component no longer
+// counts); earlier days keep listing it as it was.
 func SetComponentArchived(ctx context.Context, s tenant.Scope, id uuid.UUID, archived bool) error {
 	return s.Tx(ctx, func(tx *sqlx.Tx) error {
 		var expr string
@@ -155,11 +158,15 @@ func SetComponentArchived(ctx context.Context, s tenant.Scope, id uuid.UUID, arc
 		} else {
 			expr = "NULL"
 		}
-		res, err := tx.ExecContext(ctx, `UPDATE components SET archived_at = `+expr+` WHERE id = $1`, id)
+		var projectID uuid.UUID
+		err := tx.GetContext(ctx, &projectID, `UPDATE components SET archived_at = `+expr+` WHERE id = $1 RETURNING project_id`, id)
+		if isNoRows(err) {
+			return ErrNotFound
+		}
 		if err != nil {
 			return err
 		}
-		return checkRowsAffected(res)
+		return recordProjectDayTx(ctx, tx, projectID)
 	})
 }
 
@@ -179,9 +186,17 @@ func ComponentDeletionImpactOf(ctx context.Context, s tenant.Scope, id uuid.UUID
 // HardDeleteComponent permanently removes a component and its metric
 // bindings, unbinding (never deleting) any discovered_resources that
 // pointed at those bindings — mirrors HardDeleteProject's cascade at one
-// level down.
+// level down. Its project's status for today is rewritten without it;
+// earlier days keep it.
 func HardDeleteComponent(ctx context.Context, s tenant.Scope, id uuid.UUID) error {
 	return s.Tx(ctx, func(tx *sqlx.Tx) error {
+		projectID, err := componentProjectID(ctx, tx, id)
+		if isNoRows(err) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE discovered_resources SET bound_binding_id = NULL
 			WHERE bound_binding_id IN (SELECT id FROM metric_bindings WHERE component_id = $1)`, id); err != nil {
@@ -194,6 +209,9 @@ func HardDeleteComponent(ctx context.Context, s tenant.Scope, id uuid.UUID) erro
 		if err != nil {
 			return err
 		}
-		return checkRowsAffected(res)
+		if err := checkRowsAffected(res); err != nil {
+			return err
+		}
+		return recordProjectDayTx(ctx, tx, projectID)
 	})
 }

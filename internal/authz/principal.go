@@ -73,7 +73,7 @@ func (p Principal) Can(perm string) bool {
 // by role_id instead of role key.
 var rolePermissions = map[string]map[string]bool{
 	"owner": setOf(
-		"dashboard.read", "project.create", "project.update", "project.delete", "project.tag",
+		"dashboard.read", "project.create", "project.update", "project.delete", "project.tag", "project.status_page",
 		"folder.create", "folder.update", "folder.delete",
 		"component.create", "component.update", "component.delete",
 		"metric.bind", "metric.unbind",
@@ -88,7 +88,7 @@ var rolePermissions = map[string]map[string]bool{
 		"project_member.manage", "qa.workload.read",
 	),
 	"admin": setOf(
-		"dashboard.read", "project.create", "project.update", "project.delete", "project.tag",
+		"dashboard.read", "project.create", "project.update", "project.delete", "project.tag", "project.status_page",
 		"folder.create", "folder.update", "folder.delete",
 		"component.create", "component.update", "component.delete",
 		"metric.bind", "metric.unbind",

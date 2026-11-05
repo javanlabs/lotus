@@ -41,11 +41,14 @@ type Project struct {
 	CreatedAt   time.Time  `db:"created_at"`
 	// FolderID is the folder the project is filed in, nil at the root.
 	FolderID *uuid.UUID `db:"folder_id"`
+	// StatusPageEnabledAt is when an owner or admin published the
+	// project's public status page; nil while it is off (the default).
+	StatusPageEnabledAt *time.Time `db:"status_page_enabled_at"`
 }
 
 // projectCols is every Project column, in struct order, so the queries
 // below cannot drift apart when a column is added.
-const projectCols = `id, org_id, slug, name, description, archived_at, sort_order, created_at, folder_id`
+const projectCols = `id, org_id, slug, name, description, archived_at, sort_order, created_at, folder_id, status_page_enabled_at`
 
 type NewProject struct {
 	Slug        string

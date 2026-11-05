@@ -127,7 +127,9 @@ func dropKindFromProjectionTx(ctx context.Context, tx *sqlx.Tx, componentID uuid
 }
 
 // rollupProjectionTx sets componentID's rollup status and score from its
-// kinds (metricsJSON).
+// kinds (metricsJSON), then rewrites its project's status for today in the
+// same transaction, so the public status page's history never disagrees
+// with the projection it was taken from.
 func rollupProjectionTx(ctx context.Context, tx *sqlx.Tx, componentID uuid.UUID, metricsJSON []byte) error {
 	var merged map[string]KindHeadline
 	if err := json.Unmarshal(metricsJSON, &merged); err != nil {
@@ -142,9 +144,14 @@ func rollupProjectionTx(ctx context.Context, tx *sqlx.Tx, componentID uuid.UUID,
 	rollupStatus := RollupStatus(statuses)
 	rollupScore := RollupScore(scores)
 
-	_, err := tx.ExecContext(ctx, `UPDATE component_metrics_current SET status = $1, score = $2 WHERE component_id = $3`,
-		string(rollupStatus), rollupScore, componentID)
-	return err
+	var projectID uuid.UUID
+	if err := tx.GetContext(ctx, &projectID, `
+		UPDATE component_metrics_current SET status = $1, score = $2 WHERE component_id = $3
+		RETURNING project_id`,
+		string(rollupStatus), rollupScore, componentID); err != nil {
+		return err
+	}
+	return recordProjectDayTx(ctx, tx, projectID)
 }
 
 // ListComponentMetricsForProject is the dashboard's own read path: every

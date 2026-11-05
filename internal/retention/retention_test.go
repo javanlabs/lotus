@@ -235,6 +235,35 @@ func TestDeleteOldSyncRuns(t *testing.T) {
 	}
 }
 
+// A project's daily status history ages out on the same window as the
+// snapshots it was recorded from.
+func TestDeleteOldProjectStatusDays(t *testing.T) {
+	db := openDDL(t)
+	orgID, _, _ := seedRetentionFixture(t, db)
+	var projectID uuid.UUID
+	if err := db.Get(&projectID, `SELECT id FROM projects WHERE org_id = $1`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	for _, day := range []string{"2025-01-01", "2025-06-30", "2025-07-01", "2025-12-31"} {
+		if _, err := db.Exec(`INSERT INTO project_status_days (org_id, project_id, day, status, components)
+			VALUES ($1, $2, $3::date, 'pass', '[]')`, orgID, projectID, day); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cutoff := time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC)
+	if err := retention.DeleteOldProjectStatusDays(context.Background(), db, cutoff); err != nil {
+		t.Fatalf("DeleteOldProjectStatusDays: %v", err)
+	}
+	var left []string
+	if err := db.Select(&left, `SELECT to_char(day, 'YYYY-MM-DD') FROM project_status_days ORDER BY day`); err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 2 || left[0] != "2025-07-01" || left[1] != "2025-12-31" {
+		t.Fatalf("days left = %v, want [2025-07-01 2025-12-31]", left)
+	}
+}
+
 // TestDropOldPartitions_IsFastRegardlessOfRowCount is task 3.6's own
 // acceptance criterion — quoted directly, the whole reason these tables
 // are partitioned at all: "selisih antara maintenance window 3 detik dan
