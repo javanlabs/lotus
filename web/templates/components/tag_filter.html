@@ -1,13 +1,30 @@
-{{/* tag_filter is the All / tag chips at the top of /dashboard and
-     /projects (internal/web/tagfilter.go). Takes a tagFilter. Each chip is
-     a link that toggles its tag in the URL, so the view can be bookmarked;
-     aria-pressed says which are on. Rendered only when the organization
-     has a tag at all — All alone would filter nothing. */}}
+{{/* tag_filter is the tag dropdown beside the title of /dashboard and
+     /projects (internal/web/tagfilter.go). Takes a tagFilter. A GET form:
+     the checked boxes submit as repeated tag parameters, so the view can
+     be bookmarked. Ticking several then clicking away applies them in one
+     load (Apply does the same); "All tags" clears the selection. Rendered
+     only when the organization has a tag at all. */}}
 {{define "tag_filter"}}{{if .Chips}}
-<nav class="lotus-seg lotus-tag-filter" aria-label="Filter by tag" data-testid="tag-filter">
-  <a href="{{.All.Href}}" role="button" class="lotus-seg-item{{if .All.Active}} is-active{{end}}" aria-pressed="{{if .All.Active}}true{{else}}false{{end}}">{{.All.Name}}</a>
-  {{range .Chips}}
-  <a href="{{.Href}}" role="button" class="lotus-seg-item{{if .Active}} is-active{{end}}" aria-pressed="{{if .Active}}true{{else}}false{{end}}">{{.Name}}</a>
-  {{end}}
-</nav>
+<form method="get" action="{{.Path}}" class="lotus-tag-filter" data-testid="tag-filter" x-ref="form"
+      x-data="{ open: false, dirty: false, close() { if (!this.open) return; this.open = false; if (this.dirty) this.$refs.form.requestSubmit() } }"
+      @click.outside="close()" @keydown.escape="close(); $refs.toggle.focus()">
+  <button type="button" x-ref="toggle" class="lotus-tag-filter-toggle{{if .Selected}} is-set{{end}}" :class="{ 'is-open': open }"
+          @click="open ? close() : open = true" :aria-expanded="open ? 'true' : 'false'" aria-haspopup="true" data-testid="tag-filter-toggle">
+    <span class="lotus-tag-filter-key">Tag</span>
+    <span class="lotus-tag-filter-label">{{.Label}}</span>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M18 9s-4.419 6-6 6s-6-6-6-6"></path></svg>
+  </button>
+  <div class="lotus-tag-filter-menu" x-show="open" x-cloak x-transition.opacity.duration.120ms role="group" aria-label="Filter by tag">
+    {{range .Chips}}
+    <label class="lotus-tag-filter-item">
+      <input type="checkbox" name="tag" value="{{.Name}}"{{if .Active}} checked{{end}} @change="dirty = true">
+      <span>{{.Name}}</span>
+    </label>
+    {{end}}
+    <div class="lotus-tag-filter-foot">
+      <a href="{{.All.Href}}" class="lotus-dash-link">All tags</a>
+      <button type="submit" class="btn-lotus btn-lotus-primary btn-lotus-sm">Apply</button>
+    </div>
+  </div>
+</form>
 {{end}}{{end}}

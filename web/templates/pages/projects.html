@@ -30,6 +30,7 @@
       <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{.Data.Subtitle}}</p>
     </div>
     <div style="margin-left:auto;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:center">
+      {{template "tag_filter" .Data.Filter}}
       <div style="display:flex;gap:2px;background:rgba(67,40,78,.04);border:1px solid rgba(67,40,78,.09);border-radius:var(--radius-group);padding:3px;box-shadow:var(--shadow-segment-track)">
         <div style="display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:var(--radius-segment);white-space:nowrap;font-size:11.5px;cursor:pointer"
              :style="{ fontWeight: filter==='all' ? 600 : 500, color: filter==='all' ? '#43284E' : '#6B7280', background: filter==='all' ? 'linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%)' : 'transparent', boxShadow: filter==='all' ? 'var(--shadow-segment-thumb)' : 'none' }"
@@ -44,7 +45,6 @@
     </div>
   </header>
 
-  {{template "tag_filter" .Data.Filter}}
   {{template "dashboard_block" .Data}}
 </div>
 {{end}}

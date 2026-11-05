@@ -33,6 +33,24 @@ async function seedTagged(orgId: string) {
   });
 }
 
+// The tag filter is a dropdown of checkboxes: tick the given names (and
+// only those), then apply.
+async function chooseTags(page: Page, ...names: string[]) {
+  const filter = page.getByTestId('tag-filter');
+  await filter.getByTestId('tag-filter-toggle').click();
+  await expect(filter.getByRole('group', { name: 'Filter by tag' })).toBeVisible();
+  for (const box of await filter.locator('input[type=checkbox]').all()) {
+    const want = names.includes((await box.getAttribute('value')) ?? '');
+    if ((await box.isChecked()) !== want) await box.setChecked(want);
+  }
+  await filter.getByRole('button', { name: 'Apply' }).click();
+}
+
+// A tag's checkbox, found whether or not the menu is open (getByRole
+// would skip it while the menu is closed).
+const tagBox = (page: Page, name: string) =>
+  page.getByTestId('tag-filter').locator(`input[type=checkbox][value="${name}"]`);
+
 async function signIn(page: Page, prefix: string) {
   const { sessionToken, orgId, subdomain } = await seedOwnerSession(prefix, 'placeholder');
   const origin = tenantOrigin(subdomain);
@@ -46,35 +64,48 @@ test('dashboard narrows to the chosen tags', async ({ page }) => {
 
   await page.goto(`${origin}/dashboard`);
   const map = page.getByTestId('health-map');
-  const filter = page.getByTestId('tag-filter');
-  const chip = (name: string) => filter.getByRole('button', { name, exact: true });
+  const toggle = page.getByTestId('tag-filter-toggle');
   await expect(map.getByRole('link', { name: 'ledger-api' })).toBeVisible();
   await expect(map.getByRole('link', { name: 'studio-web' })).toBeVisible();
-  await expect(chip('All')).toHaveAttribute('aria-pressed', 'true');
+  await expect(toggle).toContainText('All tags');
+  // Closed until asked: the checkboxes are not on the page's surface.
+  await expect(tagBox(page, 'PROJECT')).toBeHidden();
 
-  await chip('PROJECT').click();
+  await chooseTags(page, 'PROJECT');
   await expect(page).toHaveURL(`${origin}/dashboard?tag=PROJECT`);
   await expect(map.getByRole('link', { name: 'ledger-api' })).toBeVisible();
   await expect(map.getByRole('link', { name: 'studio-web' })).toHaveCount(0);
-  await expect(chip('PROJECT')).toHaveAttribute('aria-pressed', 'true');
-  await expect(chip('All')).toHaveAttribute('aria-pressed', 'false');
+  await expect(toggle).toContainText('PROJECT');
+  await expect(tagBox(page, 'PROJECT')).toBeChecked();
+  await expect(tagBox(page, 'PRODUCT')).not.toBeChecked();
 
-  await chip('PRODUCT').click();
+  // Several at once, in one load: tick both, then click away.
+  await toggle.click();
+  await tagBox(page, 'PRODUCT').check();
+  await page.getByRole('heading', { name: 'Dashboard' }).click();
   await expect(page).toHaveURL(/[?&]tag=PRODUCT/);
+  await expect(page).toHaveURL(/[?&]tag=PROJECT/);
   await expect(map.getByRole('link', { name: 'ledger-api' })).toBeVisible();
   await expect(map.getByRole('link', { name: 'studio-web' })).toBeVisible();
-  await expect(chip('PROJECT')).toHaveAttribute('aria-pressed', 'true');
-  await expect(chip('PRODUCT')).toHaveAttribute('aria-pressed', 'true');
+  await expect(toggle).toContainText('PRODUCT, PROJECT');
+  await expect(tagBox(page, 'PROJECT')).toBeChecked();
+  await expect(tagBox(page, 'PRODUCT')).toBeChecked();
 
-  await chip('All').click();
+  // Opening and closing without a change does not reload.
+  await toggle.click();
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(/[?&]tag=PRODUCT/);
+
+  await toggle.click();
+  await page.getByTestId('tag-filter').getByRole('link', { name: 'All tags' }).click();
   await expect(page).toHaveURL(`${origin}/dashboard`);
-  await expect(chip('All')).toHaveAttribute('aria-pressed', 'true');
+  await expect(toggle).toContainText('All tags');
 
   // An old bookmark or a typo is All, not an empty fleet.
   await page.goto(`${origin}/dashboard?tag=nope`);
   await expect(map.getByRole('link', { name: 'ledger-api' })).toBeVisible();
   await expect(map.getByRole('link', { name: 'studio-web' })).toBeVisible();
-  await expect(chip('All')).toHaveAttribute('aria-pressed', 'true');
+  await expect(toggle).toContainText('All tags');
 });
 
 test('projects list is flat and filters by tag', async ({ page }) => {
@@ -97,7 +128,9 @@ test('projects list is flat and filters by tag', async ({ page }) => {
   await expect(page.getByText('Move to folder')).toHaveCount(0);
   await expect(page.getByText('New folder')).toHaveCount(0);
 
-  await page.getByTestId('tag-filter').getByRole('button', { name: 'PROJECT', exact: true }).click();
+  // The filter sits in the header row, beside the title.
+  await expect(page.locator('header').getByTestId('tag-filter')).toBeVisible();
+  await chooseTags(page, 'PROJECT');
   await expect(page).toHaveURL(`${origin}/projects?tag=PROJECT`);
   await expect(payments).toBeVisible();
   await expect(alur).toHaveCount(0);
@@ -129,15 +162,14 @@ test('owner tags a project from its page', async ({ page }) => {
   await page.getByTestId('project-tags').getByRole('button', { name: 'Add' }).click();
   await expect(page.getByTestId('project-tags').getByRole('alert')).toContainText('1–40 characters');
 
-  const chip = (name: string) => page.getByTestId('tag-filter').getByRole('button', { name, exact: true });
   await page.goto(`${origin}/dashboard`);
-  await expect(chip('XLSMART')).toBeVisible();
+  await expect(tagBox(page, 'XLSMART')).toHaveCount(1);
 
   // Removing it from its only project takes the chip with it.
   await page.goto(`${origin}/projects/payments`);
   await page.getByTestId('project-tags').getByRole('button', { name: 'Remove tag XLSMART' }).click();
   await expect(page.getByTestId('project-tags').locator('.lotus-tag', { hasText: 'XLSMART' })).toHaveCount(0);
   await page.goto(`${origin}/dashboard`);
-  await expect(chip('PROJECT')).toBeVisible();
-  await expect(chip('XLSMART')).toHaveCount(0);
+  await expect(tagBox(page, 'PROJECT')).toHaveCount(1);
+  await expect(tagBox(page, 'XLSMART')).toHaveCount(0);
 });

@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/uyab/lotus/internal/tenant"
 )
 
-// The All / tag chips at the top of /dashboard and /projects
+// The tag filter beside the title of /dashboard and /projects
 // (docs/superpowers/specs/2026-11-03-tags-and-status-page-design.md §5.3).
 // A project matches when it carries any chosen tag; the selection lives in
 // the URL as repeated tag parameters, so a filtered view can be bookmarked.
@@ -24,11 +25,29 @@ type tagChip struct {
 }
 
 // tagFilter is the parsed selection and the chips that change it. Selected
-// empty means All.
+// empty means All. Path is the page the dropdown's form submits to, and
+// Label what its button reads.
 type tagFilter struct {
+	Path     string
+	Label    string
 	All      tagChip
 	Chips    []tagChip
 	Selected []repo.Tag
+}
+
+// tagFilterLabel names the selection on the dropdown's button: every tag
+// when none is chosen, the chosen names while two fit, a count beyond.
+func tagFilterLabel(selected []repo.Tag) string {
+	switch len(selected) {
+	case 0:
+		return "All tags"
+	case 1:
+		return selected[0].Name
+	case 2:
+		return selected[0].Name + ", " + selected[1].Name
+	default:
+		return fmt.Sprintf("%d tags", len(selected))
+	}
 }
 
 // buildTagFilter matches raw (every tag query value) against tags ignoring
@@ -61,6 +80,8 @@ func buildTagFilter(path string, raw []string, tags []repo.Tag) tagFilter {
 		}
 		return path + "?" + q.Encode()
 	}
+	f.Path = path
+	f.Label = tagFilterLabel(f.Selected)
 	f.All = tagChip{Name: "All", Href: path, Active: len(f.Selected) == 0}
 	for _, t := range tags {
 		f.Chips = append(f.Chips, tagChip{Name: t.Name, Href: href(t.ID), Active: selected[t.ID]})

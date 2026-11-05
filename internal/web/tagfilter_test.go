@@ -57,6 +57,32 @@ func TestBuildTagFilter_MatchesIgnoringCaseAndTogglesInTheURL(t *testing.T) {
 	}
 }
 
+// The dropdown's button names the selection, so the filter in force is
+// readable without opening it.
+func TestBuildTagFilter_LabelNamesTheSelection(t *testing.T) {
+	t.Parallel()
+	third := repo.Tag{ID: uuid.New(), Name: "XLSMART"}
+	tags := []repo.Tag{tagProject, tagProduct, third}
+	for _, tc := range []struct {
+		raw  []string
+		want string
+	}{
+		{nil, "All tags"},
+		{[]string{"nope"}, "All tags"},
+		{[]string{"product"}, "PRODUCT"},
+		{[]string{"PRODUCT", "PROJECT"}, "PROJECT, PRODUCT"},
+		{[]string{"PRODUCT", "PROJECT", "xlsmart"}, "3 tags"},
+	} {
+		f := buildTagFilter("/projects", tc.raw, tags)
+		if f.Label != tc.want {
+			t.Errorf("raw %v: Label = %q, want %q", tc.raw, f.Label, tc.want)
+		}
+		if f.Path != "/projects" {
+			t.Errorf("Path = %q, want /projects", f.Path)
+		}
+	}
+}
+
 func TestBuildTagFilter_EscapesNamesInTheURL(t *testing.T) {
 	t.Parallel()
 	odd := repo.Tag{ID: uuid.New(), Name: "R&D team"}
