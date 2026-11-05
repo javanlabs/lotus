@@ -142,7 +142,7 @@ Test-only (set by `make test` / CI, never needed by hand):
 ## Layout
 
 ```
-cmd/lotus                serve | migrate | rewrap-keys (task 2.2) | import-legacy (task 5.1, not yet implemented)
+cmd/lotus                serve | migrate | rewrap-keys (task 2.2) | import-legacy (task 5.1) | reproject (recompute stored scores, no vendor calls)
 internal/config          env / .env loading
 internal/db               Postgres connection + goose migrations (embedded)
 internal/db/migrations    schema (goose SQL migrations)

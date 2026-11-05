@@ -107,6 +107,15 @@ func policyFails(c Counts, failOn string) bool {
 	}
 }
 
+// notScannedHeadline is an image with no finished scan: nothing measured,
+// so no score and no status.
+func notScannedHeadline() collector.Headline {
+	return collector.Headline{
+		Status: collector.StatusUnknown, StateLabel: scoring.ReasonNotScanned,
+		Summary: "This image has no finished scan in Harbor, so its vulnerabilities are unknown.",
+	}
+}
+
 func buildResult(d trivyDetail, failOn string) (collector.Result, error) {
 	if d.NotScanned {
 		detail, err := json.Marshal(d)
@@ -114,11 +123,8 @@ func buildResult(d trivyDetail, failOn string) (collector.Result, error) {
 			return collector.Result{}, collector.ErrInternal(err)
 		}
 		return collector.Result{
-			Headline: collector.Headline{
-				Status: collector.StatusUnknown, StateLabel: scoring.ReasonNotScanned,
-				Summary: "This image has no finished scan in Harbor, so its vulnerabilities are unknown.",
-			},
-			Detail: detail, DetailKind: string(collector.KindTrivy),
+			Headline: notScannedHeadline(),
+			Detail:   detail, DetailKind: string(collector.KindTrivy),
 		}, nil
 	}
 	var facts []collector.Fact

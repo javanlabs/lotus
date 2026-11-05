@@ -190,3 +190,49 @@ func GetComponentMetric(ctx context.Context, s tenant.Scope, componentID uuid.UU
 	}
 	return &out, nil
 }
+
+// ReprojectComponentMetric replaces kinds' headlines on componentID's
+// projection row with ones rebuilt from stored snapshots (the reproject
+// command), then recomputes the row's rollup and today's status day, as a
+// collect would. A kind the row does not already carry is skipped — a
+// reprojection never invents a metric that was never collected — and each
+// kind keeps its updated_at, so it still reads as last synced when it
+// last synced, not as fresh. Returns whether the row exists.
+func ReprojectComponentMetric(ctx context.Context, s tenant.Scope, componentID uuid.UUID, kinds map[string]KindHeadline) (bool, error) {
+	found := false
+	err := s.Tx(ctx, func(tx *sqlx.Tx) error {
+		var raw []byte
+		err := tx.GetContext(ctx, &raw, `SELECT metrics FROM component_metrics_current WHERE component_id = $1 FOR UPDATE`, componentID)
+		if isNoRows(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		found = true
+		var current map[string]KindHeadline
+		if err := json.Unmarshal(raw, &current); err != nil {
+			return err
+		}
+		for kind, kh := range kinds {
+			old, ok := current[kind]
+			if !ok {
+				continue
+			}
+			kh.UpdatedAt = old.UpdatedAt
+			current[kind] = kh
+		}
+		merged, err := json.Marshal(current)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE component_metrics_current SET metrics = $2 WHERE component_id = $1`, componentID, merged); err != nil {
+			return err
+		}
+		return rollupProjectionTx(ctx, tx, componentID, merged)
+	})
+	return found, err
+}
+
+// KindHeadlineFrom is a collector headline in the projection's shape.
+func KindHeadlineFrom(h collector.Headline) KindHeadline { return kindHeadlineFrom(h) }

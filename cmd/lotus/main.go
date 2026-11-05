@@ -1,7 +1,8 @@
 // Command lotus is Lotus's single binary: `serve` runs the web+worker
 // process, `migrate` applies schema changes as the lotus_migrate role,
 // `import-legacy` (task 5.1) brings the old Lotus installation in as the
-// first organization.
+// first organization, `reproject` recomputes stored scores after a change
+// to how they are computed.
 package main
 
 import (
@@ -73,6 +74,8 @@ func main() {
 		runImportQA(cfg, os.Args[2:])
 	case "import-legacy":
 		runImportLegacy(cfg, os.Args[2:])
+	case "reproject":
+		runReproject(cfg, os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -80,7 +83,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: lotus <serve|migrate up|migrate down|init --org-name=<name> --owner-email=<email> [--slug=<slug>]|seed-dev|seed-connections|seed-services --file=<services.yaml> [--only=<products>] [--org=<slug>]|seed-trivy --file=<export.json>|rewrap-keys --old-kek=<base64>|import-legacy --file=<export.jsonl> [--org=<subdomain>] [--dry-run]|import-qa [verify] --legacy-dsn=<dsn> --org=<subdomain> [...]>")
+	fmt.Fprintln(os.Stderr, "usage: lotus <serve|migrate up|migrate down|init --org-name=<name> --owner-email=<email> [--slug=<slug>]|seed-dev|seed-connections|seed-services --file=<services.yaml> [--only=<products>] [--org=<slug>]|seed-trivy --file=<export.json>|rewrap-keys --old-kek=<base64>|import-legacy --file=<export.jsonl> [--org=<subdomain>] [--dry-run]|import-qa [verify] --legacy-dsn=<dsn> --org=<subdomain> [...]|reproject [--org=<subdomain>] [--dry-run] [--quiet]>")
 }
 
 // runRewrapKeys is task 2.2's KEK rotation command: unwraps every
