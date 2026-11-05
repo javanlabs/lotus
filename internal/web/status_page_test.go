@@ -124,7 +124,7 @@ func TestStatusPage_PublishedRendersWithoutLogin(t *testing.T) {
 		t.Errorf("Referrer-Policy = %q", got)
 	}
 	for _, want := range []string{"Payments", `data-testid="status-word">Failed<`, `data-testid="status-score">41<`,
-		"Billing API", ">D<", "acme-status-public · Quality report", "Powered by Lotus"} {
+		"Billing API", ">41<", "acme-status-public · Quality report", "Powered by Lotus"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body lacks %q", want)
 		}

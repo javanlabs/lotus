@@ -170,7 +170,7 @@ func buildStatusView(orgName string, p *repo.Project, days []repo.ProjectStatusD
 				r.Cells = append(r.Cells, statusKindCell{Text: "–", Tone: "none"})
 				continue
 			}
-			r.Cells = append(r.Cells, statusKindCell{Text: homeMapCellLabel(k, kh), Tone: toneOf(collector.Status(kh.Status))})
+			r.Cells = append(r.Cells, statusKindCell{Text: homeMapCellLabel(kh), Tone: toneOf(collector.Status(kh.Status))})
 		}
 		v.Rows = append(v.Rows, r)
 	}

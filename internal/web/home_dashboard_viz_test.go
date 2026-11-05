@@ -11,13 +11,21 @@ import (
 	"github.com/uyab/lotus/internal/repo"
 )
 
+// vizComponent adds a component whose kinds are given by status; the map
+// reads scores, so a passing kind scores 90 and a failing one 40, and the
+// component's own score is their rollup (status names the intent).
 func vizComponent(t *testing.T, in *homeInputs, name, project, status string, kinds map[string]string) {
 	t.Helper()
 	id := uuid.New()
 	in.Components = append(in.Components, repo.LiveComponent{ID: id, Name: name, Slug: name, ProjectName: project, ProjectSlug: project})
 	m := map[string]repo.KindHeadline{}
 	for k, s := range kinds {
-		m[k] = repo.KindHeadline{Status: s}
+		score := map[string]int{"pass": 90, "fail": 40}[s]
+		m[k] = repo.KindHeadline{Status: s, Score: &score}
+	}
+	_, compScore := repo.ComponentRollup(m)
+	if status == "fail" && compScore != nil && *compScore >= 80 {
+		t.Fatalf("%s: a failing component must score below 80", name)
 	}
 	raw, err := json.Marshal(m)
 	if err != nil {
@@ -26,7 +34,7 @@ func vizComponent(t *testing.T, in *homeInputs, name, project, status string, ki
 	if in.Metrics == nil {
 		in.Metrics = map[uuid.UUID]repo.ComponentMetric{}
 	}
-	in.Metrics[id] = repo.ComponentMetric{ComponentID: id, Status: status, MetricsJSON: raw}
+	in.Metrics[id] = repo.ComponentMetric{ComponentID: id, Status: status, Score: compScore, MetricsJSON: raw}
 }
 
 func vizFixture(t *testing.T) homeViz {
@@ -174,7 +182,31 @@ func TestStateLabelBeatsTheCount(t *testing.T) {
 	if got := headlineText(kh); got != "Not scanned" {
 		t.Errorf("headlineText = %q", got)
 	}
-	if got := homeMapCellLabel("trivy", kh); got != "not scanned" {
+	// On the map a cell with no score is a grey "–", and the reason is
+	// its hover text.
+	if got := homeMapCellLabel(kh); got != "–" {
 		t.Errorf("homeMapCellLabel = %q", got)
+	}
+	if got := homeMapCellTitle("trivy", kh); got != "Trivy: Not scanned" {
+		t.Errorf("homeMapCellTitle = %q", got)
+	}
+}
+
+// A map cell is the kind's score on the 0–100 scale, coloured by its
+// band; Trivy's counts and SonarQube's own letter move to the title.
+func TestHomeMapCellIsTheScore(t *testing.T) {
+	trivy := repo.KindHeadline{Status: "fail", Score: intPtr(49), CountValue: int64Ptr(31), CountLabel: "finding", Summary: "1 critical, 5 high, 31 total"}
+	if got := homeMapCellLabel(trivy); got != "49" {
+		t.Errorf("trivy label = %q, want the score", got)
+	}
+	if got := homeMapCellTitle("trivy", trivy); got != "Trivy: 49 · Needs attention · 1 critical · 5 high · 31 total" {
+		t.Errorf("trivy title = %q", got)
+	}
+	sonar := repo.KindHeadline{Status: "pass", Score: intPtr(96), Grade: "A"}
+	if got := homeMapCellLabel(sonar); got != "96" {
+		t.Errorf("sonarqube label = %q, want the score, not the letter", got)
+	}
+	if got := homeMapCellTitle("sonarqube", sonar); got != "SonarQube: 96 · Healthy · SonarQube worst rating A" {
+		t.Errorf("sonarqube title = %q", got)
 	}
 }

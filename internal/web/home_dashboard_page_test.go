@@ -46,7 +46,9 @@ func TestHomeDashboard_Page(t *testing.T) {
 	}
 	// The card that repeated the health map is gone; what the map cannot show
 	// is listed where to start, and no component is reported twice.
-	if strings.Contains(body, "Needs attention") || strings.Contains(body, "ledger-api is failing") {
+	// ("Needs attention" itself is now the map legend's band word, so the
+	// old card is recognised by its sentence.)
+	if strings.Contains(body, "ledger-api is failing") {
 		t.Error("the dashboard still repeats failing components outside the map")
 	}
 	if !strings.Contains(body[strings.Index(body, `data-testid="insights"`):], `data-testid="alerts"`) {

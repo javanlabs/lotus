@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/uyab/lotus/internal/collector"
 	"github.com/uyab/lotus/internal/repo"
+	"github.com/uyab/lotus/internal/scoring"
 )
 
 // The dashboard's visual half answers three questions, each with a form
@@ -55,7 +55,7 @@ type homeHealth struct {
 	PassLen, FailLen, NoneLen, FailOffset, NoneOffset float64 // of pathLength 100
 }
 
-// homeKindBar is one integration's pass rate.
+// homeKindBar is one integration's average score.
 type homeKindBar struct {
 	Label, Info, Value, Width, Tone, Note string
 }
@@ -104,24 +104,43 @@ type homeViz struct {
 	Trends        []homeTrend
 }
 
-// homeMapCellLabel is the cell's text, so state is never colour alone:
-// Trivy's finding count, else a letter grade, else the score, else a mark.
-func homeMapCellLabel(kind string, kh repo.KindHeadline) string {
-	switch {
-	case kh.StateLabel != "":
-		return kh.StateLabel
-	case kind == "trivy" && kh.CountValue != nil:
-		return strconv.FormatInt(*kh.CountValue, 10)
-	case kh.Grade != "":
-		return kh.Grade
-	case kh.Score != nil:
+// homeMapCellLabel is the cell's text: the kind's score, 0–100, or "–"
+// with no score. The colour is the score's band (bandTone), so the number
+// and the colour always agree; the word for the state is in the title
+// (homeMapCellTitle), and so are Trivy's counts and SonarQube's letter —
+// a cell reads the same scale whichever kind it is. The status page's
+// component cells draw the same.
+func homeMapCellLabel(kh repo.KindHeadline) string {
+	if kh.Score != nil {
 		return strconv.Itoa(*kh.Score)
-	case collector.Status(kh.Status) == collector.StatusPass:
-		return "✓"
-	case collector.Status(kh.Status) == collector.StatusFail:
-		return "✕"
 	}
 	return "–"
+}
+
+// homeMapCellTitle is the cell's hover text: the kind, its score and band
+// word (or why it has none), then what the score was made of — Trivy's
+// finding counts ("1 critical · 5 high · 31 total"), SonarQube's own worst
+// rating, the collector's count otherwise.
+func homeMapCellTitle(kind string, kh repo.KindHeadline) string {
+	parts := []string{}
+	if kh.Score != nil {
+		parts = append(parts, fmt.Sprintf("%d · %s", *kh.Score, scoring.Band(*kh.Score).Word))
+	} else {
+		parts = append(parts, reasonWord(kh))
+	}
+	switch {
+	case kind == "trivy" && strings.Contains(kh.Summary, " critical, "):
+		parts = append(parts, strings.ReplaceAll(kh.Summary, ", ", " · "))
+	case kind == "sonarqube" && kh.Grade != "":
+		parts = append(parts, "SonarQube worst rating "+kh.Grade)
+	case kh.Score != nil && kh.CountValue != nil:
+		parts = append(parts, headlineText(kh))
+	}
+	if kind == "sentry" && kh.Grade != "" {
+		// A headline stored before letters were dropped still carries one.
+		parts = append(parts, "grade "+kh.Grade)
+	}
+	return kindLabels[kind] + ": " + strings.Join(parts, " · ")
 }
 
 func buildHomeViz(in homeInputs, rates []kpiCard) homeViz {
@@ -156,12 +175,16 @@ func buildHomeViz(in homeInputs, rates []kpiCard) homeViz {
 		if has {
 			kinds = cm.Metrics()
 		}
-		switch {
-		case !has || cm.StatusValue() == collector.StatusUnknown:
-			v.Health.None++
-		case cm.StatusValue() == collector.StatusFail:
+		// A component is healthy, needs attention, or unscored by its own
+		// score's band.
+		var compScore *int
+		if has {
+			compScore = cm.Score
+		}
+		switch bandTone(compScore) {
+		case "fail":
 			v.Health.Fail++
-		case cm.StatusValue() == collector.StatusPass:
+		case "pass":
 			v.Health.Pass++
 		default:
 			v.Health.None++
@@ -176,14 +199,14 @@ func buildHomeViz(in homeInputs, rates []kpiCard) homeViz {
 				row.Cells = append(row.Cells, homeMapCell{Tone: "none", Label: "–", Title: kindLabels[k] + ": not connected"})
 				continue
 			}
-			tone := "none"
-			switch collector.Status(kh.Status) {
-			case collector.StatusPass:
-				tone = "pass"
+			// Each kind's state is the band of its score: a red cell is a
+			// score below 80, and that is what counts as failing here.
+			tone := bandTone(kh.Score)
+			switch tone {
+			case "pass":
 				kindPass[k]++
 				tally[c.ProjectSlug].pass++
-			case collector.StatusFail:
-				tone = "fail"
+			case "fail":
 				row.Failing++
 				failedKind = k
 				kindFails[k]++
@@ -194,16 +217,13 @@ func buildHomeViz(in homeInputs, rates []kpiCard) homeViz {
 				}
 				kindProjectFails[k][c.ProjectSlug]++
 			}
-			title := kindLabels[k] + ": " + kh.Status
-			if kh.Summary != "" {
-				title += " · " + kh.Summary
-			}
+			title := homeMapCellTitle(k, kh)
 			at := kindSyncedAt(cm, kh)
 			stale := staleNote(k, at, in.Now) != ""
 			if stale {
 				title += " · last synced " + relativeTimeStrAt(at, in.Now)
 			}
-			row.Cells = append(row.Cells, homeMapCell{Tone: tone, Label: homeMapCellLabel(k, kh), Title: title, Href: metricURL(project, comp, k), Stale: stale})
+			row.Cells = append(row.Cells, homeMapCell{Tone: tone, Label: homeMapCellLabel(kh), Title: title, Href: metricURL(project, comp, k), Stale: stale})
 		}
 		if row.Failing == 1 {
 			nearWins = append(nearWins, nearWin{c.Name, metricURL(project, comp, failedKind), failedKind})
@@ -246,10 +266,13 @@ func buildHomeViz(in homeInputs, rates []kpiCard) homeViz {
 		h.NoneOffset = -(step(h.Pass) + step(h.Fail))
 	}
 
+	// One bar per kind: its average score over every component reporting
+	// it, the same number a project's kind tab shows, and how many of
+	// those components are below 80.
 	for _, r := range rates {
-		bar := homeKindBar{Label: r.Label, Info: r.Info, Value: r.Value + r.Unit, Width: r.Pct, Tone: r.Tone, Note: "no data"}
-		if n := kindFails[r.Key]; n+kindPass[r.Key] > 0 {
-			bar.Note = fmt.Sprintf("%d of %d failing", n, n+kindPass[r.Key])
+		bar := homeKindBar{Label: r.Label, Info: r.Info, Value: r.Value, Width: r.Pct, Tone: r.Tone, Note: "no data"}
+		if r.Score != nil {
+			bar.Note = r.Sub
 		}
 		v.KindBars = append(v.KindBars, bar)
 	}
