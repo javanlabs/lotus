@@ -82,8 +82,8 @@ func TestBuildStatusView_StripIsFixedToToday(t *testing.T) {
 	}
 	// The verdict is the selected day's (Oct 20 carried to Oct 22), not
 	// today's (Oct 25 carried to Nov 2).
-	if v.Date != "22 Oct 2026" || v.Verdict != "Failed" || v.Score != "62" {
-		t.Errorf("verdict = %q %q %q, want 22 Oct 2026 Failed 62", v.Date, v.Verdict, v.Score)
+	if v.Date != "22 Oct 2026" || v.Verdict != "Needs attention" || v.Score != "62" {
+		t.Errorf("verdict = %q %q %q, want 22 Oct 2026 Needs attention 62", v.Date, v.Verdict, v.Score)
 	}
 	if len(v.Rows) != 1 || v.Rows[0].Name != "ledger-api" {
 		t.Errorf("rows = %+v, want Oct 20's ledger-api", v.Rows)
@@ -120,8 +120,8 @@ func TestBuildStatusView_CarriesTheLastDayForward(t *testing.T) {
 	days := []repo.ProjectStatusDay{statusDay("2026-10-20", "fail", &s62), statusDay("2026-10-25", "pass", &s84)}
 
 	v := buildStatusView("PT Javan Cipta Solusi", p, days, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
-	if v.Verdict != "Passed" || v.Tone != "pass" || v.Score != "84" {
-		t.Fatalf("verdict = %q %q %q, want Passed pass 84 (Oct 25 carried to Nov 2)", v.Verdict, v.Tone, v.Score)
+	if v.Verdict != "Healthy" || v.Tone != "pass" || v.Score != "84" {
+		t.Fatalf("verdict = %q %q %q, want Healthy pass 84 (Oct 25 carried to Nov 2)", v.Verdict, v.Tone, v.Score)
 	}
 	if len(v.Cells) != 30 {
 		t.Fatalf("%d cells, want 30", len(v.Cells))
@@ -147,7 +147,7 @@ func TestBuildStatusView_CarriesTheLastDayForward(t *testing.T) {
 			t.Errorf("cell %d Selected = %v", i, c.Selected)
 		}
 	}
-	if c := v.Cells[16]; c.Label != "20 Oct 2026 · Failed" || c.Href != "/status/pay?date=2026-10-20" {
+	if c := v.Cells[16]; c.Label != "20 Oct 2026 · Needs attention" || c.Href != "/status/pay?date=2026-10-20" {
 		t.Errorf("Oct 20 cell = %+v", c)
 	}
 	if c := v.Cells[0]; c.Label != "4 Oct 2026 · No data" {
@@ -167,7 +167,7 @@ func TestBuildStatusView_CarriesPastTheLastRecordedDay(t *testing.T) {
 	t.Parallel()
 	s := 40
 	v := buildStatusView("Acme", &repo.Project{Slug: "pay"}, []repo.ProjectStatusDay{statusDay("2026-06-01", "fail", &s)}, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
-	if v.Verdict != "Failed" || v.Score != "40" {
+	if v.Verdict != "Needs attention" || v.Score != "40" {
 		t.Fatalf("verdict = %q %q, want the June row carried forward", v.Verdict, v.Score)
 	}
 	for _, c := range v.Cells {
@@ -308,13 +308,33 @@ func TestBuildStatusView_ColumnsFollowBindableKinds(t *testing.T) {
 	gitlab := slices.Index(bindableKinds, "gitlab")
 	for i, c := range v.Rows[0].Cells {
 		if i == gitlab {
-			if c.Text != "77" || c.Tone != "pass" {
-				t.Errorf("gitlab cell = %+v, want 77 pass", c)
+			// The cell is coloured by its score's band, not the status
+			// stored beside it: 77 needs attention.
+			if c.Text != "77" || c.Tone != "fail" || c.Title != "GitLab: 77 · Needs attention" {
+				t.Errorf("gitlab cell = %+v, want 77 fail", c)
 			}
 			continue
 		}
 		if c.Text != "–" || c.Tone != "none" {
 			t.Errorf("cell %d (%s) = %+v, want – none", i, bindableKinds[i], c)
 		}
+	}
+}
+
+// The verdict carries the count of components needing attention — any
+// kind below 80 — however healthy the project's own score reads.
+func TestBuildStatusView_VerdictCountsComponentsNeedingAttention(t *testing.T) {
+	t.Parallel()
+	s96, s19, s88 := 96, 19, 88
+	day := statusDay("2026-11-02", "pass", &s88,
+		repo.StatusDayComponent{Name: "API", Kinds: map[string]repo.KindHeadline{"sonarqube": {Status: "pass", Score: &s96}, "sentry": {Status: "fail", Score: &s19}}},
+		repo.StatusDayComponent{Name: "Web", Kinds: map[string]repo.KindHeadline{"sonarqube": {Status: "pass", Score: &s96}, "gitlab": {Status: "unknown"}}},
+	)
+	v := buildStatusView("Acme", &repo.Project{Slug: "pay"}, []repo.ProjectStatusDay{day}, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
+	if v.Score != "88" || v.Verdict != "Healthy" || v.Attention != "1 of 2 components need attention" {
+		t.Fatalf("verdict = %q %q %q", v.Score, v.Verdict, v.Attention)
+	}
+	if empty := buildStatusView("Acme", &repo.Project{Slug: "pay"}, nil, wibDay(2026, 11, 2), wibDay(2026, 11, 2)); empty.Attention != "" {
+		t.Fatalf("no data still counts components: %q", empty.Attention)
 	}
 }

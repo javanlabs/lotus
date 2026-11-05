@@ -8,6 +8,7 @@ import (
 
 	"github.com/uyab/lotus/internal/collector"
 	"github.com/uyab/lotus/internal/repo"
+	"github.com/uyab/lotus/internal/scoring"
 )
 
 // The public status page's view, built without I/O from a project's
@@ -77,8 +78,9 @@ func statusMonthMark(d time.Time, first bool) string {
 	return strings.ToUpper(d.Format("Jan"))
 }
 
-// statusKindCell is one integration's headline for one component.
-type statusKindCell struct{ Text, Tone string }
+// statusKindCell is one integration's headline for one component: its
+// score coloured by its band, and on hover what it was made of.
+type statusKindCell struct{ Text, Tone, Title string }
 
 type statusRow struct {
 	Name  string
@@ -90,22 +92,28 @@ type statusView struct {
 	Date                 string // "2 Nov 2026"
 	Score                string // empty with no data
 	Verdict, Tone        string
-	Cells                []statusCell
-	Columns              []string
-	Rows                 []statusRow
-	UpdatedAt            string // empty with no data
+	// Attention is the count a project's verdict always carries: "2 of
+	// 18 components need attention"; empty with no data.
+	Attention string
+	Cells     []statusCell
+	Columns   []string
+	Rows      []statusRow
+	UpdatedAt string // empty with no data
 }
 
-// statusDayVerdict reads a recorded status. Anything but pass or fail —
+// statusDayVerdict reads a recorded status in the score bands' words.
+// A day recorded since statuses are read from the score (pass at 80 or
+// more) is its score's band; a day recorded before keeps the verdict it
+// was given — past days are never rewritten. Anything but pass or fail —
 // unknown, or no row at all — is No data.
 func statusDayVerdict(status string) (verdict, tone string) {
 	switch collector.Status(status) {
 	case collector.StatusPass:
-		return "Passed", "pass"
+		return scoring.WordHealthy, "pass"
 	case collector.StatusFail:
-		return "Failed", "fail"
+		return scoring.WordNeedsAttention, "fail"
 	default:
-		return "No data", "none"
+		return scoring.ReasonNoData, "none"
 	}
 }
 
@@ -162,6 +170,15 @@ func buildStatusView(orgName string, p *repo.Project, days []repo.ProjectStatusD
 		v.Score = fmt.Sprintf("%d", *row.Score)
 	}
 	v.UpdatedAt = row.UpdatedAt.In(wib).Format("2 Jan 2006 15:04") + " WIB"
+	if v.Tone != "none" && len(row.Components) > 0 {
+		need := 0
+		for _, comp := range row.Components {
+			if repo.NeedsAttention(comp.Kinds) {
+				need++
+			}
+		}
+		v.Attention = attentionText(need, len(row.Components))
+	}
 	for _, comp := range row.Components {
 		r := statusRow{Name: comp.Name, Cells: make([]statusKindCell, 0, len(bindableKinds))}
 		for _, k := range bindableKinds {
@@ -170,7 +187,7 @@ func buildStatusView(orgName string, p *repo.Project, days []repo.ProjectStatusD
 				r.Cells = append(r.Cells, statusKindCell{Text: "–", Tone: "none"})
 				continue
 			}
-			r.Cells = append(r.Cells, statusKindCell{Text: homeMapCellLabel(kh), Tone: toneOf(collector.Status(kh.Status))})
+			r.Cells = append(r.Cells, statusKindCell{Text: homeMapCellLabel(kh), Tone: bandTone(kh.Score), Title: homeMapCellTitle(k, kh)})
 		}
 		v.Rows = append(v.Rows, r)
 	}

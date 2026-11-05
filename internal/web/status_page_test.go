@@ -123,8 +123,8 @@ func TestStatusPage_PublishedRendersWithoutLogin(t *testing.T) {
 	if got := resp.Header.Get("Referrer-Policy"); got != "no-referrer" {
 		t.Errorf("Referrer-Policy = %q", got)
 	}
-	for _, want := range []string{"Payments", `data-testid="status-word">Failed<`, `data-testid="status-score">41<`,
-		"Billing API", ">41<", "acme-status-public · Quality report", "Powered by Lotus"} {
+	for _, want := range []string{"Payments", `data-testid="status-word">Needs attention<`, `data-testid="status-score">41<`,
+		"Billing API", ">41<", `data-testid="status-attention">1 of 1 component needs attention<`, "Healthy (80–100)", "Needs attention (0–79)", "acme-status-public · Quality report", "Powered by Lotus"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body lacks %q", want)
 		}

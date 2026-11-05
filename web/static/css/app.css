@@ -1727,6 +1727,8 @@ a.lotus-dash-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-
 .lotus-status-verdict-main { display: flex; align-items: baseline; gap: 14px; }
 .lotus-status-score { font-size: 40px; font-weight: 700; line-height: 1; letter-spacing: -.03em; }
 .lotus-status-word { font-size: 22px; font-weight: 700; }
+/* The count the verdict always carries: what an average can hide. */
+.lotus-status-attention { font-size: 13px; font-weight: 600; }
 .lotus-status-section { margin-top: 26px; }
 .lotus-status-section h2 { margin: 0 0 10px; font: 600 10.5px var(--font-mono); letter-spacing: .08em; color: var(--text-label); }
 /* Each bar carries its date inside it, pinned to the bottom so the day
