@@ -92,7 +92,7 @@ test('the projects list renders one row per project, with its rolled-up metrics'
         orgId,
         project.rows[0].id,
         component.rows[0].id,
-        JSON.stringify({ gitlab: { status: 'fail', count_value: 5, count_label: 'stale branch' } }),
+        JSON.stringify({ gitlab: { status: 'fail', score: 30, count_value: 5, count_label: 'stale branch' } }),
       ],
     );
 
@@ -114,7 +114,7 @@ test('the projects list renders one row per project, with its rolled-up metrics'
         orgId,
         healthy.rows[0].id,
         healthyComponent.rows[0].id,
-        JSON.stringify({ gitlab: { status: 'pass', count_value: 0, count_label: 'stale branch' } }),
+        JSON.stringify({ gitlab: { status: 'pass', score: 95, count_value: 0, count_label: 'stale branch' } }),
       ],
     );
   });
@@ -131,16 +131,18 @@ test('the projects list renders one row per project, with its rolled-up metrics'
   // the row, on the project's own page.
   await expect(page.getByText('Payments', { exact: true }).filter({ visible: true })).toBeVisible();
   await expect(page.getByText('billing-api')).not.toBeVisible();
-  // Scoped to the row: there are two single-component projects now.
+  // Scoped to the row: there are two single-component projects now. The
+  // row's verdict carries how many of its components need attention.
   await expect(page.locator('.lotus-repo-row:visible', { hasText: 'Payments' })
-    .getByText('1 component', { exact: true })).toBeVisible();
+    .getByText('1 of 1 component needs attention', { exact: true })).toBeVisible();
+  await expect(page.locator('.lotus-repo-row:visible', { hasText: 'Identity' })
+    .getByText('0 of 1 component needs attention', { exact: true })).toBeVisible();
 
   await page.getByText('Payments', { exact: true }).filter({ visible: true }).click();
   await expect(page.getByText('billing-api')).toBeVisible();
-  // A kind with a status but no score keeps the collector's own phrasing
-  // in the cell — the score-only column would otherwise render an empty
-  // box for a component that was measured and did badly.
-  await expect(page.getByText('5 stale branches')).toBeVisible();
+  // The cell is the kind's score; the collector's own phrasing is its
+  // hover text, the reason the number is what it is.
+  await expect(page.getByTitle('5 stale branches')).toHaveText('30');
   await page.goBack();
 
   // Client-side filtering (Alpine x-show) — a real regression this
@@ -148,9 +150,8 @@ test('the projects list renders one row per project, with its rolled-up metrics'
   // x-show made Alpine collapse the row to block layout on toggle. This
   // asserts the row is both present and still grid-laid-out after a
   // filter round-trip, not just present in the DOM.
-  // .first(): "Failing" also appears in the Lotus Score card's "N failing"
-  // summary further down the page — the segmented-control button is the
-  // first match in DOM order.
+  // .first(): the segmented-control button is the first match in DOM
+  // order.
   await page.getByText('Failing', { exact: false }).first().click();
   await expect(page.getByText('Payments', { exact: true }).filter({ visible: true })).toBeVisible();
   await expect(page.getByText('Identity', { exact: true }).filter({ visible: true })).not.toBeVisible();

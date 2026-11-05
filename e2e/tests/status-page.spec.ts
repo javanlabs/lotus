@@ -95,17 +95,21 @@ test('the strip picks a day', async ({ browser }) => {
   const page = await client.newPage();
   // Ten days ago: the failure 12 days ago carried forward.
   await page.goto(`${origin}/status/pay?date=${wibDay(-10).iso}`);
-  await expect(page.getByTestId('status-word')).toHaveText('Failed');
+  await expect(page.getByTestId('status-word')).toHaveText('Needs attention');
   await expect(page.getByTestId('status-score')).toHaveText('62');
   await expect(page.getByTestId('status-components')).toContainText('ledger-api');
-  await expect(bar(page, -10, 'Failed')).toHaveAttribute('aria-current', 'date');
+  // The verdict carries the count an average can hide, and each component
+  // cell is the kind's score, not its letter.
+  await expect(page.getByTestId('status-attention')).toHaveText('1 of 1 component needs attention');
+  await expect(page.getByTestId('status-components').locator('.lotus-badge-fail')).toHaveText('62');
+  await expect(bar(page, -10, 'Needs attention')).toHaveAttribute('aria-current', 'date');
   await expect(page.getByTestId('status-date')).toHaveCount(0);
 
   // The strip is still the 30 days ending today, not ending on the
   // selected day: today's bar is there (passing), just not highlighted.
   const strip = page.getByTestId('status-strip');
   await expect(strip.getByRole('link')).toHaveCount(30);
-  await expect(bar(page, 0, 'Passed')).not.toHaveAttribute('aria-current', 'date');
+  await expect(bar(page, 0, 'Healthy')).not.toHaveAttribute('aria-current', 'date');
   await expect(strip.locator('[aria-current]')).toHaveCount(1);
   // Every bar carries its day of the month inside it; the month is marked
   // on the first bar and on each 1st.
@@ -117,14 +121,15 @@ test('the strip picks a day', async ({ browser }) => {
   await expect(bar(page, -29, 'No data').getByTestId('status-strip-month')).toHaveText(days[0].month);
 
   // Clicking a bar selects its day and leaves the strip where it is.
-  await bar(page, -7, 'Passed').click();
+  await bar(page, -7, 'Healthy').click();
   await expect(page).toHaveURL(`${origin}/status/pay?date=${wibDay(-7).iso}`);
-  await expect(page.getByTestId('status-word')).toHaveText('Passed');
+  await expect(page.getByTestId('status-word')).toHaveText('Healthy');
   await expect(page.getByTestId('status-score')).toHaveText('84');
-  await expect(bar(page, -7, 'Passed')).toHaveAttribute('aria-current', 'date');
+  await expect(page.getByTestId('status-attention')).toHaveText('0 of 1 component needs attention');
+  await expect(bar(page, -7, 'Healthy')).toHaveAttribute('aria-current', 'date');
   await expect(strip.getByTestId('status-strip-day').first()).toHaveText(String(days[0].dayNum));
   await expect(strip.getByTestId('status-strip-day').last()).toHaveText(String(days[29].dayNum));
-  await bar(page, -10, 'Failed').click();
+  await bar(page, -10, 'Needs attention').click();
   await expect(page).toHaveURL(`${origin}/status/pay?date=${wibDay(-10).iso}`);
   await expect(page.getByTestId('status-score')).toHaveText('62');
 
@@ -135,7 +140,7 @@ test('the strip picks a day', async ({ browser }) => {
   await expect(page.getByTestId('status-score')).toHaveCount(0);
   await expect(page.getByTestId('status-components')).toHaveCount(0);
   await page.goto(`${origin}/status/pay?date=2099-01-01`);
-  await expect(bar(page, 0, 'Passed')).toHaveAttribute('aria-current', 'date');
+  await expect(bar(page, 0, 'Healthy')).toHaveAttribute('aria-current', 'date');
   await expect(page.getByTestId('status-score')).toHaveText('84');
   await client.close();
 });

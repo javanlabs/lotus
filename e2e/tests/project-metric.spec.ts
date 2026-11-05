@@ -9,9 +9,9 @@ function tenantOrigin(subdomain: string): string {
 }
 
 // A project with three components: billing-api and ledger-api bound to all
-// four integrations (billing passing, ledger failing), docs-site bound to
-// none — so every KPI card reads 50% and every kind page has an unbound
-// footer.
+// four integrations (billing scoring 92, ledger 60), docs-site bound to
+// none — so every kind's tab reads their average, 76, and every kind page
+// has an unbound footer.
 async function seedProject(orgId: string): Promise<Record<string, string>> {
   return withDB(async (client) => {
     const one = async (q: string, args: unknown[]) => (await client.query<{ id: string }>(q, args)).rows[0].id;
@@ -35,12 +35,12 @@ async function seedProject(orgId: string): Promise<Record<string, string>> {
         );
       }
     }
-    for (const [comp, status, ago] of [[billing, 'pass', '5 minutes'], [ledger, 'fail', '3 days']]) {
+    for (const [comp, status, ago, score] of [[billing, 'pass', '5 minutes', 92], [ledger, 'fail', '3 days', 60]]) {
       await client.query(
-        `INSERT INTO component_metrics_current (org_id, project_id, component_id, metrics, status, updated_at)
-         SELECT $1, $2, $3, jsonb_object_agg(k, jsonb_build_object('status', $4::text, 'grade', 'B', 'score', 84, 'updated_at', now() - $5::interval)), $4, now()
+        `INSERT INTO component_metrics_current (org_id, project_id, component_id, metrics, status, score, updated_at)
+         SELECT $1, $2, $3, jsonb_object_agg(k, jsonb_build_object('status', $4::text, 'score', $6::int, 'updated_at', now() - $5::interval)), $4, $6, now()
          FROM unnest(ARRAY['sonarqube','trivy','sentry','gitlab']) k`,
-        [orgId, project, comp, status, ago],
+        [orgId, project, comp, status, ago, score],
       );
     }
     for (const [comp, gate, cov, bugs] of [[billing, 'OK', 94.2, 0], [ledger, 'ERROR', 61.5, 4]] as const) {
@@ -87,9 +87,9 @@ test('a metric tab opens its integration across the project, and a row opens its
   await page.goto(`${origin}/projects/payments`);
 
   // The info button still explains the number rather than navigating.
-  const tab = page.locator('.lotus-mt-tab', { hasText: 'SONAR GATE' });
+  const tab = page.locator('.lotus-mt-tab', { hasText: 'SONARQUBE' });
   await tab.getByRole('button', { name: 'How this number is calculated' }).click();
-  await expect(page.getByText('Share of components whose quality gate passes').first()).toBeVisible();
+  await expect(page.getByText('Average SonarQube score of the components reporting it').first()).toBeVisible();
   await expect(page).toHaveURL(`${origin}/projects/payments`);
   await page.keyboard.press('Escape');
 
@@ -99,7 +99,8 @@ test('a metric tab opens its integration across the project, and a row opens its
   await tab.click();
   await expect(page).toHaveURL(`${origin}/projects/payments/metrics/sonarqube`);
   await expect(page.getByRole('heading', { name: 'Payments · SonarQube' })).toBeVisible();
-  await expect(page.locator('[data-headline]')).toHaveText('50');
+  await expect(page.locator('[data-headline]')).toHaveText('76');
+  await expect(tab).toContainText('1 of 2 below 80');
   // Its other numbers sit directly under the open tab.
   await expect(page.locator('.lotus-mt-stats')).toContainText('AVG COVERAGE');
   await page.screenshot({ path: 'test-results/project-metric-tabs.png' });
@@ -148,7 +149,7 @@ test('the metric tabs stay put while switching between the project and its integ
 
   const tabs = page.getByRole('navigation', { name: 'Metrics' });
   const open = tabs.locator('[aria-current="page"]');
-  const labels = ['LOTUS SCORE', 'SONAR GATE', 'TRIVY CLEAN', 'SENTRY HEALTH', 'GIT HYGIENE'];
+  const labels = ['LOTUS SCORE', 'SONARQUBE', 'TRIVY', 'SENTRY', 'GITLAB'];
   const urls = ['', '/metrics/sonarqube', '/metrics/trivy', '/metrics/sentry', '/metrics/gitlab'];
 
   // Every page of the project has all five tabs, in the same order, with
@@ -174,7 +175,9 @@ test('the metric tabs stay put while switching between the project and its integ
   // verdict says it in words.
   const heights = await tabs.locator('.lotus-mt-tab').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
   expect(new Set(heights).size).toBe(1);
-  await expect(tabs.locator('[data-verdict]').first()).toHaveText(/failing|healthy/);
+  await expect(tabs.locator('[data-verdict]').first()).toHaveText(/Needs attention|Healthy/);
+  // The score's tab carries how many components the average hides.
+  await expect(tabs.locator('.lotus-mt-tab').first()).toContainText('1 of 2 components need attention');
   await tabs.screenshot({ path: 'test-results/project-strip.png' });
 });
 
@@ -187,7 +190,7 @@ test('every kind page fits a phone and a laptop without the page scrolling sidew
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${origin}/projects/payments/metrics/${kind}`);
-      await expect(page.locator('[data-headline]')).toHaveText('50');
+      await expect(page.locator('[data-headline]')).toHaveText('76');
       await page.screenshot({ path: `test-results/project-metric-${kind}-${width}.png`, fullPage: true });
       // The table scrolls inside its card; the page itself never does.
       await expectNoPageScroll(page);

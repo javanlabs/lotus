@@ -26,10 +26,10 @@ test('a metric that has not synced for a day is drawn dashed, with a note saying
     );
     await client.query(
       `INSERT INTO component_metrics_current (org_id, project_id, component_id, metrics, status, score, updated_at)
-       VALUES ($1, $2, $3, jsonb_build_object('gitlab', jsonb_build_object('status', 'pass', 'updated_at', now() - interval '5 minutes 30 seconds')), 'pass', NULL, now() - interval '5 minutes 30 seconds'),
+       VALUES ($1, $2, $3, jsonb_build_object('gitlab', jsonb_build_object('status', 'pass', 'score', 91, 'updated_at', now() - interval '5 minutes 30 seconds')), 'pass', 91, now() - interval '5 minutes 30 seconds'),
               ($1, $2, $4, jsonb_build_object(
-                 'gitlab', jsonb_build_object('status', 'pass', 'updated_at', now() - interval '5 minutes 30 seconds'),
-                 'trivy', jsonb_build_object('status', 'pass', 'updated_at', now() - interval '3 days 1 minute')), 'pass', NULL, now() - interval '5 minutes 30 seconds')`,
+                 'gitlab', jsonb_build_object('status', 'pass', 'score', 91, 'updated_at', now() - interval '5 minutes 30 seconds'),
+                 'trivy', jsonb_build_object('status', 'pass', 'score', 100, 'updated_at', now() - interval '3 days 1 minute')), 'pass', 96, now() - interval '5 minutes 30 seconds')`,
       [orgId, project.rows[0].id, fresh.rows[0].id, stale.rows[0].id],
     );
     return project.rows[0].id;
@@ -65,7 +65,7 @@ test('a metric that has not synced for a day is drawn dashed, with a note saying
 
   // Each value opens the component's tab for its integration; an
   // integration the component does not report is plain text, not a link.
-  await expect(freshRow.getByRole('link', { name: 'billing-api, GitLab: Pass' }))
+  await expect(freshRow.getByRole('link', { name: 'billing-api, GitLab: 91' }))
     .toHaveAttribute('href', '/projects/p/components/a/metrics/gitlab');
   await expect(staleCells.first()).toHaveAttribute('href', '/projects/p/components/b/metrics/trivy');
   await expect(freshRow.locator('a.lotus-badge')).toHaveCount(1);

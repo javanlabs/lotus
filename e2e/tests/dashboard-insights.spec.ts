@@ -17,9 +17,11 @@ test('dashboard visualizes health and says where to start', async ({ page, conte
     const conn = await client.query(`INSERT INTO integration_connections (org_id, provider, name, base_url) VALUES ($1,'sonarqube','s','https://s.test') RETURNING id`, [orgId]);
     for (const [slug, status, name] of [['bad', 'fail', 'ledger-api'], ['good', 'pass', 'billing-api']]) {
       const c = await client.query(`INSERT INTO components (org_id, project_id, slug, name, kind) VALUES ($1,$2,$3,$4,'backend') RETURNING id`, [orgId, project.rows[0].id, slug, name]);
+      // The map reads scores: a failing component scores below 80.
+      const score = status === 'pass' ? 92 : 41;
       await client.query(
-        `INSERT INTO component_metrics_current (org_id, project_id, component_id, status, metrics) VALUES ($1,$2,$3,$4,$5)`,
-        [orgId, project.rows[0].id, c.rows[0].id, status, JSON.stringify({ sonarqube: { status, grade: status === 'pass' ? 'A' : 'D', updated_at: new Date().toISOString() } })],
+        `INSERT INTO component_metrics_current (org_id, project_id, component_id, status, score, metrics) VALUES ($1,$2,$3,$4,$5,$6)`,
+        [orgId, project.rows[0].id, c.rows[0].id, status, score, JSON.stringify({ sonarqube: { status, score, grade: status === 'pass' ? 'A' : 'D', updated_at: new Date().toISOString() } })],
       );
       const b = await client.query(`INSERT INTO metric_bindings (org_id, component_id, connection_id, kind, external_key, config) VALUES ($1,$2,$3,'sonarqube',$4,'{}') RETURNING id`, [orgId, c.rows[0].id, conn.rows[0].id, slug]);
       await client.query(
@@ -33,13 +35,14 @@ test('dashboard visualizes health and says where to start', async ({ page, conte
   await page.goto(`${origin}/dashboard`);
 
   await expect(page.getByTestId('health')).toContainText('50%');
-  await expect(page.getByTestId('kind-bars')).toContainText('SONAR GATE');
+  await expect(page.getByTestId('kind-bars')).toContainText('SONARQUBE');
   await expect(page.getByTestId('insights')).toContainText('SonarQube causes the most failures');
 
-  // Worst first, and each cell opens that integration on that component.
+  // Worst first, and each cell — the kind's score, not a letter — opens
+  // that integration on that component.
   const rows = page.getByTestId('health-map').locator('tbody tr');
   await expect(rows.first()).toContainText('ledger-api');
-  await rows.first().getByRole('link', { name: 'D', exact: true }).click();
+  await rows.first().getByRole('link', { name: '41', exact: true }).click();
   await expect(page).toHaveURL(new RegExp('/components/bad/metrics/sonarqube'));
 
   await page.goto(`${origin}/dashboard`);

@@ -57,7 +57,10 @@ test('the dashboard is where the app opens, and the health map leads to each fai
 
   const insights = page.getByTestId('insights');
   await expect(insights.getByTestId('alerts').getByRole('link', { name: 'Blocker issue #1: Checkout crashes' })).toBeVisible();
-  await expect(page.getByText('Needs attention')).toHaveCount(0);
+  // The old "Needs attention" card that repeated the map is gone; the
+  // words now only name the map's red band in its legend.
+  await expect(page.getByText('Needs attention', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('health-map')).toContainText('Needs attention (0–79)');
   await expect(page.getByTestId('recent-activity')).toContainText('marked open');
   await page.screenshot({ path: 'test-results/home-dashboard.png', fullPage: true });
 

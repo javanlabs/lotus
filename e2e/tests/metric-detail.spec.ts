@@ -131,8 +131,12 @@ test('a component opens on SonarQube, its bound metrics are tabs one click apart
   await expect(page.getByText('Quality gate passed')).toBeVisible();
   // Each scored kind says its verdict in words, not only in colour; a kind
   // with nothing to judge draws no chip, yet every tab is the same height.
-  await expect(open.locator('[data-verdict="pass"]')).toHaveText('Passing');
-  await expect(tabs.locator('.lotus-mt-tab', { hasText: 'GITLAB' }).locator('[data-verdict="fail"]')).toHaveText('Failing');
+  await expect(open.locator('[data-verdict="pass"]')).toHaveText('Healthy');
+  await expect(tabs.locator('.lotus-mt-tab', { hasText: 'GITLAB' }).locator('[data-verdict="fail"]')).toHaveText('Needs attention');
+  // The panel's score line says how the 92-or-so was made: (94.2 + A's 100)
+  // ÷ 2 × 1 for a passed gate, rounded once.
+  await expect(page.getByTestId('score-breakdown')).toContainText('Coverage 94.2 · Worst rating B → 80 · Gate passed ×1 = 87');
+  await expect(page.getByTestId('sonar-ratings-caption')).toHaveText("SonarQube's own ratings (A best, E worst)");
   await expect(tabs.locator('.lotus-mt-tab', { hasText: 'SENTRY' }).locator('[data-verdict]')).toHaveCount(0);
   const heights = await tabs.locator('.lotus-mt-tab').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
   expect(new Set(heights).size).toBe(1);
