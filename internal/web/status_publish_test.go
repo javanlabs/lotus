@@ -40,8 +40,8 @@ func TestStatusPublish_OwnerTurnsItOnAndOff(t *testing.T) {
 	}
 
 	resp, _ := e.post(t, e.owner, "/projects/pay/status-page", url.Values{"enabled": {"1"}}, false)
-	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects/pay" {
-		t.Fatalf("turn on = %d → %q, want 302 to /projects/pay", resp.StatusCode, resp.Header.Get("Location"))
+	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/projects/pay#settings" {
+		t.Fatalf("turn on = %d → %q, want 302 to /projects/pay#settings", resp.StatusCode, resp.Header.Get("Location"))
 	}
 	p, err := repo.ProjectByID(context.Background(), e.s, pid)
 	if err != nil || p.StatusPageEnabledAt == nil {

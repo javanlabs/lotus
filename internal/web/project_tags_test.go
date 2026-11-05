@@ -34,6 +34,10 @@ func TestProjectTags_OwnerAddsAndRemoves(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || !strings.Contains(projectTagsSection(t, body), "xlsmart") {
 		t.Fatalf("add = %d:\n%s", resp.StatusCode, body)
 	}
+	// The header's read-only pills ride along out of band, so they follow.
+	if !strings.Contains(body, `id="project-tag-pills"`) || !strings.Contains(body, `hx-swap-oob="true"`) {
+		t.Errorf("add response does not refresh the header's pills:\n%s", body)
+	}
 	tags, err := repo.ProjectTagsByProject(context.Background(), e.s)
 	if err != nil {
 		t.Fatal(err)
@@ -83,17 +87,19 @@ func TestProjectTags_MemberIsForbidden(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("viewer project page = %d", status)
 	}
-	section := projectTagsSection(t, body)
-	if !strings.Contains(section, "PROJECT") {
-		t.Errorf("viewer does not see the project's tag:\n%s", section)
+	if !strings.Contains(body, `<div id="project-tag-pills" class="lotus-tag-pills" data-testid="project-tag-pills"><span class="lotus-tag">PROJECT</span></div>`) {
+		t.Errorf("viewer does not see the project's tag:\n%s", body)
 	}
-	if strings.Contains(section, `name="name"`) || strings.Contains(section, "/remove") {
-		t.Errorf("viewer is offered tag controls:\n%s", section)
+	if strings.Contains(body, `id="project-tags"`) || strings.Contains(body, "/tags") || strings.Contains(body, `data-testid="project-settings"`) {
+		t.Errorf("viewer is offered tag controls or the settings button")
 	}
 
-	// The owner sees them.
+	// The owner sees them, in the settings popover.
 	_, body = e.get(t, e.owner, "/projects/pay")
-	section = projectTagsSection(t, body)
+	if !strings.Contains(body, `data-testid="project-settings-toggle"`) {
+		t.Errorf("owner has no settings button")
+	}
+	section := projectTagsSection(t, body)
 	if !strings.Contains(section, `name="name"`) || !strings.Contains(section, "/remove") {
 		t.Errorf("owner is not offered tag controls:\n%s", section)
 	}

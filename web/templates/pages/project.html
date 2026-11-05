@@ -2,16 +2,46 @@
 {{template "shell_open" .}}
 
 <header style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:18px">
-  <div style="flex:1;min-width:220px">
+  <div style="flex:1;min-width:min(220px,100%)">
     <h1 style="margin:0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#43284E">{{.Data.Project.Name}}</h1>
     <p style="margin:4px 0 0;font-size:12.5px;color:#6B7280">{{if .Data.Project.Description}}{{.Data.Project.Description}}{{else}}{{.Data.Dashboard.Subtitle}}{{end}}</p>
-    {{template "project_tags" (dict "URL" .Data.URL "Tags" .Data.Tags "AllTags" .Data.AllTags "CanTag" .Data.CanTag)}}
-    {{template "status_publish" (dict "Action" (print .Data.URL "/status-page") "On" .Data.StatusPage.On "URL" .Data.StatusPage.URL "Can" .Data.StatusPage.Can)}}
+    {{template "project_tag_pills" (dict "Tags" .Data.Tags)}}
   </div>
   {{if .Data.CanQA}}
   <a href="{{.Data.URL}}/qa" class="btn-lotus btn-lotus-secondary">Test cases</a>
   {{end}}
-  {{if .Data.CanDelete}}
+  {{/* The project's settings — its tags, the public status page, delete —
+       sit behind one gear button so the header carries only the title and
+       the page's main action. Shown only to someone who may change one of
+       them. #settings in the URL opens it on arrival: the status page
+       switch redirects there, so its new URL and Copy are in view. */}}
+  {{if or .Data.CanTag .Data.StatusPage.Can .Data.CanDelete}}
+  <div class="lotus-popover-anchor" data-testid="project-settings"
+       x-data="{ open: location.hash === '#settings' }"
+       x-init="if (open) history.replaceState(null, '', location.pathname + location.search)"
+       @click.outside="open = false" @keydown.escape="open = false">
+    <button type="button" class="btn-lotus btn-lotus-secondary btn-lotus-icon" :class="{ 'is-open': open }"
+            @click="open = !open" :aria-expanded="open ? 'true' : 'false'" aria-haspopup="dialog"
+            aria-label="Project settings" title="Project settings" data-testid="project-settings-toggle">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"></circle><path d="M13.765 2.152C13.398 2 12.932 2 12 2s-1.398 0-1.765.152a2 2 0 0 0-1.083 1.083c-.092.223-.129.484-.143.863a1.62 1.62 0 0 1-.79 1.353a1.62 1.62 0 0 1-1.567.008c-.336-.178-.579-.276-.82-.308a2 2 0 0 0-1.478.396C4.04 5.79 3.806 6.193 3.34 7s-.7 1.21-.751 1.605a2 2 0 0 0 .396 1.479c.148.192.355.353.676.555c.473.297.777.803.777 1.361s-.304 1.064-.777 1.36c-.321.203-.529.364-.676.556a2 2 0 0 0-.396 1.479c.052.394.285.798.75 1.605c.467.807.7 1.21 1.015 1.453a2 2 0 0 0 1.479.396c.24-.032.483-.13.819-.308a1.62 1.62 0 0 1 1.567.008c.483.28.77.795.79 1.353c.014.38.05.64.143.863a2 2 0 0 0 1.083 1.083C10.602 22 11.068 22 12 22s1.398 0 1.765-.152a2 2 0 0 0 1.083-1.083c.092-.223.129-.483.143-.863c.02-.558.307-1.074.79-1.353a1.62 1.62 0 0 1 1.567-.008c.336.178.579.276.819.308a2 2 0 0 0 1.479-.396c.315-.242.548-.646 1.014-1.453s.7-1.21.751-1.605a2 2 0 0 0-.396-1.479c-.148-.192-.355-.353-.676-.555A1.62 1.62 0 0 1 19.562 12c0-.558.304-1.064.777-1.36c.321-.203.529-.364.676-.556a2 2 0 0 0 .396-1.479c-.052-.394-.285-.798-.75-1.605c-.467-.807-.7-1.21-1.015-1.453a2 2 0 0 0-1.479-.396c-.24.032-.483.13-.82.308a1.62 1.62 0 0 1-1.566-.008a1.62 1.62 0 0 1-.79-1.353c-.014-.38-.05-.64-.143-.863a2 2 0 0 0-1.083-1.083Z"></path></g></svg>
+    </button>
+    <div class="lotus-popover" x-show="open" x-cloak x-transition.opacity.duration.120ms role="dialog" aria-label="Project settings">
+      {{if .Data.CanTag}}
+      <section class="lotus-popover-section">
+        <h2 class="lotus-popover-label">Tags</h2>
+        {{template "project_tags" (dict "URL" .Data.URL "Tags" .Data.Tags "AllTags" .Data.AllTags "CanTag" .Data.CanTag)}}
+      </section>
+      {{end}}
+      {{if .Data.StatusPage.Can}}
+      <section class="lotus-popover-section">
+        <h2 class="lotus-popover-label">Client report</h2>
+        {{template "status_publish" (dict "Action" (print .Data.URL "/status-page") "On" .Data.StatusPage.On "URL" .Data.StatusPage.URL "Can" .Data.StatusPage.Can)}}
+      </section>
+      {{end}}
+      {{if .Data.CanDelete}}
+      <section class="lotus-popover-section">
+        <h2 class="lotus-popover-label">Danger zone</h2>
+        <p class="lotus-popover-note">Removes the project from Lotus and stops its syncs. Its data is kept.</p>
   {{template "lotus_modal_open" (dict "Name" "delete-project" "Title" "Delete project" "Trigger" "Delete project" "Variant" "danger-soft")}}
     <div class="lotus-modal-form">
       <form method="post" action="{{.Data.URL}}/delete" hx-post="{{.Data.URL}}/delete"
@@ -31,6 +61,10 @@
       </form>
     </div>
   {{template "lotus_modal_close" .}}
+      </section>
+      {{end}}
+    </div>
+  </div>
   {{end}}
   <a href="{{.Data.URL}}/components/new" class="btn-lotus btn-lotus-primary">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:var(--text-on-dark-accent)"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>Add component

@@ -15,18 +15,20 @@ import (
 
 // A project's tags, shown under its name on the project page
 // (components/project_tags.html). Owners and admins (project.tag) add and
-// remove them there; everyone else sees them. Both routes answer htmx with
-// the re-rendered partial and a plain post with a redirect back to the
-// project.
+// remove them in the page's settings popover; everyone sees them. Both
+// routes answer htmx with the re-rendered editor (plus the header's pills,
+// out of band) and a plain post with a redirect back to the project.
 
 // projectTagsData is what the project_tags partial renders. AllTags feeds
-// the add box's suggestions.
+// the add box's suggestions; OOB adds the header's read-only pills to a
+// route's response so they follow the change.
 type projectTagsData struct {
 	URL     string
 	Tags    []repo.Tag
 	AllTags []repo.Tag
 	CanTag  bool
 	Error   string
+	OOB     bool
 }
 
 // loadProjectTags reads a project's tags and the organization's for the
@@ -60,6 +62,7 @@ func answerProjectTags(c *fiber.Ctx, d Deps, s tenant.Scope, project *repo.Proje
 		return writeRepoErr(c, err)
 	}
 	data.Error = msg
+	data.OOB = true
 	c.Type("html")
 	c.Status(status)
 	return d.Renderer.RenderNamed(c, "project_tags", data)

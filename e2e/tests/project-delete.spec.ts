@@ -14,6 +14,8 @@ test('a project is deleted from its own page, not from the list', async ({ page,
   await expect(page.getByRole('button', { name: 'Delete project' })).toHaveCount(0);
 
   await page.goto(`${origin}/projects/pay`);
+  await expect(page.getByRole('button', { name: 'Delete project' })).toBeHidden();
+  await page.getByTestId('project-settings-toggle').click();
   await page.getByRole('button', { name: 'Delete project' }).click();
   const dialog = page.locator('dialog[open]');
   await dialog.locator('input[name="confirm_name"]').fill('nope');

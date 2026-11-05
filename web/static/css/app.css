@@ -853,10 +853,14 @@ body {
   letter-spacing: .02em;
   white-space: nowrap;
 }
-/* The tags under a project's name (components/project_tags.html): pills,
-   each with its remove button for whoever may change them, then the add
-   box. */
-.lotus-project-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+/* A project's tags under its name, read-only (project_tag_pills). Gone
+   entirely when the project has none, so the header keeps its height. */
+.lotus-tag-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.lotus-tag-pills:empty { display: none; }
+/* The tag editor in the project's settings popover
+   (components/project_tags.html): pills, each with its remove button,
+   then the add box. */
+.lotus-project-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .lotus-project-tags .lotus-tag { display: inline-flex; align-items: center; gap: 4px; }
 .lotus-project-tags form { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
 .lotus-tag-remove {
@@ -877,7 +881,7 @@ body {
 /* The public status page switch under a project's tags
    (components/status_publish.html): a switch, then the public URL with
    its copy button once it is on. */
-.lotus-status-publish { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.lotus-status-publish { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .lotus-status-publish form { margin: 0; }
 .lotus-switch {
   display: inline-flex;
@@ -913,8 +917,35 @@ body {
 .lotus-switch.is-on .lotus-switch-thumb { transform: translateX(12px); }
 .lotus-switch:focus-visible { outline: none; }
 .lotus-switch:focus-visible .lotus-switch-track { box-shadow: var(--shadow-focus-ring); }
-.lotus-status-publish-link { display: inline-flex; align-items: center; gap: 6px; }
-.lotus-status-publish-link .lotus-input { width: 300px; height: 28px; }
+.lotus-status-publish-link { display: flex; align-items: center; gap: 6px; width: 100%; }
+.lotus-status-publish-link .lotus-input { flex: 1; min-width: 0; height: 28px; }
+
+/* A square, icon-only secondary button (the project's settings gear). */
+.btn-lotus-icon { justify-content: center; width: var(--lotus-control-h); padding: 0; }
+.btn-lotus-icon svg { flex: none; transition: transform .25s var(--ease-standard); }
+.btn-lotus-icon.is-open { background: var(--gradient-button-hover); }
+.btn-lotus-icon.is-open svg { transform: rotate(45deg); }
+
+/* A settings popover hung from its button (the project page's gear): the
+   menu surface, wide enough for a form, in sections with mono labels.
+   Right-aligned, because its button sits at the right of the header. */
+.lotus-popover-anchor { position: relative; display: inline-flex; }
+.lotus-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  width: min(380px, calc(100vw - 32px));
+  padding: 4px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-petal-sm);
+  background: #FFFFFF;
+  box-shadow: 0 10px 28px -12px rgba(67,40,78,.45);
+}
+.lotus-popover-section { padding: 12px 14px; }
+.lotus-popover-section + .lotus-popover-section { border-top: 1px solid var(--border-subtle); }
+.lotus-popover-label { margin: 0 0 9px; font: 600 9.5px var(--font-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--text-faint); }
+.lotus-popover-note { margin: 0 0 10px; font-size: 11.5px; line-height: 1.45; color: var(--text-muted); }
 
 /* A metric page's binding line (components/metric_header.html): what the
    open tab reads and through which connection, on the left; what can be

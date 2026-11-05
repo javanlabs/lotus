@@ -32,11 +32,16 @@ test('status page is off until an owner publishes it', async ({ page, browser })
   expect((await anon.goto(`${origin}/status/pay`))?.status()).toBe(404);
 
   await page.goto(`${origin}/projects/pay`);
+  // Behind the settings gear, not on the page's surface.
+  await expect(page.getByTestId('status-publish')).toBeHidden();
+  await page.getByTestId('project-settings-toggle').click();
   const publish = page.getByTestId('status-publish');
   await expect(publish.getByTestId('status-page-switch')).toHaveAttribute('aria-checked', 'false');
   await expect(publish.getByTestId('status-page-url')).toHaveCount(0);
   await publish.getByTestId('status-page-switch').click();
   await expect(page.getByTestId('status-publish').getByTestId('status-page-switch')).toHaveAttribute('aria-checked', 'true');
+  // Back on the page with the settings still open, the URL in view.
+  await expect(page.getByTestId('status-page-url')).toBeVisible();
   await expect(page.getByTestId('status-page-url')).toHaveValue(`${origin}/status/pay`);
   await expect(page.getByTestId('status-page-copy')).toBeVisible();
 

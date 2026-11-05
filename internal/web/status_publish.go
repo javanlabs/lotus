@@ -57,7 +57,9 @@ func setStatusPageUI(d Deps) fiber.Handler {
 			return writeRepoErr(c, err)
 		}
 		setFlash(c, flash)
-		return redirectAfterMutation(c, projectURL(project))
+		// Back with the settings popover open, so the URL just published
+		// (and its Copy button) is in view.
+		return redirectAfterMutation(c, projectURL(project)+"#settings")
 	}
 }
 

@@ -151,11 +151,18 @@ test('owner tags a project from its page', async ({ page }) => {
   await seedTagged(orgId);
 
   await page.goto(`${origin}/projects/payments`);
+  // Read-only under the title; the editor waits behind the settings gear.
+  const pills = page.getByTestId('project-tag-pills');
+  await expect(pills.locator('.lotus-tag', { hasText: 'PROJECT' })).toBeVisible();
   const tags = page.getByTestId('project-tags');
+  await expect(tags).toBeHidden();
+  await page.getByTestId('project-settings-toggle').click();
   await expect(tags.locator('.lotus-tag', { hasText: 'PROJECT' })).toBeVisible();
   await tags.getByLabel('Tag name').fill('XLSMART');
   await tags.getByRole('button', { name: 'Add' }).click();
   await expect(page.getByTestId('project-tags').locator('.lotus-tag', { hasText: 'XLSMART' })).toBeVisible();
+  // The header's pills follow without a reload, and the popover stays open.
+  await expect(pills.locator('.lotus-tag', { hasText: 'XLSMART' })).toBeVisible();
 
   // A blank name is refused inside the panel, not silently dropped.
   await page.getByTestId('project-tags').getByLabel('Tag name').fill('   ');
@@ -167,6 +174,7 @@ test('owner tags a project from its page', async ({ page }) => {
 
   // Removing it from its only project takes the chip with it.
   await page.goto(`${origin}/projects/payments`);
+  await page.getByTestId('project-settings-toggle').click();
   await page.getByTestId('project-tags').getByRole('button', { name: 'Remove tag XLSMART' }).click();
   await expect(page.getByTestId('project-tags').locator('.lotus-tag', { hasText: 'XLSMART' })).toHaveCount(0);
   await page.goto(`${origin}/dashboard`);
