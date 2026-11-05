@@ -12,8 +12,10 @@ import (
 	"github.com/uyab/lotus/internal/authz"
 	"github.com/uyab/lotus/internal/clients/harbor"
 	trivyclient "github.com/uyab/lotus/internal/clients/trivy"
+	trivycollector "github.com/uyab/lotus/internal/collector/trivy"
 	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/repo"
+	"github.com/uyab/lotus/internal/repo/global"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -212,6 +214,13 @@ func renderTrivyDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 	if err != nil {
 		return writeRepoErr(c, err)
 	}
+	// The breakdown reads the organization's fail-on policy, which caps
+	// the score when it fails the image.
+	settings, err := global.OrgSettings(c.Context(), d.DB, s.OrgID())
+	if err != nil {
+		return writeRepoErr(c, err)
+	}
+	breakdown := trivyBreakdown(snap, header.NotScanned, trivycollector.FailOnFromSettings(settings))
 
 	c.Type("html")
 	return renderPage(c, d, "pages/metric_trivy.html", httpx.ViewData{
@@ -225,7 +234,9 @@ func renderTrivyDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 			Charts           chartGridData
 			// Scan is the repository scan's bar; nil for an image.
 			Scan *scanStatus
-		}{Chrome: chrome, Header: header, Rows: rows, RawDetailMissing: rawDetailMissing, Flash: flash, Charts: newChartGridData(cards, "7d", chrome.BasePath()), Scan: scan},
+			// Breakdown is how the headline score was computed.
+			Breakdown *scoreBreakdown
+		}{Chrome: chrome, Header: header, Rows: rows, RawDetailMissing: rawDetailMissing, Flash: flash, Charts: newChartGridData(cards, "7d", chrome.BasePath()), Scan: scan, Breakdown: breakdown},
 	})
 }
 

@@ -1002,6 +1002,21 @@ a.lotus-binding-key svg { flex: none; }
 .lotus-panel-note { font-size: 11px; color: var(--text-faint); }
 .lotus-panel-tools { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .lotus-panel-empty { padding: 32px 14px; text-align: center; font-size: 12.5px; color: var(--text-muted); }
+/* A metric page's score line (components/score_breakdown.html): the
+   headline score, its band, and the arithmetic behind it, one line under
+   the panel's head. */
+.lotus-panel-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+.lotus-panel-breakdown .lotus-panel-section-title { margin-bottom: 0; }
+.lotus-panel-breakdown .lotus-badge { align-self: center; }
+.lotus-panel-breakdown-score { font: 700 18px var(--font-mono); line-height: 1; }
+.lotus-panel-breakdown-text { font: 500 11.5px var(--font-mono); color: var(--text-muted); }
 /* Figures in a grid, label over value, no dividers: whitespace groups
    them, the panel's hairlines separate sections. Four to a row, so eight
    read as two even rows; two to a row on a narrow screen. */

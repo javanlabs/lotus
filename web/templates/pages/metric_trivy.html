@@ -16,6 +16,7 @@
     </span>
     {{end}}
   </div>
+  {{template "score_breakdown" .Data.Breakdown}}
   {{if not $h.HasData}}
   <div class="lotus-panel-empty">{{if .Data.Scan}}This repository has not been scanned yet.{{else}}No Trivy scan collected for this repository yet.{{end}}</div>
   {{else if $h.NotScanned}}

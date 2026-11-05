@@ -132,6 +132,11 @@ func TestSonarDetail_HistoricalDateShowsThatDatesSnapshotNotLatest(t *testing.T)
 	if !strings.Contains(string(latestBody), "12.3%") {
 		t.Fatalf("latest view missing 12.3%% coverage (the newest snapshot):\n%s", latestBody)
 	}
+	// The score line under the panel's head: 12.3 coverage × 0.5 for the
+	// failed gate is 6.15, rounded to 6.
+	if !strings.Contains(string(latestBody), `data-testid="score-breakdown"`) || !strings.Contains(string(latestBody), "Coverage 12.3 · Gate failed ×0.5 = 6") {
+		t.Fatalf("latest view missing its score breakdown:\n%s", latestBody)
+	}
 
 	dateParam := oldDate.Local().Format("2006-01-02")
 	historicalResp, err := app.Test(reqWithSession(http.MethodGet, host, base+"?date="+dateParam, raw), -1)
@@ -185,7 +190,8 @@ func TestTrivyDetail_RendersPerCVETableFromStoredBlobOnly(t *testing.T) {
 	// registerMetricDetailRoutes / renderTrivyDetail) — a 200 built purely
 	// from the seeded row already proves the page renders from the stored
 	// blob, not a live call, since there is no live client to call.
-	for _, want := range []string{"CVE-2024-9999", "openssl", "a stored finding"} {
+	for _, want := range []string{"CVE-2024-9999", "openssl", "a stored finding",
+		"100 − 1 critical × 20 − 0 high × 5 = 80 · a critical finding caps it at 49 = 49"} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
 		}

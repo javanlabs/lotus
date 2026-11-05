@@ -13,6 +13,7 @@
     </span>
     {{end}}
   </div>
+  {{template "score_breakdown" $v.Breakdown}}
   {{if not $v.HasData}}
   <div class="lotus-panel-empty">No GitLab data collected for this repository yet.</div>
   {{else}}
@@ -30,6 +31,9 @@
         {{template "status_badge" (dict "Text" (or $v.PipelineStatus "no data") "Tone" $v.PipelineTone)}}
         {{if $v.PipelineWebURL}}<a href="{{$v.PipelineWebURL}}" target="_blank" rel="noopener" style="font-size:11px;color:var(--status-pass)">open in GitLab ↗</a>{{end}}
       </div>
+      {{if $v.InFlight}}
+      <div style="margin-top:8px;font-size:11px;color:var(--text-muted)" data-testid="last-finished">still {{$v.PipelineStatus}}: no verdict yet · the score counts the last finished pipeline{{if $v.LastFinished}}, which {{if eq $v.LastFinished "success"}}passed{{else}}{{$v.LastFinished}}{{end}}{{else}} (none in the sample){{end}}</div>
+      {{end}}
       <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">duration {{$v.LastDuration}} · finished {{$v.PipelineFinished}}</div>
       <div style="margin-top:4px;font-size:11px;color:var(--text-muted)">success rate (recent sample): {{$v.SuccessRate}}</div>
     </section>

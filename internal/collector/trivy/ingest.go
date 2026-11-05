@@ -29,7 +29,7 @@ func (ingestor) Parse(ctx context.Context, payload []byte, meta collector.Ingest
 	}
 
 	now := timePtr(nowFunc())
-	failOn := failOnFromSettings(meta.OrgSettings)
+	failOn := FailOnFromSettings(meta.OrgSettings)
 	return buildResult(trivyDetail{
 		Source:         "push",
 		Severity:       report.Severity,

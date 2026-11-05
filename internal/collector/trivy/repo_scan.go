@@ -199,7 +199,7 @@ func (s *repoSession) Collect(ctx context.Context, req collector.CollectRequest)
 			Medium: parsed.Medium, Low: parsed.Low, Unknown: parsed.Unknown},
 		ScanFinishedAt: timePtr(nowFunc()),
 		RawReport:      trivyclient.CompactForStorage(raw),
-	}, failOnFromSettings(req.OrgSettings))
+	}, FailOnFromSettings(req.OrgSettings))
 }
 
 // RepoSource is a repository scan's trivy_snapshots.source.

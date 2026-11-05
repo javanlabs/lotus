@@ -26,12 +26,12 @@
     </form>
     {{end}}
   </div>
+  {{template "score_breakdown" .Data.Breakdown}}
   {{if not .Data.HasData}}
   <div class="lotus-panel-empty">{{if .Data.SelectedDate}}No Sentry snapshot for this binding on {{.Data.SelectedDate}}.{{else}}No Sentry data collected for this binding yet.{{end}}</div>
   {{else}}
   <div class="lotus-panel-figures">
-    {{template "panel_figure" (dict "Label" "SCORE" "Value" .Data.ScoreText "Tone" .Data.Tone "Sub" "out of 100"
-      "Badge" (dict "Text" .Data.Grade "Tone" .Data.Tone))}}
+    {{template "panel_figure" (dict "Label" "SCORE" "Value" .Data.ScoreText "Tone" .Data.Tone "Sub" "out of 100")}}
     {{template "panel_figure" (dict "Label" "UNRESOLVED ISSUES" "Value" (printf "%d" .Data.TotalIssues) "Tone" "none")}}
     {{range .Data.Statuses}}{{template "panel_figure" (dict "Label" .Label "Value" (printf "%d" .Count) "Tone" "none")}}{{end}}
   </div>

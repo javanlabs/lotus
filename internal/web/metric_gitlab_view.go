@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	glclient "github.com/uyab/lotus/internal/clients/gitlab"
 	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/repo"
 	"github.com/uyab/lotus/internal/tenant"
@@ -26,8 +27,14 @@ type gitlabDetailView struct {
 
 	BranchesTotal, BranchesActive, BranchesStale int
 
-	PipelineStatus   string
-	PipelineTone     string
+	PipelineStatus string
+	PipelineTone   string
+	// InFlight is a last pipeline still running or pending: no verdict
+	// yet, and not a failure. LastFinished is then the newest finished
+	// pipeline's status ("" with none in the sample) — the one the
+	// score's cap reads, so the page says which verdict it counted.
+	InFlight         bool
+	LastFinished     string
 	PipelineWebURL   string
 	LastDuration     string
 	PipelineFinished string
@@ -46,6 +53,9 @@ type gitlabDetailView struct {
 	// collected_at); each has its absolute time beside it for the hover.
 	CapturedAt, CapturedAtFull string
 	SyncedAt, SyncedAtFull     string
+
+	// Breakdown is how the headline score was computed.
+	Breakdown *scoreBreakdown
 }
 
 func buildGitlabDetailView(snap *repo.GitlabSnapshot) gitlabDetailView {
@@ -90,6 +100,9 @@ func buildGitlabDetailView(snap *repo.GitlabSnapshot) gitlabDetailView {
 			// In flight, so no verdict yet — not a failure.
 			v.PipelineTone = "none"
 		}
+	}
+	if v.PipelineStatus != "" && !glclient.PipelineFinished(v.PipelineStatus) {
+		v.InFlight, v.LastFinished = true, gitlabLastFinished(snap)
 	}
 	if snap.LastPipelineWebURL != nil {
 		v.PipelineWebURL = *snap.LastPipelineWebURL
@@ -160,6 +173,7 @@ func renderGitlabDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 		snap = nil
 	}
 	view := buildGitlabDetailView(snap)
+	view.Breakdown = gitlabBreakdown(snap)
 	cards, err := buildMetricChartCards(c.Context(), s, chrome.Binding.ID, chrome.Binding.Kind, "7d")
 	if err != nil {
 		return writeRepoErr(c, err)

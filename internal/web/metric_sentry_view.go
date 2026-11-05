@@ -89,13 +89,11 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 		return writeRepoErr(c, err)
 	}
 
-	envs := make([]string, 0, len(snaps))
 	byEnv := make(map[string]repo.SentrySnapshot, len(snaps))
 	for _, snap := range snaps {
-		envs = append(envs, snap.Environment)
 		byEnv[snap.Environment] = snap
 	}
-	sort.Strings(envs)
+	envs := sentryEnvOrder(snaps)
 
 	selectedEnv := strings.TrimSpace(c.Query("env"))
 	if _, ok := byEnv[selectedEnv]; !ok {
@@ -111,20 +109,22 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 	}
 
 	data := struct {
-		Chrome         metricChrome
-		HasData        bool
-		Environments   []string
-		SelectedEnv    string
-		ProjectSlug    string
-		ProjectName    string
-		Platform       string
-		TeamSlug       string
-		TotalIssues    int
-		NoSignal       bool
-		CapturedAt     string
-		ScoreText      string
-		Grade          string
-		Tone           string
+		Chrome       metricChrome
+		HasData      bool
+		Environments []string
+		SelectedEnv  string
+		ProjectSlug  string
+		ProjectName  string
+		Platform     string
+		TeamSlug     string
+		TotalIssues  int
+		NoSignal     bool
+		CapturedAt   string
+		ScoreText    string
+		Tone         string
+		// Breakdown is how the environment's score was computed; the
+		// first environment is the one the headline came from.
+		Breakdown      *scoreBreakdown
 		Statuses       []sentryStatusOption
 		SelectedStatus string
 		Rows           []sentryIssueRow
@@ -151,17 +151,14 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 	data.Platform = snap.Platform
 	data.TeamSlug = snap.TeamSlug
 	data.TotalIssues = snap.TotalIssues
-	// No issues and no grade: nothing was measured, as opposed to a clean A.
-	data.NoSignal = snap.TotalIssues == 0 && snap.Grade == nil
+	// No score: nothing was measured, as opposed to a clean 100.
+	data.NoSignal = snap.Score == nil
 	data.CapturedAt = relativeTimeStr(snap.CapturedAt)
-	data.ScoreText, data.Grade, data.Tone = "–", "–", "none"
+	data.ScoreText, data.Tone = "–", bandTone(snap.Score)
 	if snap.Score != nil {
 		data.ScoreText = strconv.Itoa(*snap.Score)
 	}
-	if snap.Grade != nil {
-		data.Grade = *snap.Grade
-		data.Tone = sentryGradeTone(*snap.Grade)
-	}
+	data.Breakdown = sentryBreakdown(snap)
 
 	issues, err := repo.ListSentryIssuesForSnapshot(c.Context(), s, snap.ID)
 	if err != nil {
@@ -203,11 +200,33 @@ func renderSentryDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrom
 	})
 }
 
-func sentryGradeTone(grade string) string {
-	switch grade {
-	case "A", "B":
-		return "pass"
-	default:
-		return "fail"
+// sentryEnvOrder lists the environments with the one the headline came
+// from first — the worst, as the collector picks it (lowest score; one
+// with no signal only when none has a score) — then the rest by name. The
+// page opens on it, so the score it leads with is the tab's number.
+func sentryEnvOrder(snaps []repo.SentrySnapshot) []string {
+	worst := -1
+	for i, s := range snaps {
+		switch {
+		case worst < 0:
+			worst = i
+		case s.Score != nil && (snaps[worst].Score == nil || *s.Score < *snaps[worst].Score):
+			worst = i
+		case s.Score != nil && snaps[worst].Score != nil && *s.Score == *snaps[worst].Score && s.Environment < snaps[worst].Environment:
+			worst = i
+		case s.Score == nil && snaps[worst].Score == nil && s.Environment < snaps[worst].Environment:
+			worst = i
+		}
 	}
+	envs := make([]string, 0, len(snaps))
+	for i, s := range snaps {
+		if i != worst {
+			envs = append(envs, s.Environment)
+		}
+	}
+	sort.Strings(envs)
+	if worst >= 0 {
+		envs = append([]string{snaps[worst].Environment}, envs...)
+	}
+	return envs
 }

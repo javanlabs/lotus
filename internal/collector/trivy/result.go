@@ -45,12 +45,12 @@ type trivyDetail struct {
 	RawReport      json.RawMessage
 }
 
-// failOnFromSettings reads organizations.settings->>'trivy_fail_on',
+// FailOnFromSettings reads organizations.settings->>'trivy_fail_on',
 // defaulting to "critical" — task 3.4's literal headline table
 // ("critical > 0 → fail; high > 0 → warn") IS the critical policy; "high"
 // and "any" are progressively stricter opt-ins, never the unannounced
 // default.
-func failOnFromSettings(orgSettings json.RawMessage) string {
+func FailOnFromSettings(orgSettings json.RawMessage) string {
 	var s struct {
 		TrivyFailOn string `json:"trivy_fail_on"`
 	}

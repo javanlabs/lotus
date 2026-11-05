@@ -1,0 +1,13 @@
+{{/* score_breakdown is a metric page's one line on how its headline score
+     came about: the score and its band word, then the arithmetic —
+     "Coverage 90 · Worst rating A → 100 · Gate failed ×0.5 = 48". With no
+     score it says why ("No signal"). Takes a *scoreBreakdown
+     (internal/web/metric_breakdown.go); nil draws nothing. */}}
+{{define "score_breakdown"}}{{with .}}
+<div class="lotus-panel-breakdown" data-testid="score-breakdown">
+  <span class="lotus-panel-section-title">SCORE</span>
+  <span class="lotus-panel-breakdown-score lotus-text-{{.Tone}}">{{.Score}}</span>
+  <span class="lotus-badge lotus-badge-{{.Tone}}">{{.Word}}</span>
+  {{if .Text}}<span class="lotus-panel-breakdown-text">{{.Text}}</span>{{end}}
+</div>
+{{end}}{{end}}

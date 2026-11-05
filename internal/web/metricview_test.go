@@ -1,6 +1,7 @@
 package web
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -146,7 +147,9 @@ func TestBuildSonarDetailView_FailureThresholds(t *testing.T) {
 			t.Errorf("Ratings[%d] = %+v, want %+v", i, v.Ratings[i], w)
 		}
 	}
-	if v.Ratings[0].Badge.Tone != "fail" || v.Ratings[2].Badge.Tone != "pass" {
+	// SonarQube's own letters are coloured by the points they are worth: B
+	// (80) is healthy like A, no longer grey.
+	if v.Ratings[0].Badge.Tone != "fail" || v.Ratings[1].Badge.Tone != "pass" || v.Ratings[2].Badge.Tone != "pass" {
 		t.Errorf("rating tones = %+v", v.Ratings)
 	}
 	if v.NCLOC != "12,000" || v.Complexity != "500" {
@@ -302,13 +305,72 @@ func TestSentryStatusOptions_OmitsCountsAtZero(t *testing.T) {
 	}
 }
 
-func TestSentryGradeTone(t *testing.T) {
+// The Sentry page opens on the environment the headline came from — the
+// lowest score — and lists the rest by name; with no score anywhere it is
+// simply alphabetical.
+func TestSentryEnvOrder_HeadlineEnvironmentFirst(t *testing.T) {
 	t.Parallel()
-	cases := map[string]string{"A": "pass", "B": "pass", "C": "fail", "D": "fail", "E": "fail", "": "fail"}
-	for grade, want := range cases {
-		if got := sentryGradeTone(grade); got != want {
-			t.Errorf("sentryGradeTone(%q) = %q, want %q", grade, got, want)
-		}
+	sc := func(v int) *int { return &v }
+	snaps := []repo.SentrySnapshot{
+		{Environment: "dev", Score: sc(95)},
+		{Environment: "production", Score: sc(40)},
+		{Environment: "staging", Score: nil},
+		{Environment: "canary", Score: sc(70)},
+	}
+	if got := sentryEnvOrder(snaps); strings.Join(got, ",") != "production,canary,dev,staging" {
+		t.Errorf("order = %v", got)
+	}
+	none := []repo.SentrySnapshot{{Environment: "b"}, {Environment: "a"}}
+	if got := sentryEnvOrder(none); strings.Join(got, ",") != "a,b" {
+		t.Errorf("order with no scores = %v", got)
+	}
+}
+
+// Each metric page's breakdown is the scoring function's own line, from
+// the snapshot shown.
+func TestMetricBreakdowns(t *testing.T) {
+	t.Parallel()
+	str := func(v string) *string { return &v }
+	f := func(v float64) *float64 { return &v }
+	i := func(v int) *int { return &v }
+	sonar := sonarBreakdown(&repo.SonarSnapshot{Coverage: f(90), ReliabilityRating: str("A"), SecurityRating: str("A"), SqaleRating: str("A"), QualityGate: str("ERROR")})
+	if sonar.Score != "48" || sonar.Tone != "fail" || sonar.Word != "Needs attention" || sonar.Text != "Coverage 90 · Worst rating A → 100 · Gate failed ×0.5 = 48" {
+		t.Errorf("sonar = %+v", sonar)
+	}
+	trivy := trivyBreakdown(&repo.TrivySnapshot{Total: 31, Critical: 1, High: 5}, false, "critical")
+	if trivy.Score != "49" || trivy.Text != "100 − 1 critical × 20 − 5 high × 5 = 55 · a critical finding caps it at 49 = 49" {
+		t.Errorf("trivy = %+v", trivy)
+	}
+	if ns := trivyBreakdown(&repo.TrivySnapshot{}, true, ""); ns.Score != "–" || ns.Tone != "none" || ns.Word != "Not scanned" {
+		t.Errorf("not scanned = %+v", ns)
+	}
+	sentry := sentryBreakdown(repo.SentrySnapshot{Score: i(80), Load: f(5.6), TotalIssues: 4})
+	if sentry.Score != "80" || sentry.Tone != "pass" || sentry.Word != "Healthy" {
+		t.Errorf("sentry = %+v", sentry)
+	}
+	gitlab := gitlabBreakdown(&repo.GitlabSnapshot{PipelineSuccessRate: f(0.85), BranchesTotal: i(10), BranchesStale: i(3),
+		LastPipelineStatus: str("running"), RawJSON: []byte(`{"LastPipelineStatus":"running","LastFinishedPipelineStatus":"failed"}`)})
+	if gitlab.Score != "49" || gitlab.Text != "Pipelines 85% · 3 of 10 branches stale −6 = 79 · last finished pipeline failed, capped at 49 = 49" {
+		t.Errorf("gitlab = %+v", gitlab)
+	}
+	if none := gitlabBreakdown(&repo.GitlabSnapshot{BranchesTotal: i(3), BranchesStale: i(0)}); none.Score != "–" || none.Word != "No pipeline data" {
+		t.Errorf("gitlab without pipelines = %+v", none)
+	}
+}
+
+// While the last pipeline is still running the GitLab page says which
+// finished pipeline the score counted, as the headline does.
+func TestGitlabDetailView_InFlightNamesTheLastFinished(t *testing.T) {
+	t.Parallel()
+	str := func(v string) *string { return &v }
+	v := buildGitlabDetailView(&repo.GitlabSnapshot{LastPipelineStatus: str("running"),
+		RawJSON: []byte(`{"LastPipelineStatus":"running","LastFinishedPipelineStatus":"failed"}`)})
+	if !v.InFlight || v.LastFinished != "failed" || v.PipelineTone != "none" {
+		t.Errorf("view = in flight %v, last finished %q, tone %q", v.InFlight, v.LastFinished, v.PipelineTone)
+	}
+	done := buildGitlabDetailView(&repo.GitlabSnapshot{LastPipelineStatus: str("success")})
+	if done.InFlight || done.LastFinished != "" {
+		t.Errorf("a finished pipeline is not in flight: %+v", done)
 	}
 }
 

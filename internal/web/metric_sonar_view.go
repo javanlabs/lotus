@@ -47,6 +47,8 @@ type sonarDetailView struct {
 	Languages             string
 	LastScanAt            string
 	CapturedAt            string
+	// Breakdown is how the headline score was computed.
+	Breakdown *scoreBreakdown
 }
 
 // sonarRating is one SonarQube rating, labelled, as its letter's pill.
@@ -189,6 +191,7 @@ func renderSonarDetail(c *fiber.Ctx, d Deps, s tenant.Scope, chrome metricChrome
 	}
 
 	view := buildSonarDetailView(snap)
+	view.Breakdown = sonarBreakdown(snap)
 	cards, err := buildMetricChartCards(c.Context(), s, chrome.Binding.ID, chrome.Binding.Kind, "7d")
 	if err != nil {
 		return writeRepoErr(c, err)

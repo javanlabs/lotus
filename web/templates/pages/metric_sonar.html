@@ -24,6 +24,7 @@
     {{end}}
   </div>
 
+  {{template "score_breakdown" $v.Breakdown}}
   {{if not $v.HasData}}
   <div class="lotus-panel-empty">{{if .Data.SelectedDate}}No SonarQube snapshot exists for this repository on {{.Data.SelectedDate}}.{{else}}No SonarQube data collected for this repository yet.{{end}}</div>
   {{else}}
@@ -38,6 +39,7 @@
     {{template "panel_figure" (dict "Label" "COMPLEXITY" "Value" $v.Complexity "Tone" "none")}}
   </div>
   <div class="lotus-panel-foot">
+    <span class="lotus-panel-note" data-testid="sonar-ratings-caption">SonarQube's own ratings (A best, E worst)</span>
     {{range $v.Ratings}}<dl><dt>{{.Label}}</dt><dd>{{template "status_badge" .Badge}}</dd></dl>{{end}}
     <dl><dt>Languages</dt><dd>{{$v.Languages}}</dd></dl>
     <dl><dt>Test time</dt><dd>{{$v.TestDuration}}</dd></dl>

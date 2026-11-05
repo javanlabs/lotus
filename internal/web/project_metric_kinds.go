@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/uyab/lotus/internal/repo"
+	"github.com/uyab/lotus/internal/scoring"
 )
 
 // The four kinds' columns and summary cards, ported from the legacy fleet
@@ -62,7 +63,7 @@ func buildSonarKindPage(b *kindPageBase, snaps []repo.SonarSnapshot) kindPage {
 		{Label: "DUP", Width: "minmax(46px,.45fr)", Sort: "num", Right: true, Title: "Duplicated lines; over 30% is drawn red"},
 		{Label: "VULN", Width: "minmax(40px,.45fr)", Sort: "num", Right: true, Title: "Any vulnerability is drawn red"},
 		{Label: "LOC", Width: "minmax(50px,.5fr)", Sort: "num", Right: true, Title: "Lines of code"},
-		{Label: "R · S · M", Width: "76px", Title: "Reliability · Security · Maintainability ratings, A best to E worst"},
+		{Label: "R · S · M", Width: "76px", Title: "SonarQube's own Reliability · Security · Maintainability ratings, A best to E worst"},
 		{Label: "GATE", Width: "minmax(60px,.55fr)", Sort: "num", Title: "Quality gate"},
 	})
 
@@ -158,17 +159,17 @@ func buildSonarKindPage(b *kindPageBase, snaps []repo.SonarSnapshot) kindPage {
 	return b.finish(sonarGateCol, func(i int) *time.Time { return syncedAt[i] })
 }
 
-// sonarGrade is one SonarQube rating letter as a pill: A passes, C to E
-// fail, B is neither.
+// sonarGrade is one of SonarQube's own rating letters as a pill — an
+// input to the score, not a Lotus grade — coloured to match the points it
+// is worth (scoring.SonarRatingPoints): A (100) and B (80) are in the
+// healthy band, C to E (60 and below) are not. B used to be grey, the one
+// letter whose colour said nothing.
 func sonarGrade(letter, what string) badgeCell {
 	tone := "none"
-	switch letter {
-	case "A":
-		tone = "pass"
-	case "C", "D", "E":
-		tone = "fail"
+	if pts, ok := scoring.SonarRatingPoints[letter]; ok {
+		tone = bandTone(&pts)
 	}
-	return badgeCell{Text: letter, Tone: tone, Title: what + " rating " + letter}
+	return badgeCell{Text: letter, Tone: tone, Title: fmt.Sprintf("SonarQube's own %s rating %s (A best, E worst)", strings.ToLower(what), letter)}
 }
 
 // --- Trivy ---------------------------------------------------------------

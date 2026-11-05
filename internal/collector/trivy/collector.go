@@ -157,7 +157,7 @@ func (s *session) Collect(ctx context.Context, req collector.CollectRequest) (co
 		}
 	}
 
-	failOn := failOnFromSettings(req.OrgSettings)
+	failOn := FailOnFromSettings(req.OrgSettings)
 	return buildResult(trivyDetail{
 		Source:         "registry",
 		Digest:         art.Digest,
