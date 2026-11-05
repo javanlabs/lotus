@@ -103,8 +103,10 @@ func TestRecordProjectDay_WritesTodayFromTheProjection(t *testing.T) {
 		t.Fatalf("got %d rows, want one for today: %+v", len(days), days)
 	}
 	got := dayOf(t, days, todayWIB())
-	if got.Status != "fail" || got.Status != string(want.Status) {
-		t.Errorf("status = %q, want fail (rollup %q)", got.Status, want.Status)
+	// The project's status is read from its score: SonarQube's 90 is the
+	// only score (Trivy reports none), so the project passes.
+	if got.Status != "pass" || got.Status != string(want.Status) {
+		t.Errorf("status = %q, want pass (rollup %q)", got.Status, want.Status)
 	}
 	if (got.Score == nil) != (want.Score == nil) || (got.Score != nil && *got.Score != *want.Score) {
 		t.Errorf("score = %v, want the rollup's %v", got.Score, want.Score)

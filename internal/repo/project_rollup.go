@@ -1,71 +1,91 @@
 package repo
 
-import "github.com/uyab/lotus/internal/collector"
+import (
+	"github.com/uyab/lotus/internal/collector"
+	"github.com/uyab/lotus/internal/scoring"
+)
 
 // KindRollup is one integration kind's aggregate across every component in
-// a project — SonarQube coverage averaged over all of a project's repos,
-// say. Count is how many components actually reported this kind, which is
-// what the dashboard needs to say "3/17 components reporting".
+// a project — SonarQube averaged over all of a project's repos, say.
 type KindRollup struct {
+	// Status is read from Score: pass at 80 or more.
 	Status collector.Status
-	Score  *int
-	Count  int
+	// Score is Avg rounded half up, for display; nil when no component
+	// has a score for the kind.
+	Score *int
+	// Avg is the unrounded average the project score is built from, so
+	// the project rounds once rather than once per kind.
+	Avg *float64
+	// Count is how many components report this kind at all (scored or
+	// not); Scored how many have a score, and Below how many of those
+	// score under 80 — the KPI tab's "N of M below 80".
+	Count, Scored, Below int
 }
 
 // ProjectRollup is a project's single Lotus score plus the per-kind
 // breakdown it was built from.
 type ProjectRollup struct {
+	// Status is read from Score.
 	Status collector.Status
 	Score  *int
 	Kinds  map[string]KindRollup
+	// Components is how many components were rolled up, and
+	// NeedAttention how many of them have at least one kind below 80 —
+	// "N of M components need attention", the count an average hides.
+	Components, NeedAttention int
 }
 
 // RollupProject computes a project's Lotus score by averaging each
 // integration kind across the project's components first, and only then
-// combining those per-kind averages.
+// combining those per-kind averages (0432478).
 //
 // The two-step shape is the point. A flat average over every component
 // would weight a kind by how many components happen to report it: a project
 // with nine repos wired to GitLab and one SonarQube key would let GitLab
-// outvote SonarQube nine to one, and adding a tenth repo would silently
-// reweight the project's health without anything about its quality
-// changing. Averaging per kind first gives every integration the project
-// uses the same say, whatever its component count.
+// outvote SonarQube nine to one. Averaging per kind first gives every
+// integration the project uses the same say, whatever its component count.
+// A kind or a component with no score is left out of every average, never
+// counted as zero.
 //
-// Status is worst-wins at both steps, matching how a single component
-// already rolls its own kinds up: one failing integration makes the project
-// failing however healthy the rest are. A kind that reports a status but no
-// score — Trivy counts findings rather than grading them — therefore shapes
-// the status while staying out of the average.
+// Nothing is rounded until the end: the per-kind averages are combined
+// unrounded and the project's score is rounded once, half up. There is no
+// cap at this level; a kind's hard failure has already capped that kind's
+// own score. The status is read from the score, so a project's verdict is
+// its band — and NeedAttention says how many components that average is
+// hiding.
 func RollupProject(components []ComponentMetric) ProjectRollup {
 	perKindScores := map[string][]*int{}
-	perKindStatuses := map[string][]collector.Status{}
+	roll := ProjectRollup{Components: len(components)}
 
 	for _, c := range components {
-		for kind, kh := range c.Metrics() {
+		kinds := c.Metrics()
+		if NeedsAttention(kinds) {
+			roll.NeedAttention++
+		}
+		for kind, kh := range kinds {
 			perKindScores[kind] = append(perKindScores[kind], kh.Score)
-			perKindStatuses[kind] = append(perKindStatuses[kind], collector.Status(kh.Status))
 		}
 	}
 
-	kinds := make(map[string]KindRollup, len(perKindScores))
-	kindScores := make([]*int, 0, len(perKindScores))
-	kindStatuses := make([]collector.Status, 0, len(perKindScores))
-
+	roll.Kinds = make(map[string]KindRollup, len(perKindScores))
+	kindAvgs := make([]*float64, 0, len(perKindScores))
 	for kind, scores := range perKindScores {
-		k := KindRollup{
-			Status: RollupStatus(perKindStatuses[kind]),
-			Score:  RollupScore(scores),
-			Count:  len(scores),
+		k := KindRollup{Avg: scoring.Average(scores), Count: len(scores)}
+		k.Score = scoring.Rounded(k.Avg)
+		k.Status = collector.StatusForScore(k.Score)
+		for _, s := range scores {
+			if s != nil {
+				k.Scored++
+				if !scoring.Passes(*s) {
+					k.Below++
+				}
+			}
 		}
-		kinds[kind] = k
-		kindScores = append(kindScores, k.Score)
-		kindStatuses = append(kindStatuses, k.Status)
+		roll.Kinds[kind] = k
+		kindAvgs = append(kindAvgs, k.Avg)
 	}
 
-	return ProjectRollup{
-		Status: RollupStatus(kindStatuses),
-		Score:  RollupScore(kindScores),
-		Kinds:  kinds,
-	}
+	roll.Score = scoring.Rounded(scoring.AverageFloat(kindAvgs))
+	roll.Status = collector.StatusForScore(roll.Score)
+	return roll
 }

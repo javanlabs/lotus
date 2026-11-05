@@ -70,9 +70,9 @@ func (c ComponentMetric) StatusValue() collector.Status { return collector.Statu
 
 // UpsertComponentMetric merges kind's headline into componentID's
 // projection row (creating it on first write) and recomputes the row's
-// own rollup status/score from every kind now present — task 3.6's
-// component-level rollup rule: worst status across kinds (fail > warn >
-// pass > unknown), score = average of the kinds that have one. Opens its
+// own rollup status/score from every kind now present (ComponentRollup:
+// the average of the kinds that have a score, rounded once, and the
+// status read from that score). Opens its
 // own transaction; snapshotWrite (snapshot_write.go) calls the
 // tx-scoped sibling of this instead when it needs the upsert to land
 // atomically with a detail write.
@@ -135,14 +135,7 @@ func rollupProjectionTx(ctx context.Context, tx *sqlx.Tx, componentID uuid.UUID,
 	if err := json.Unmarshal(metricsJSON, &merged); err != nil {
 		return err
 	}
-	statuses := make([]collector.Status, 0, len(merged))
-	scores := make([]*int, 0, len(merged))
-	for _, kh := range merged {
-		statuses = append(statuses, collector.Status(kh.Status))
-		scores = append(scores, kh.Score)
-	}
-	rollupStatus := RollupStatus(statuses)
-	rollupScore := RollupScore(scores)
+	rollupStatus, rollupScore := ComponentRollup(merged)
 
 	var projectID uuid.UUID
 	if err := tx.GetContext(ctx, &projectID, `
