@@ -7,6 +7,16 @@
   @mouseenter="$dispatch('lotus-tip', { text: $el.dataset.tip, rect: $el.getBoundingClientRect() })" @mouseleave="$dispatch('lotus-tip', null)"
   @focus="$dispatch('lotus-tip', { text: $el.dataset.tip, rect: $el.getBoundingClientRect() })" @blur="$dispatch('lotus-tip', null)">{{.Text}}</span>{{else}}<span class="lotus-badge lotus-badge-{{.Tone}}"{{if .Title}} title="{{.Title}}"{{end}}>{{.Text}}</span>{{end}}{{end}}
 
+{{/* status_badge_link is status_badge as a link to the page behind the
+     value (a badgeCell with Href and LinkLabel set). It is one element, so
+     a stale value has one tab stop, not a focusable pill inside a link;
+     LinkLabel names where it leads, since the text alone is just a number.
+     Raised above a row's stretched link (lotus-badge-link) so it wins the
+     click. */}}
+{{define "status_badge_link"}}{{if .Stale}}<a href="{{.Href}}" class="lotus-badge lotus-badge-{{.Tone}} lotus-badge-link lotus-badge-stale" aria-label="{{.LinkLabel}}. {{.Stale}}" data-tip="{{.Stale}}"
+  @mouseenter="$dispatch('lotus-tip', { text: $el.dataset.tip, rect: $el.getBoundingClientRect() })" @mouseleave="$dispatch('lotus-tip', null)"
+  @focus="$dispatch('lotus-tip', { text: $el.dataset.tip, rect: $el.getBoundingClientRect() })" @blur="$dispatch('lotus-tip', null)">{{.Text}}</a>{{else}}<a href="{{.Href}}" class="lotus-badge lotus-badge-{{.Tone}} lotus-badge-link" aria-label="{{.LinkLabel}}"{{if .Title}} title="{{.Title}}"{{end}}>{{.Text}}</a>{{end}}{{end}}
+
 {{/* status_dot is the small vertical bar used next to a repository name
      to show its rollup status at a glance, same Tone vocabulary. */}}
 {{define "status_dot"}}<span class="lotus-status-dot lotus-status-dot-{{.}}"></span>{{end}}

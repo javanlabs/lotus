@@ -62,4 +62,17 @@ test('a metric that has not synced for a day is drawn dashed, with a note saying
 
   await page.mouse.move(0, 0);
   await expect(tip).toBeHidden();
+
+  // Each value opens the component's tab for its integration; an
+  // integration the component does not report is plain text, not a link.
+  await expect(freshRow.getByRole('link', { name: 'billing-api, GitLab: Pass' }))
+    .toHaveAttribute('href', '/projects/p/components/a/metrics/gitlab');
+  await expect(staleCells.first()).toHaveAttribute('href', '/projects/p/components/b/metrics/trivy');
+  await expect(freshRow.locator('a.lotus-badge')).toHaveCount(1);
+  await expect(freshRow.locator('span.lotus-badge', { hasText: '–' })).toHaveCount(3);
+
+  // The row still opens the component from anywhere outside a value (here
+  // its top-left corner, by the row number).
+  await freshRow.click({ position: { x: 6, y: 6 } });
+  await expect(page).toHaveURL(`${origin}/projects/p/components/a`);
 });

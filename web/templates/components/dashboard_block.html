@@ -39,17 +39,22 @@
     </div>
 
     <div x-ref="rows" style="display:contents">
+    {{/* A row is a <div>, not an <a>: its metric cells are links of their
+         own, and links cannot nest. The name is the row's link, and its
+         ::after (lotus-row-link) stretches over the whole row, so the row
+         still opens anywhere it is clicked, middle-click included; the
+         cell links sit above that overlay. */}}
     {{range .Rows}}
-    <a href="{{.Href}}" class="lotus-repo-row" style="text-decoration:none;color:inherit" x-show="filter==='all' || filter==='{{.Tone}}'">
+    <div class="lotus-repo-row lotus-repo-row-selectable" x-show="filter==='all' || filter==='{{.Tone}}'">
       <div style="font:400 10.5px 'IBM Plex Mono',monospace;color:#9CA3AF">{{.N}}</div>
       <div data-sort="{{.Name}}" style="display:flex;align-items:center;gap:8px;min-width:0">
         {{template "status_dot" .Tone}}
-        <span style="font-size:12.5px;font-weight:600;color:#111827;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</span>
+        <a href="{{.Href}}" class="lotus-row-link" style="font-size:12.5px;font-weight:600;color:#111827;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Name}}</a>
         {{range .Tags}}<span class="lotus-tag">{{.Name}}</span>{{end}}
         {{if .Subtext}}<span style="font:400 9.5px 'IBM Plex Mono',monospace;color:#9CA3AF;flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Subtext}}</span>{{end}}
       </div>
       {{template "project_row_metrics" .}}
-    </a>
+    </div>
     {{end}}
     </div>
     </div>
@@ -76,7 +81,11 @@
 
 {{/* project_row_metrics is a project or component row's cells after its
      name: the score with its bar, the optional trend, and one badge per
-     integration column. Takes "." = a dashboardRow. */}}
+     integration column — a link to that kind's page when the cell has one
+     (badgeCell.Href). Takes "." = a dashboardRow. The last-updated text
+     is a second, unfocusable link to the row's page: raised above the
+     row's overlay so its title (the absolute time) still shows on hover,
+     it must still open the row when clicked. */}}
 {{define "project_row_metrics"}}
       <div data-sort="{{if .ScoreValue}}{{.ScoreValue}}{{end}}" style="display:flex;align-items:center;gap:7px">
         <span class="lotus-text-{{.Tone}}" style="font:600 12px 'IBM Plex Mono',monospace;width:20px">{{.Score}}</span>
@@ -89,8 +98,8 @@
         <span style="display:block;height:26px"></span>
       </div>
       {{end}}
-      {{range .Cells}}<div data-sort="{{if .Sort}}{{.Sort}}{{end}}" style="display:flex;justify-content:center;min-width:0">{{template "status_badge" .}}</div>{{end}}
+      {{range .Cells}}<div data-sort="{{if .Sort}}{{.Sort}}{{end}}" style="display:flex;justify-content:center;min-width:0">{{if .Href}}{{template "status_badge_link" .}}{{else}}{{template "status_badge" .}}{{end}}</div>{{end}}
       {{with .Updated}}<div data-sort="{{if .Sort}}{{.Sort}}{{end}}" style="display:flex;align-items:center;gap:6px;min-width:0;font:400 11px 'IBM Plex Mono',monospace;color:#6B7280;white-space:nowrap">
-        <span title="{{.Title}}">{{.Text}}</span>
+        <a href="{{$.Href}}" class="lotus-row-action" tabindex="-1" aria-hidden="true" title="{{.Title}}" style="color:inherit;text-decoration:none">{{.Text}}</a>
       </div>{{end}}
 {{end}}

@@ -76,6 +76,14 @@ type badgeCell struct {
 	// lives here rather than being lost — it is the reason the number is
 	// what it is.
 	Title string
+	// Href opens the page behind the cell: a component's metric tab for
+	// its kind on a project page (metricURL), the project's page for the
+	// kind on the organization's project list (projectMetricURL). "" for
+	// a cell with nothing to open (see linkCells).
+	Href string
+	// LinkLabel is the link's accessible name — the cell's text alone
+	// ("84") says nothing about where it leads. Set with Href.
+	LinkLabel string
 }
 
 // kpiCard is one of the four fleet-wide rollup cards (Sonar gate, Trivy
@@ -332,6 +340,27 @@ func (ci componentInfo) url() string {
 	return componentURL(&repo.Project{ID: ci.ProjectID, Slug: ci.ProjectSlug}, &repo.Component{ID: ci.ID, Slug: ci.Slug})
 }
 
+// metricURL is the component's metric tab for kind.
+func (ci componentInfo) metricURL(kind string) string {
+	return metricURL(&repo.Project{ID: ci.ProjectID, Slug: ci.ProjectSlug}, &repo.Component{ID: ci.ID, Slug: ci.Slug}, kind)
+}
+
+// linkCells points every cell of cols whose kind has something to show
+// (has) at that kind's page (href). Any other cell — the kind is not
+// bound, or bound but not synced yet — stays plain text, as the health
+// map on the dashboard and the unbound tabs of a component's metric strip
+// do: an unbound kind's metric URL is a 404, and binding one is the
+// component page's Bind metric, which not every reader may use.
+func linkCells(cells []badgeCell, cols []dashboardColumn, rowName string, has func(kind string) bool, href func(kind string) string) {
+	for i, col := range cols {
+		if col.Key == "" || !has(col.Key) {
+			continue
+		}
+		cells[i].Href = href(col.Key)
+		cells[i].LinkLabel = fmt.Sprintf("%s, %s: %s", rowName, kindLabels[col.Key], cells[i].Text)
+	}
+}
+
 // buildDashboardViewModel is pure (no I/O) so it's unit-testable without a
 // database: the handler does every repo call, then hands the results here
 // to compute scores, KPI rollups, and table rows.
@@ -363,6 +392,10 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 		if has {
 			markStale(cells, componentColumns, cm, kindMap)
 		}
+		// Unbinding drops the kind from the projection row, so a kind
+		// present here has a live binding and its metric tab opens.
+		linkCells(cells, componentColumns, comp.Name,
+			func(k string) bool { _, ok := kindMap[k]; return ok }, comp.metricURL)
 		rows = append(rows, dashboardRow{
 			Name: comp.Name, Href: comp.url(),
 			Score: scoreStr, ScoreValue: scoreValue, ScorePct: scorePct, Tone: toneOf(status),
@@ -642,6 +675,13 @@ func projectRow(p repo.Project, components int, roll repo.ProjectRollup) dashboa
 		scoreStr = fmt.Sprintf("%d", *roll.Score)
 		scorePct = fmt.Sprintf("%d%%", clamp(*roll.Score, 0, 100))
 	}
+	cells := cellsFor(projectColumns, func(k string) badgeCell { return projectBadge(roll, k) })
+	// A rollup cell opens the project's page for its kind, as the project
+	// page's KPI tab for that kind does; a kind no component reports stays
+	// plain, as projectBadge draws it.
+	linkCells(cells, projectColumns, p.Name,
+		func(k string) bool { return roll.Kinds[k].Count > 0 },
+		func(k string) string { return projectMetricURL(&p, k) })
 	return dashboardRow{
 		Name:       p.Name,
 		Subtext:    fmt.Sprintf("%d component%s", components, plural(components, "", "s")),
@@ -650,7 +690,7 @@ func projectRow(p repo.Project, components int, roll repo.ProjectRollup) dashboa
 		ScoreValue: roll.Score,
 		ScorePct:   scorePct,
 		Tone:       toneOf(roll.Status),
-		Cells:      cellsFor(projectColumns, func(k string) badgeCell { return projectBadge(roll, k) }),
+		Cells:      cells,
 	}
 }
 

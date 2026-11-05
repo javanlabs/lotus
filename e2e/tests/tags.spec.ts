@@ -119,8 +119,8 @@ test('projects list is flat and filters by tag', async ({ page }) => {
   });
 
   await page.goto(`${origin}/projects`);
-  const payments = page.locator('a.lotus-repo-row', { hasText: 'Payments' });
-  const alur = page.locator('a.lotus-repo-row', { hasText: 'AlurKerja' });
+  const payments = page.locator('.lotus-repo-row', { hasText: 'Payments' });
+  const alur = page.locator('.lotus-repo-row', { hasText: 'AlurKerja' });
   await expect(payments).toBeVisible();
   await expect(alur).toBeVisible();
   await expect(payments.locator('.lotus-tag')).toHaveText('PROJECT');
@@ -143,7 +143,7 @@ test('projects list is flat and filters by tag', async ({ page }) => {
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page).toHaveURL(`${origin}/projects/billing`);
   await page.goto(`${origin}/projects`);
-  await expect(page.locator('a.lotus-repo-row', { hasText: 'Billing' })).toBeVisible();
+  await expect(page.locator('.lotus-repo-row', { hasText: 'Billing' })).toBeVisible();
 });
 
 test('owner tags a project from its page', async ({ page }) => {

@@ -354,6 +354,15 @@ body {
    may be out of date. A dashed outline keeps the tone readable; the
    hover note says which sync is missing and since when. */
 .lotus-badge-stale { outline: 1px dashed currentColor; outline-offset: -1px; cursor: help; }
+/* A badge that opens the page behind its value (status_badge_link): the
+   health map's cell affordance (a.lotus-dash-cell) — a ring in the
+   badge's own colour on hover, the focus halo on keyboard focus. Raised
+   above a row's stretched link (lotus-row-link) so the cell, not the
+   row, takes the click. A stale one keeps its dashed outline throughout. */
+.lotus-badge-link { position: relative; z-index: 1; text-decoration: none; cursor: pointer; transition: var(--transition-surface); }
+.lotus-badge-link:hover { box-shadow: inset 0 0 0 1px currentColor; }
+.lotus-badge-link:focus-visible { outline: none; box-shadow: var(--shadow-focus-ring); }
+.lotus-badge-link.lotus-badge-stale:focus-visible { outline: 1px dashed currentColor; }
 
 .lotus-status-dot { display: block; width: 3px; height: 16px; border-radius: 2px; flex: none; }
 .lotus-status-dot-pass { background: var(--status-pass); }
