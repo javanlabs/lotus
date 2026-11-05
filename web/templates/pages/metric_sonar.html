@@ -38,6 +38,20 @@
     {{template "panel_figure" (dict "Label" "LINES OF CODE" "Value" $v.NCLOC "Tone" "none")}}
     {{template "panel_figure" (dict "Label" "COMPLEXITY" "Value" $v.Complexity "Tone" "none")}}
   </div>
+  {{if or $v.Conditions $v.ConditionsMissing}}
+  <section class="lotus-panel-conditions" data-testid="gate-conditions">
+    <div class="lotus-panel-section-title">QUALITY GATE CONDITIONS</div>
+    {{if $v.ConditionsMissing}}<div class="lotus-panel-note">The gate failed, but this snapshot was taken before its conditions were recorded; the next sync records them.</div>{{end}}
+    {{range $v.Conditions}}
+    <div class="lotus-panel-condition">
+      {{template "status_badge" (dict "Text" (ternary .Failed "failed" "passed") "Tone" (ternary .Failed "fail" "pass"))}}
+      <span class="lotus-panel-condition-metric">{{.Metric}}</span>
+      <span class="lotus-panel-condition-value{{if .Failed}} lotus-text-fail{{end}}">{{.Actual}}</span>
+      <span class="lotus-panel-note">{{.Threshold}}</span>
+    </div>
+    {{end}}
+  </section>
+  {{end}}
   <div class="lotus-panel-foot">
     <span class="lotus-panel-note" data-testid="sonar-ratings-caption">SonarQube's own ratings (A best, E worst)</span>
     {{range $v.Ratings}}<dl><dt>{{.Label}}</dt><dd>{{template "status_badge" .Badge}}</dd></dl>{{end}}

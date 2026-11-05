@@ -1017,6 +1017,12 @@ a.lotus-binding-key svg { flex: none; }
 .lotus-panel-breakdown .lotus-badge { align-self: center; }
 .lotus-panel-breakdown-score { font: 700 18px var(--font-mono); line-height: 1; }
 .lotus-panel-breakdown-text { font: 500 11.5px var(--font-mono); color: var(--text-muted); }
+/* SonarQube's quality-gate conditions: one line each, failing first —
+   badge, metric, its value, and the threshold it is held to. */
+.lotus-panel-conditions { padding: 12px 14px 14px; border-top: 1px solid var(--border-hairline); }
+.lotus-panel-condition { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 3px 0; font-size: 12px; }
+.lotus-panel-condition-metric { font-weight: 600; color: var(--ink-700); }
+.lotus-panel-condition-value { font: 600 12px var(--font-mono); }
 /* Figures in a grid, label over value, no dividers: whitespace groups
    them, the panel's hairlines separate sections. Four to a row, so eight
    read as two even rows; two to a row on a narrow screen. */

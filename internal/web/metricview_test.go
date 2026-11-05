@@ -436,3 +436,33 @@ func TestRelativeTimeStr(t *testing.T) {
 		}
 	}
 }
+
+// The SonarQube page says which gate conditions failed and why — metric,
+// actual value, threshold — failing ones first, read from the snapshot's
+// raw_json.
+func TestSonarConditions_FailingFirstWithThresholds(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{"QualityGate":"ERROR","GateConditions":[
+		{"Status":"OK","MetricKey":"new_duplicated_lines_density","Comparator":"GT","ErrorThreshold":"3","ActualValue":"1.2"},
+		{"Status":"ERROR","MetricKey":"new_coverage","Comparator":"LT","ErrorThreshold":"85","ActualValue":"82.5"},
+		{"Status":"ERROR","MetricKey":"new_security_rating","Comparator":"GT","ErrorThreshold":"1","ActualValue":"3"}]}`)
+	got := sonarConditions(raw)
+	want := []sonarCondition{
+		{Metric: "New coverage", Actual: "82.5%", Threshold: "needs at least 85%", Failed: true},
+		{Metric: "New security rating", Actual: "C", Threshold: "needs A or better", Failed: true},
+		{Metric: "New duplicated lines density", Actual: "1.2%", Threshold: "needs at most 3%"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("conditions = %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("condition %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+	str := func(v string) *string { return &v }
+	old := buildSonarDetailView(&repo.SonarSnapshot{QualityGate: str("ERROR"), RawJSON: []byte(`{"QualityGate":"ERROR"}`)})
+	if !old.ConditionsMissing || len(old.Conditions) != 0 {
+		t.Errorf("a failed gate stored without conditions should say so: %+v", old)
+	}
+}

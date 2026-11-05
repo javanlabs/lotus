@@ -113,8 +113,8 @@ func TestSonarDetail_HistoricalDateShowsThatDatesSnapshotNotLatest(t *testing.T)
 			t.Fatalf("insert old sonar_snapshots: %v", err)
 		}
 		if _, err := tx.Exec(`
-			INSERT INTO sonar_snapshots (org_id, binding_id, component_id, quality_gate, bugs, coverage)
-			VALUES ($1,$2,$3,'ERROR',9,12.3)`,
+			INSERT INTO sonar_snapshots (org_id, binding_id, component_id, quality_gate, bugs, coverage, raw_json)
+			VALUES ($1,$2,$3,'ERROR',9,12.3,'{"QualityGate":"ERROR","GateConditions":[{"Status":"ERROR","MetricKey":"new_coverage","Comparator":"LT","ErrorThreshold":"80","ActualValue":"12.3"}]}')`,
 			orgID, bindingID, componentID); err != nil {
 			t.Fatalf("insert latest sonar_snapshots: %v", err)
 		}
@@ -136,6 +136,12 @@ func TestSonarDetail_HistoricalDateShowsThatDatesSnapshotNotLatest(t *testing.T)
 	// failed gate is 6.15, rounded to 6.
 	if !strings.Contains(string(latestBody), `data-testid="score-breakdown"`) || !strings.Contains(string(latestBody), "Coverage 12.3 · Gate failed ×0.5 = 6") {
 		t.Fatalf("latest view missing its score breakdown:\n%s", latestBody)
+	}
+	// Which gate condition failed, and against what threshold.
+	for _, want := range []string{`data-testid="gate-conditions"`, "New coverage", "needs at least 80%"} {
+		if !strings.Contains(string(latestBody), want) {
+			t.Fatalf("latest view missing %q:\n%s", want, latestBody)
+		}
 	}
 
 	dateParam := oldDate.Local().Format("2006-01-02")

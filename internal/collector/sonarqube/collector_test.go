@@ -2,11 +2,13 @@ package sonarqube_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/uyab/lotus/internal/clients/sonar"
 	"github.com/uyab/lotus/internal/collector"
 	sqcollector "github.com/uyab/lotus/internal/collector/sonarqube"
 )
@@ -32,7 +34,7 @@ func fakeSonarServer(t *testing.T) *httptest.Server {
 				{"metric":"sqale_rating","value":"3"}
 			]}}`)
 		case "/api/qualitygates/project_status":
-			fmt.Fprint(w, `{"projectStatus":{"status":"OK"}}`)
+			fmt.Fprint(w, `{"projectStatus":{"status":"OK","conditions":[{"status":"OK","metricKey":"new_coverage","comparator":"LT","errorThreshold":"80","actualValue":"91.0"}]}}`)
 		case "/api/project_analyses/search":
 			fmt.Fprint(w, `{"analyses":[{"date":"2026-01-01T00:00:00+0000"}]}`)
 		case "/api/authentication/validate":
@@ -83,6 +85,15 @@ func TestCollect_ReturnsFactsAndWorstRatingAsGrade(t *testing.T) {
 	}
 	if result.Headline.Status != collector.StatusFail {
 		t.Fatalf("Status = %q, want fail (66 is below 80 even with the gate passed)", result.Headline.Status)
+	}
+	// The gate's conditions travel in the Detail, which Persist stores as
+	// the snapshot's raw_json — no column of their own.
+	var detail sonar.Measures
+	if err := json.Unmarshal(result.Detail, &detail); err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.GateConditions) != 1 || detail.GateConditions[0].MetricKey != "new_coverage" || detail.GateConditions[0].ErrorThreshold != "80" {
+		t.Fatalf("gate conditions in detail = %+v", detail.GateConditions)
 	}
 }
 

@@ -1,14 +1,17 @@
 package web
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/uyab/lotus/internal/clients/sonar"
 	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/repo"
 	"github.com/uyab/lotus/internal/tenant"
@@ -49,6 +52,79 @@ type sonarDetailView struct {
 	CapturedAt            string
 	// Breakdown is how the headline score was computed.
 	Breakdown *scoreBreakdown
+	// Conditions are the quality gate's conditions, the failing ones
+	// first; ConditionsMissing marks a failed gate whose snapshot was
+	// taken before conditions were recorded.
+	Conditions        []sonarCondition
+	ConditionsMissing bool
+}
+
+// sonarCondition is one quality-gate condition as the page words it:
+// "New coverage · 82.5% · needs at least 85%".
+type sonarCondition struct {
+	Metric, Actual, Threshold string
+	Failed                    bool
+}
+
+// sonarConditions reads the gate's conditions from a snapshot's raw_json
+// (the collector's Measures), failing ones first.
+func sonarConditions(raw []byte) []sonarCondition {
+	if len(raw) == 0 {
+		return nil
+	}
+	var m sonar.Measures
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil
+	}
+	out := make([]sonarCondition, 0, len(m.GateConditions))
+	for _, g := range m.GateConditions {
+		c := sonarCondition{Metric: sonarMetricLabel(g.MetricKey), Actual: sonarMetricValue(g.MetricKey, g.ActualValue), Failed: g.Failed()}
+		limit := sonarMetricValue(g.MetricKey, g.ErrorThreshold)
+		switch {
+		case strings.HasSuffix(g.MetricKey, "_rating"):
+			// SonarQube fails a rating worse than the threshold (GT 1 is
+			// "worse than A").
+			c.Threshold = "needs " + limit + " or better"
+		case g.Comparator == "LT":
+			c.Threshold = "needs at least " + limit
+		case g.Comparator == "GT":
+			c.Threshold = "needs at most " + limit
+		default:
+			c.Threshold = "threshold " + limit
+		}
+		out = append(out, c)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Failed && !out[j].Failed })
+	return out
+}
+
+// sonarMetricLabel names a SonarQube metric key: "new_coverage" is "New
+// coverage", "new_reliability_rating" is "New reliability rating".
+func sonarMetricLabel(key string) string {
+	if key == "" {
+		return "–"
+	}
+	return capitalize(strings.ReplaceAll(key, "_", " "))
+}
+
+// sonarMetricValue writes a condition value as the page writes the
+// metric: a rating as its letter (SonarQube sends 1–5), a percentage with
+// its sign, anything else as sent.
+func sonarMetricValue(key, v string) string {
+	if v == "" {
+		return "–"
+	}
+	switch {
+	case strings.HasSuffix(key, "_rating"):
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 1 && f <= 5 {
+			return string(rune('A' + int(f) - 1))
+		}
+	case strings.Contains(key, "coverage") || strings.Contains(key, "density") || strings.Contains(key, "percent") || strings.HasSuffix(key, "_reviewed"):
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return strconv.FormatFloat(f, 'f', -1, 64) + "%"
+		}
+	}
+	return v
 }
 
 // sonarRating is one SonarQube rating, labelled, as its letter's pill.
@@ -162,6 +238,8 @@ func buildSonarDetailView(snap *repo.SonarSnapshot) sonarDetailView {
 	if snap.LastScanAt != nil {
 		v.LastScanAt = relativeTimeStr(*snap.LastScanAt)
 	}
+	v.Conditions = sonarConditions(snap.RawJSON)
+	v.ConditionsMissing = len(v.Conditions) == 0 && (v.QualityGate == "ERROR" || v.QualityGate == "WARN")
 	return v
 }
 

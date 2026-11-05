@@ -97,7 +97,27 @@ type Measures struct {
 	Languages              string // "Go, TS"
 	LastScan               *time.Time
 	RawJSON                string
+	// GateConditions are the quality gate's conditions as
+	// /api/qualitygates/project_status reports them — which metric, its
+	// value, and the threshold it is held to — so a failed gate can say
+	// why. Stored with the rest of the snapshot in raw_json; empty when
+	// the gate call failed or the server reported none.
+	GateConditions []GateCondition `json:",omitempty"`
 }
+
+// GateCondition is one quality-gate condition. Status is OK, WARN or
+// ERROR; Comparator is GT (fails above the threshold) or LT (fails below
+// it); values are SonarQube's raw strings (a rating is "1".."5").
+type GateCondition struct {
+	Status         string
+	MetricKey      string
+	Comparator     string
+	ErrorThreshold string
+	ActualValue    string
+}
+
+// Failed is whether the condition is what failed (or warned) the gate.
+func (g GateCondition) Failed() bool { return g.Status == "ERROR" || g.Status == "WARN" }
 
 // WorstRating returns the worst (highest-severity) of the three ratings —
 // task 3.3's headline grade: "terburuk dari rating reliability / security
@@ -132,7 +152,14 @@ type measuresResp struct {
 
 type qualityGateResp struct {
 	ProjectStatus struct {
-		Status string `json:"status"`
+		Status     string `json:"status"`
+		Conditions []struct {
+			Status         string `json:"status"`
+			MetricKey      string `json:"metricKey"`
+			Comparator     string `json:"comparator"`
+			ErrorThreshold string `json:"errorThreshold"`
+			ActualValue    string `json:"actualValue"`
+		} `json:"conditions"`
 	} `json:"projectStatus"`
 }
 
@@ -205,6 +232,12 @@ func (c *Client) Fetch(ctx context.Context, projectKey, branch string) (*Measure
 	gatePath := fmt.Sprintf("/api/qualitygates/project_status?projectKey=%s%s", url.QueryEscape(projectKey), branchQS)
 	if err := c.get(ctx, gatePath, &gr); err == nil {
 		m.QualityGate = gr.ProjectStatus.Status
+		for _, cond := range gr.ProjectStatus.Conditions {
+			m.GateConditions = append(m.GateConditions, GateCondition{
+				Status: cond.Status, MetricKey: cond.MetricKey, Comparator: cond.Comparator,
+				ErrorThreshold: cond.ErrorThreshold, ActualValue: cond.ActualValue,
+			})
+		}
 	}
 
 	var ar analysesResp
