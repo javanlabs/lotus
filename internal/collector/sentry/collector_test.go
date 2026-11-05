@@ -93,9 +93,14 @@ func TestCollect_SharedModeAppliesTagFilterAndGrades(t *testing.T) {
 	if len(child.Facts) < 6 {
 		t.Fatalf("got %d facts, want at least 6", len(child.Facts))
 	}
-	// 1 escalating issue, 500 events -> a bad grade.
-	if child.Headline.Grade == "" || child.Headline.Grade == "A" {
-		t.Fatalf("Grade = %q, want a worse grade for an escalating issue with 500 events", child.Headline.Grade)
+	// 1 escalating issue, 500 events -> a low score, red because it is
+	// below 80. The A–E grade is no longer carried on the headline.
+	h := child.Headline
+	if h.Score == nil || *h.Score >= 80 || h.Status != collector.StatusFail {
+		t.Fatalf("headline = %v %q, want a failing score below 80 for an escalating issue with 500 events", h.Score, h.Status)
+	}
+	if h.Grade != "" {
+		t.Fatalf("Grade = %q, want none on the headline", h.Grade)
 	}
 }
 
@@ -275,8 +280,8 @@ func TestCollect_ZeroIssuesSeparatesCleanFromNoSignal(t *testing.T) {
 			if h.Status != tc.wantStatus || (h.Score != nil) != tc.wantScore {
 				t.Fatalf("headline = %+v, want status %s, score present %v", h, tc.wantStatus, tc.wantScore)
 			}
-			if !tc.wantScore && h.StateLabel != "no signal" {
-				t.Errorf("state label = %q, want no signal", h.StateLabel)
+			if !tc.wantScore && h.StateLabel != "No signal" {
+				t.Errorf("state label = %q, want No signal", h.StateLabel)
 			}
 			if tc.wantScore && *h.Score != 100 {
 				t.Errorf("score = %d, want 100", *h.Score)

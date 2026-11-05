@@ -131,6 +131,18 @@ func (s *session) hasReported(ctx context.Context, cfg bindingConfig, projectSlu
 // task 3.6's own ordering), tying-break on the lower score, since that's
 // the environment an operator would actually want surfaced first.
 func rollupHeadline(children []collector.Result) collector.Headline {
+	hs := make([]collector.Headline, 0, len(children))
+	for _, c := range children {
+		hs = append(hs, c.Headline)
+	}
+	return WorstHeadline(hs)
+}
+
+// WorstHeadline is rollupHeadline over headlines alone, for a caller that
+// rebuilds them from stored snapshots (the reproject command). Since the
+// status is read from the score, "worst" is the lowest score, and an
+// environment with no signal only when none has one.
+func WorstHeadline(children []collector.Headline) collector.Headline {
 	severity := func(s collector.Status) int {
 		switch s {
 		case collector.StatusFail:
@@ -141,9 +153,8 @@ func rollupHeadline(children []collector.Result) collector.Headline {
 			return 0
 		}
 	}
-	worst := children[0].Headline
-	for _, c := range children[1:] {
-		h := c.Headline
+	worst := children[0]
+	for _, h := range children[1:] {
 		switch {
 		case severity(h.Status) > severity(worst.Status):
 			worst = h
@@ -236,27 +247,9 @@ func buildEnvironmentResult(env, serviceName string, project sentryclient.Projec
 		facts = append(facts, numFact("sentry.score", float64(status.Score)))
 	}
 
-	headline := collector.Headline{
-		Grade:      status.Grade,
-		Score:      score,
-		CountValue: int64Ptr(int64(len(issues))),
-		CountLabel: "issue",
-		Summary:    fmt.Sprintf("%s: %d unresolved issue(s), load %.1f", env, len(issues), status.Load),
-	}
+	headline := EnvironmentHeadline(env, score, status.Load, len(issues))
 	if status.Kind != scoring.SentryStatusGraded {
 		headline.Summary = fmt.Sprintf("%s: %s. %s", env, status.Label, status.Detail)
-	}
-	switch {
-	case noSignal:
-		headline.Status, headline.StateLabel, headline.CountValue = collector.StatusUnknown, status.Label, nil
-	case status.Failed:
-		headline.Status = collector.StatusFail
-	case status.Grade == "A" || status.Grade == "B":
-		headline.Status = collector.StatusPass
-	case status.Grade == "C":
-		headline.Status = collector.StatusFail
-	default: // D, E
-		headline.Status = collector.StatusFail
 	}
 
 	issueDetails := make([]issueDetail, 0, len(issues))
@@ -285,6 +278,35 @@ func buildEnvironmentResult(env, serviceName string, project sentryclient.Projec
 		Detail:     detail,
 		DetailKind: string(collector.KindSentry),
 	}
+}
+
+// EnvironmentHeadline is one environment's headline from its ported score
+// (sentry.go, kept verbatim): score is already rounded to the nearest
+// whole number, nil when Sentry has no signal from the service. The
+// status is read from that number, not from the A–E grade the port also
+// computes: a raw 79.6 shows as 80 and is healthy, where its grade (C,
+// cut at an unrounded 80) used to paint an 80 red. The grade is still
+// stored on the snapshot, but no longer carried on the headline or shown.
+//
+// Collect and the reproject command (which rebuilds it from a stored
+// snapshot's score, load and issue count) both go through here.
+func EnvironmentHeadline(env string, score *int, load float64, issues int) collector.Headline {
+	ks := scoring.SentryScore(score, load, issues)
+	h := collector.Headline{
+		Status:     collector.StatusForScore(ks.Score),
+		Score:      ks.Score,
+		CountValue: int64Ptr(int64(issues)),
+		CountLabel: "issue",
+		Summary:    fmt.Sprintf("%s: %d unresolved issue(s), load %.1f", env, issues, load),
+	}
+	switch {
+	case ks.Score == nil:
+		h.StateLabel, h.CountValue = ks.Reason, nil
+		h.Summary = env + ": no signal"
+	case issues == 0:
+		h.Summary = env + ": no unresolved issues"
+	}
+	return h
 }
 
 func numFact(key string, v float64) collector.Fact {
