@@ -81,6 +81,40 @@ func TestCollect_LanguagesFailureIsPartialWithOneWarningAndNoZeroFact(t *testing
 	}
 }
 
+// The newest pipeline is still running and the one before it failed: the
+// running one is no verdict, the failed one is, and it caps the score.
+func TestCollect_CapReadsTheNewestFinishedPipeline(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pipelines"):
+			fmt.Fprint(w, `[{"id":3,"status":"running"},{"id":2,"status":"failed"},{"id":1,"status":"success"},{"id":0,"status":"success"}]`)
+		case strings.Contains(r.URL.Path, "/pipelines/"):
+			fmt.Fprint(w, `{"id":3,"status":"running"}`)
+		case strings.HasSuffix(r.URL.Path, "/repository/commits"), strings.HasSuffix(r.URL.Path, "/repository/branches"):
+			fmt.Fprint(w, `[]`)
+		case strings.HasSuffix(r.URL.Path, "/languages"):
+			fmt.Fprint(w, `{}`)
+		default:
+			fmt.Fprint(w, `{"id":1,"default_branch":"main"}`)
+		}
+	}))
+	defer srv.Close()
+
+	session, err := glcollector.Collector{}.Open(context.Background(), collector.ConnConfig{BaseURL: srv.URL, Secret: "token", Client: srv.Client()})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer session.Close()
+	result, err := session.Collect(context.Background(), collector.CollectRequest{ExternalKey: "group/repo"})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	h := result.Headline
+	if h.Score == nil || *h.Score != 49 || h.Status != collector.StatusFail {
+		t.Fatalf("headline = %v %q, want 49 fail (the newest finished pipeline failed)", h.Score, h.Status)
+	}
+}
+
 func TestCollect_ProjectNotFoundReturnsErrNotFound(t *testing.T) {
 	srv := fakeGitLabServer(t, false)
 	defer srv.Close()

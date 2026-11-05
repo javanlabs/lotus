@@ -10,6 +10,7 @@ import (
 	glclient "github.com/uyab/lotus/internal/clients/gitlab"
 	"github.com/uyab/lotus/internal/collector"
 	"github.com/uyab/lotus/internal/repo"
+	"github.com/uyab/lotus/internal/scoring"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -58,40 +59,18 @@ func buildResult(h *glclient.Health) (collector.Result, error) {
 		return collector.Result{}, collector.ErrUpstream(fmt.Errorf("gitlab: every sub-call failed, nothing to report"))
 	}
 
-	status := collector.StatusUnknown
-	switch h.LastPipelineStatus {
-	case "success":
-		status = collector.StatusPass
-	case "failed":
-		status = collector.StatusFail
-	case "running", "pending":
-		status = collector.StatusFail
-	}
-
-	// Score averages two sub-scores, each 0-100, using whichever are
-	// measurable — the pipeline success rate, and branch hygiene (the
-	// share of branches with a commit inside the staleness window).
-	// Pipeline health alone let a repository carrying thirty dead
-	// branches read as a perfect 100 so long as its latest runs were
-	// green; hygiene is half the point of watching a repository at all.
-	// A sub-score that cannot be measured is skipped, never counted as
-	// zero — the same rule every rollup above this follows.
-	var parts []int
-	if h.PipelineSuccessRate != nil {
-		parts = append(parts, int(*h.PipelineSuccessRate*100))
-	}
-	if !failed["branches"] && h.BranchesTotal > 0 {
-		parts = append(parts, h.BranchesActive*100/h.BranchesTotal)
-	}
-	var score *int
-	if len(parts) > 0 {
-		sum := 0
-		for _, p := range parts {
-			sum += p
-		}
-		v := sum / len(parts)
-		score = &v
-	}
+	// The score is scoring.GitLabScore: the pipeline success rate less
+	// the stale-branch share × 20, capped at 49 when the newest finished
+	// pipeline failed, rounded once. Branch hygiene still costs (f2a5859)
+	// but can no longer halve a green repository's score: averaged in as
+	// a second term, a repository whose pipelines all pass read in the
+	// fifties for carrying old branches. With no pipelines there is no
+	// score at all — the branch share alone used to stand in, and a
+	// repository with no CI read 93. The status is read from the score; a
+	// pipeline still running is not a failure.
+	ks := scoring.GitLabScore(ScoreInput(h, failed["branches"]))
+	score := ks.Score
+	status := collector.StatusForScore(score)
 
 	var countValue *int64
 	if !failed["branches"] {
@@ -103,6 +82,10 @@ func buildResult(h *glclient.Health) (collector.Result, error) {
 	if summary == "" {
 		summary = "no pipeline data"
 	}
+	var stateLabel string
+	if score == nil {
+		stateLabel = ks.Reason
+	}
 
 	detail, err := json.Marshal(h)
 	if err != nil {
@@ -112,13 +95,38 @@ func buildResult(h *glclient.Health) (collector.Result, error) {
 	return collector.Result{
 		Headline: collector.Headline{
 			Status: status, Score: score, CountValue: countValue, CountLabel: "stale branch",
-			Summary: summary, DeepLink: h.WebURL,
+			StateLabel: stateLabel, Summary: summary, DeepLink: h.WebURL,
 		},
 		Facts:      facts,
 		Detail:     detail,
 		DetailKind: string(collector.KindGitLab),
 		Warnings:   warnings,
 	}, nil
+}
+
+// ScoreInput is what scoring.GitLabScore reads from a health snapshot;
+// branchesFailed drops the branch counts when that sub-call failed.
+func ScoreInput(h *glclient.Health, branchesFailed bool) scoring.GitLabInput {
+	in := scoring.GitLabInput{SuccessRate: h.PipelineSuccessRate, LastFinished: LastFinishedPipeline(h)}
+	if !branchesFailed {
+		total, stale := h.BranchesTotal, h.BranchesStale
+		in.BranchesTotal, in.BranchesStale = &total, &stale
+	}
+	return in
+}
+
+// LastFinishedPipeline is the status of the newest finished pipeline. A
+// snapshot taken before that was recorded falls back to the last
+// pipeline's status when that one had finished, and to "" (no verdict)
+// when it was still running.
+func LastFinishedPipeline(h *glclient.Health) string {
+	if h.LastFinishedPipelineStatus != "" {
+		return h.LastFinishedPipelineStatus
+	}
+	if glclient.PipelineFinished(h.LastPipelineStatus) {
+		return h.LastPipelineStatus
+	}
+	return ""
 }
 
 // Persist writes a Collect's Detail into gitlab_snapshots — see

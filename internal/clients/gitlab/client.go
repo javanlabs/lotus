@@ -159,6 +159,12 @@ type Health struct {
 	PipelineSuccessRate *float64
 	PipelineSampleSize  int
 
+	// LastFinishedPipelineStatus is the status of the newest pipeline in
+	// the sample that has finished (success, failed or canceled), "" when
+	// none has. LastPipelineStatus may be running or pending, which has no
+	// verdict yet; the score's failed-pipeline cap reads this instead.
+	LastFinishedPipelineStatus string
+
 	// Warnings records which of the five best-effort sub-calls (below the
 	// fatal project lookup) failed and why — task 3.1's rule made
 	// concrete: the caller (internal/collector/gitlab) turns each of
@@ -202,6 +208,17 @@ func (o HealthOptions) withDefaults() HealthOptions {
 		o.CommitWindowDays = 30
 	}
 	return o
+}
+
+// PipelineFinished is whether a pipeline status is a final verdict.
+// Running, pending, created, manual, scheduled and skipped are not: a
+// pipeline in flight has not failed.
+func PipelineFinished(status string) bool {
+	switch status {
+	case "success", "failed", "canceled":
+		return true
+	}
+	return false
 }
 
 func (c *Client) FetchHealth(ctx context.Context, gitlabPath string, opts HealthOptions) (*Health, error) {
@@ -271,6 +288,12 @@ func (c *Client) FetchHealth(ctx context.Context, gitlabPath string, opts Health
 		h.PipelineSampleSize = len(pls)
 		rate := float64(success) / float64(len(pls))
 		h.PipelineSuccessRate = &rate
+		for _, pl := range pls {
+			if PipelineFinished(pl.Status) {
+				h.LastFinishedPipelineStatus = pl.Status
+				break
+			}
+		}
 
 		latest := pls[0]
 		h.LastPipelineStatus = latest.Status
