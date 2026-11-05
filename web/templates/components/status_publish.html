@@ -1,0 +1,27 @@
+{{/* status_publish is the "Public status page" switch on the project page
+     (internal/web/status_publish.go). Takes a dict: Action (the project's
+     URL + /status-page), On, URL (the public page), Can. Rendered only for
+     owners and admins; once on, the public URL shows with a copy button. */}}
+{{define "status_publish"}}
+{{if .Can}}
+<section id="status-publish" class="lotus-status-publish" data-testid="status-publish">
+  <form method="post" action="{{.Action}}">
+    <input type="hidden" name="enabled" value="{{if .On}}0{{else}}1{{end}}">
+    <button type="submit" role="switch" aria-checked="{{if .On}}true{{else}}false{{end}}"
+            class="lotus-switch{{if .On}} is-on{{end}}" data-testid="status-page-switch">
+      <span class="lotus-switch-track" aria-hidden="true"><span class="lotus-switch-thumb"></span></span>
+      <span>Public status page</span>
+    </button>
+  </form>
+  {{if .On}}
+  <div class="lotus-status-publish-link" x-data="{ copied: false }">
+    <input type="text" readonly value="{{.URL}}" x-ref="url" aria-label="Public status page URL"
+           class="lotus-input lotus-input-mono" onclick="this.select()" data-testid="status-page-url">
+    <button type="button" class="btn-lotus btn-lotus-secondary btn-lotus-sm" data-testid="status-page-copy"
+            @click="navigator.clipboard.writeText($refs.url.value).then(() => { copied = true; setTimeout(() => copied = false, 1500) })"
+            x-text="copied ? 'Copied' : 'Copy'">Copy</button>
+  </div>
+  {{end}}
+</section>
+{{end}}
+{{end}}

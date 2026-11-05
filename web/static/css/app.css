@@ -808,6 +808,48 @@ body {
 .lotus-project-tags .lotus-input { width: 150px; height: 28px; font-size: var(--text-ui); }
 .lotus-project-tags-error { flex-basis: 100%; margin: 0; font-size: 11.5px; color: var(--text-danger); }
 
+/* The public status page switch under a project's tags
+   (components/status_publish.html): a switch, then the public URL with
+   its copy button once it is on. */
+.lotus-status-publish { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.lotus-status-publish form { margin: 0; }
+.lotus-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: 500 var(--text-ui) / 1 var(--font-sans);
+  cursor: pointer;
+}
+.lotus-switch-track {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: #D1D5DB;
+  transition: background .15s ease;
+}
+.lotus-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+  transition: transform .15s ease;
+}
+.lotus-switch.is-on .lotus-switch-track { background: var(--text-brand); }
+.lotus-switch.is-on .lotus-switch-thumb { transform: translateX(12px); }
+.lotus-switch:focus-visible { outline: none; }
+.lotus-switch:focus-visible .lotus-switch-track { box-shadow: var(--shadow-focus-ring); }
+.lotus-status-publish-link { display: inline-flex; align-items: center; gap: 6px; }
+.lotus-status-publish-link .lotus-input { width: 300px; height: 28px; }
+
 /* A metric page's binding line (components/metric_header.html): what the
    open tab reads and through which connection, on the left; what can be
    done to the binding, on the right. Plain text on the page — no card —

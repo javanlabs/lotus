@@ -155,6 +155,7 @@ func New(d Deps) *fiber.App {
 	// binding together.
 	registerProjectPageDetailRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	registerProjectTagRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
+	registerStatusPublishRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))
 	// A project's page per integration — the KPI cards on the project page
 	// open these.
 	registerProjectMetricRoutes(app, d, authn.RequireTenantSession(authDeps), authz.LoadPrincipal(d.DB))

@@ -77,11 +77,14 @@ func projectPage(d Deps) fiber.Handler {
 				// box's suggestions), and whether this person may change them.
 				Tags, AllTags []repo.Tag
 				CanTag        bool
+				// The public status page switch, for owners and admins.
+				StatusPage statusPageData
 			}{
 				Project: *project, URL: projectURL(project), Dashboard: vm,
 				CanQA:     d.Cfg.Features.QA && mustPrincipal(c).Can("qa.read"),
 				CanDelete: mustPrincipal(c).Can("project.delete"),
 				Tags:      tags.Tags, AllTags: tags.AllTags, CanTag: tags.CanTag,
+				StatusPage: statusPageFor(c, d, project),
 			},
 		})
 	}
