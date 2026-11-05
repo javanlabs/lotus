@@ -10,6 +10,7 @@ import (
 	"github.com/uyab/lotus/internal/clients/sonar"
 	"github.com/uyab/lotus/internal/collector"
 	"github.com/uyab/lotus/internal/repo"
+	"github.com/uyab/lotus/internal/scoring"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -63,57 +64,19 @@ func buildResult(m *sonar.Measures) (collector.Result, error) {
 		return collector.Result{}, collector.ErrUpstream(fmt.Errorf("sonarqube: no measures returned"))
 	}
 
-	status := collector.StatusUnknown
-	switch m.QualityGate {
-	case "OK":
-		status = collector.StatusPass
-	case "WARN":
-		status = collector.StatusFail
-	case "ERROR":
-		status = collector.StatusFail
-	}
-
 	worst := m.WorstRating()
 
-	// Score is a base blended from coverage and the worst rating, then
-	// multiplied by a quality-gate factor:
-	//
-	//   base = average of { coverage %, worst rating (A=100 .. E=20) },
-	//          skipping whichever is unmeasured — never counting it as 0;
-	//   score = base x 1.0 (gate passed) / x 0.75 (warn) / x 0.5 (failed).
-	//
-	// The gate is a MULTIPLIER rather than one more term in the average on
-	// purpose: it is the pass/fail verdict the team itself configured, so
-	// it must dominate. Averaged in, a failing gate was still rescued by
-	// good coverage (0+90+100 over 3 read 63 — "decent"); as a factor, 89%
-	// coverage with a failing gate reads 44, and no amount of coverage can
-	// push a failing project above 50. A project reporting neither
-	// coverage nor ratings gets no score at all — the gate alone still
-	// drives the colour, but a bare multiplier has nothing to multiply.
-	var parts []int
-	if m.Coverage != nil {
-		parts = append(parts, int(*m.Coverage))
-	}
-	if v, ok := map[string]int{"A": 100, "B": 80, "C": 60, "D": 40, "E": 20}[worst]; ok {
-		parts = append(parts, v)
-	}
-	var score *int
-	if len(parts) > 0 {
-		sum := 0
-		for _, p := range parts {
-			sum += p
-		}
-		base := float64(sum) / float64(len(parts))
-		gateFactor := 1.0
-		switch m.QualityGate {
-		case "WARN":
-			gateFactor = 0.75
-		case "ERROR":
-			gateFactor = 0.5
-		}
-		v := int(base * gateFactor)
-		score = &v
-	}
+	// The score is scoring.SonarScore: the average of coverage and the
+	// worst rating's points, times the quality-gate factor (f2a5859),
+	// rounded once. The gate is a multiplier rather than one more term in
+	// the average because it is the verdict the team itself configured,
+	// so it must dominate: no amount of coverage lifts a failed gate above
+	// 50. The status is read from that score, so a failed gate is red
+	// because its score is, never by a rule of its own. A project with
+	// neither coverage nor ratings has nothing to score and no status.
+	ks := scoring.SonarScore(SonarInput(m))
+	score := ks.Score
+	status := collector.StatusForScore(score)
 
 	var countValue *int64
 	if m.Bugs != nil && m.Vulnerabilities != nil {
@@ -131,15 +94,24 @@ func buildResult(m *sonar.Measures) (collector.Result, error) {
 		return collector.Result{}, collector.ErrInternal(err)
 	}
 
+	var stateLabel string
+	if score == nil {
+		stateLabel = ks.Reason
+	}
 	return collector.Result{
 		Headline: collector.Headline{
 			Status: status, Score: score, Grade: worst,
-			CountValue: countValue, CountLabel: "bugs + vulnerabilities", Summary: summary,
+			CountValue: countValue, CountLabel: "bugs + vulnerabilities", StateLabel: stateLabel, Summary: summary,
 		},
 		Facts:      facts,
 		Detail:     detail,
 		DetailKind: string(collector.KindSonarQube),
 	}, nil
+}
+
+// SonarInput is what scoring.SonarScore reads from a measures snapshot.
+func SonarInput(m *sonar.Measures) scoring.SonarInput {
+	return scoring.SonarInput{Coverage: m.Coverage, WorstRating: m.WorstRating(), QualityGate: m.QualityGate}
 }
 
 // BuildImportedResult turns measures read from elsewhere — the legacy

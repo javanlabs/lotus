@@ -76,8 +76,13 @@ func TestCollect_ReturnsFactsAndWorstRatingAsGrade(t *testing.T) {
 	if result.Headline.Grade != "C" {
 		t.Fatalf("Grade = %q, want C (worst of B/A/C)", result.Headline.Grade)
 	}
-	if result.Headline.Status != collector.StatusPass {
-		t.Fatalf("Status = %q, want pass (quality gate OK)", result.Headline.Status)
+	// The status is read from the score, not the gate: (72.5 coverage +
+	// 60 for the C rating) / 2 × 1 for a passed gate is 66, below 80.
+	if result.Headline.Score == nil || *result.Headline.Score != 66 {
+		t.Fatalf("Score = %v, want 66", result.Headline.Score)
+	}
+	if result.Headline.Status != collector.StatusFail {
+		t.Fatalf("Status = %q, want fail (66 is below 80 even with the gate passed)", result.Headline.Status)
 	}
 }
 

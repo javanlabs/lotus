@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/uyab/lotus/internal/scoring"
 )
 
 // Kind identifies which integration a Collector/Ingestor implements.
@@ -135,6 +137,21 @@ const (
 	StatusFail    Status = "fail"
 	StatusUnknown Status = "unknown"
 )
+
+// StatusForScore is the only way a kind's status is decided: pass at or
+// above scoring.PassThreshold, fail below it, unknown with no score. A
+// hard failure lowers the score (a cap) rather than overriding the
+// status, so a headline's number and its colour cannot disagree.
+func StatusForScore(score *int) Status {
+	switch {
+	case score == nil:
+		return StatusUnknown
+	case scoring.Passes(*score):
+		return StatusPass
+	default:
+		return StatusFail
+	}
+}
 
 // Headline is task 3.6's Layer 1: normalized, mandatory, the only thing
 // generic code (dashboard, rollups, org score) is allowed to read.
