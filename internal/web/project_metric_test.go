@@ -52,15 +52,17 @@ func seedKindPage(t *testing.T, sub, kind string) kindPageFixture {
 		bind(&f.billingBind, f.billing, "grp/billing-api")
 		bind(&f.ledgerBind, f.ledger, "grp/ledger-api")
 		bind(&f.otherBind, f.otherComp, "grp/intruder-key")
-		// billing passes and ledger fails: the project's KPI card is 50%.
+		// billing scores 92 and ledger 60: the project's KPI card is their
+		// average, 76.
 		for _, r := range []struct {
 			project, component uuid.UUID
 			status             string
-		}{{f.projectID, f.billing, "pass"}, {f.projectID, f.ledger, "fail"}, {otherProject, f.otherComp, "pass"}} {
+			score              int
+		}{{f.projectID, f.billing, "pass", 92}, {f.projectID, f.ledger, "fail", 60}, {otherProject, f.otherComp, "pass", 85}} {
 			if _, err := tx.Exec(`
-				INSERT INTO component_metrics_current (org_id, project_id, component_id, metrics, status, updated_at)
-				VALUES ($1, $2, $3, jsonb_build_object($4::text, jsonb_build_object('status', $5::text, 'grade', 'B', 'score', 85, 'updated_at', now())), $5, now())`,
-				f.e.orgID, r.project, r.component, kind, r.status); err != nil {
+				INSERT INTO component_metrics_current (org_id, project_id, component_id, metrics, status, score, updated_at)
+				VALUES ($1, $2, $3, jsonb_build_object($4::text, jsonb_build_object('status', $5::text, 'grade', 'B', 'score', $6::int, 'updated_at', now())), $5, $6, now())`,
+				f.e.orgID, r.project, r.component, kind, r.status, r.score); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -90,11 +92,11 @@ func (f kindPageFixture) checkKindPage(t *testing.T, kind string, wants ...strin
 		t.Fatalf("status %d:\n%s", status, body)
 	}
 	m := headlineRe.FindStringSubmatch(body)
-	if m == nil || strings.TrimSpace(m[1]) != "50" {
-		t.Fatalf("headline = %v, want the KPI card's 50", m)
+	if m == nil || strings.TrimSpace(m[1]) != "76" {
+		t.Fatalf("headline = %v, want the KPI card's 76", m)
 	}
 	// The same number the project page's own card shows.
-	if kpi := f.projectKPI(t, kind); kpi.Value != "50" || kpi.Href != "/projects/payments/metrics/"+kind {
+	if kpi := f.projectKPI(t, kind); kpi.Value != "76" || kpi.Href != "/projects/payments/metrics/"+kind {
 		t.Fatalf("project page KPI = %+v", kpi)
 	}
 	// The project's metric tabs are here too, this kind's open, and the
@@ -172,7 +174,7 @@ func TestProjectMetricPage_Sonar(t *testing.T) {
 		SET metrics = jsonb_set(metrics, '{sonarqube,updated_at}', to_jsonb(now() - interval '3 days'))
 		WHERE component_id = $1`, f.ledger)
 	body := f.checkKindPage(t, "sonarqube",
-		"SONAR GATE", "AVG COVERAGE", "77.8%", "20,000", // summary: average coverage, total LOC
+		"SONARQUBE", "AVG COVERAGE", "77.8%", "20,000", // summary: average coverage, total LOC
 		"94.5%", "61.0%", "passed", "failed",
 		`href="https://tool.example/dashboard?id=grp%2Fbilling-api"`, `rel="noopener"`,
 		// The project is named first, heading and tab title alike; the
@@ -214,7 +216,7 @@ func TestProjectMetricPage_Trivy(t *testing.T) {
 	f.exec(t, ins, f.e.orgID, f.billingBind, f.billing, "{v1.4.0,latest}", "None", 0, 0, 0, 0, 0, 0, 40)
 	f.exec(t, ins, f.e.orgID, f.ledgerBind, f.ledger, "{v2.0.1}", "Critical", 9, 2, 3, 4, 0, 5, 7)
 	f.exec(t, `INSERT INTO trivy_finding_notes (org_id, binding_id, cve_id, package, status, comment) VALUES ($1,$2,'CVE-1','x','false_positive','n/a')`, f.e.orgID, f.ledgerBind)
-	f.checkKindPage(t, "trivy", "TRIVY CLEAN", "CRITICAL", "v1.4.0, latest", "clean", "critical",
+	f.checkKindPage(t, "trivy", "TRIVY", "CRITICAL", "v1.4.0, latest", "clean", "critical",
 		`href="https://tool.example/harbor/projects/grp/repositories/billing-api"`)
 }
 
@@ -237,10 +239,14 @@ func TestProjectMetricPage_Sentry(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	f.checkKindPage(t, "sentry", "SENTRY HEALTH", "OPEN ISSUES", "B · 85", ">37<",
+	// ledger's HEALTH cell is its headline score alone, no letter grade.
+	body := f.checkKindPage(t, "sentry", "SENTRY", "OPEN ISSUES", `data-sort="60"`, ">37<",
 		`href="https://tool.example/organizations/acme/issues/?project=42&amp;query=is%3Aunresolved&amp;statsPeriod=14d"`,
 		// billing has no sync yet: its link falls back to the project by slug.
 		`href="https://tool.example/organizations/acme/projects/grp%2Fbilling-api/"`)
+	if strings.Contains(body, "B · ") || strings.Contains(body, "E · ") {
+		t.Error("the HEALTH column still shows a letter grade")
+	}
 }
 
 func TestProjectMetricPage_Gitlab(t *testing.T) {
@@ -251,7 +257,7 @@ func TestProjectMetricPage_Gitlab(t *testing.T) {
 	        VALUES ($1,$2,$3,'Go','main',12,3,2,$4,$5,0.9,20,$6,$7,$8,'private',$9)`
 	f.exec(t, ins, f.e.orgID, f.billingBind, f.billing, "success", "https://git.example/p/1", 140, true, true, "https://git.example/grp/billing-api")
 	f.exec(t, ins, f.e.orgID, f.ledgerBind, f.ledger, "failed", "https://git.example/p/2", 4, false, false, "https://git.example/grp/ledger-api")
-	f.checkKindPage(t, "gitlab", "GIT HYGIENE", "FAILING PIPELINES", "PROTECTED DEFAULT", "1/2",
+	f.checkKindPage(t, "gitlab", "GITLAB", "FAILING PIPELINES", "PROTECTED DEFAULT", "1/2",
 		"90% (18/20)", "100&#43;", "3 active · 2 stale", "unprotected",
 		`href="https://git.example/p/1"`, `href="https://git.example/grp/ledger-api"`)
 }

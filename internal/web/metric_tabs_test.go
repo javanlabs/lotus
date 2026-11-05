@@ -228,9 +228,9 @@ func TestComponentTabs(t *testing.T) {
 	if s := byKey["sonarqube"]; s.Value != cell.Text || s.ValueTone != cell.Tone || s.Sub != cell.Title || s.Unit != "/100" || s.Title != "" {
 		t.Errorf("sonarqube = %+v, want the table cell %+v", s, cell)
 	}
-	// No score: the status word leads, the collector's phrasing under it —
-	// until it is stale, which the note says and the hover explains.
-	if tv := byKey["trivy"]; tv.Value != "Fail" || tv.ValueTone != "fail" || !strings.HasPrefix(tv.Sub, "Stale · synced 3 days ago") ||
+	// No score: a grey "–", whatever the stored status says — until it is
+	// stale, which the note says and the hover explains.
+	if tv := byKey["trivy"]; tv.Value != "–" || tv.ValueTone != "none" || tv.Verdict != nil || !strings.HasPrefix(tv.Sub, "Stale · synced 3 days ago") ||
 		!strings.Contains(tv.Title, "Trivy has not synced") {
 		t.Errorf("trivy = %+v", tv)
 	}
@@ -248,20 +248,16 @@ func TestComponentTabs(t *testing.T) {
 		t.Error("a component tab drew an info button")
 	}
 
-	// Sentry's grade sits beside its score; no other kind shows one.
+	// No letter grade beside any score (43e3b61 reversed): every tab reads
+	// 0–100, coloured by its band.
 	sentryHeadlines := map[string]repo.KindHeadline{
 		"sentry":    {Status: "fail", Score: intPtr(17), Grade: "E", UpdatedAt: at(time.Hour)},
 		"sonarqube": {Status: "pass", Score: intPtr(92), Grade: "A", UpdatedAt: at(time.Hour)},
 	}
 	graded := componentTabs(project, comp, []repo.Binding{{Kind: "sentry", Enabled: true}, {Kind: "sonarqube", Enabled: true}},
 		&repo.ComponentMetric{ComponentID: comp.ID, UpdatedAt: now, MetricsJSON: metricsJSON(t, sentryHeadlines)})
-	for _, tab := range graded {
-		if want := map[string]string{"sentry": "E"}[tab.Key]; tab.Grade != want {
-			t.Errorf("%s grade = %q, want %q", tab.Key, tab.Grade, want)
-		}
-	}
-	if html := renderMetricTabs(t, map[string]any{"Active": "sentry", "Tabs": graded}); !strings.Contains(html, `title="Grade E">E</span>`) {
-		t.Errorf("the sentry tab does not show its grade:\n%s", html)
+	if html := renderMetricTabs(t, map[string]any{"Active": "sentry", "Tabs": graded}); strings.Contains(html, "Grade") || strings.Contains(html, ">E<") {
+		t.Errorf("the sentry tab still shows a letter grade:\n%s", html)
 	}
 
 	// Before any sync, and with nothing bound, the strip keeps its shape —
@@ -293,40 +289,42 @@ func TestFirstBoundKind(t *testing.T) {
 	}
 }
 
-// A pass rate's chip says whether it meets the target, and by how much it
-// misses — the same line rateTone colours the number by.
-func TestRateVerdict(t *testing.T) {
+// A score's chip is its band, in a word: the same line the number is
+// coloured by.
+func TestBandVerdict(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
-		pct  int
-		want tabVerdict
+		score int
+		want  tabVerdict
 	}{
-		{100, tabVerdict{Tone: "pass", Text: "Meets 80% target"}},
-		{80, tabVerdict{Tone: "pass", Text: "Meets 80% target"}},
-		{79, tabVerdict{Tone: "fail", Text: "1 pt below 80%"}},
-		{50, tabVerdict{Tone: "fail", Text: "30 pts below 80%"}},
-		{0, tabVerdict{Tone: "fail", Text: "80 pts below 80%"}},
+		{100, tabVerdict{Tone: "pass", Text: "Healthy"}},
+		{80, tabVerdict{Tone: "pass", Text: "Healthy"}},
+		{79, tabVerdict{Tone: "fail", Text: "Needs attention"}},
+		{0, tabVerdict{Tone: "fail", Text: "Needs attention"}},
 	} {
-		got := rateVerdict(c.pct)
+		got := bandVerdict(&c.score)
 		if *got != c.want {
-			t.Errorf("rateVerdict(%d) = %+v, want %+v", c.pct, *got, c.want)
+			t.Errorf("bandVerdict(%d) = %+v, want %+v", c.score, *got, c.want)
 		}
-		if got.Tone != rateTone(c.pct) {
-			t.Errorf("rateVerdict(%d) tone %s, but the number is %s", c.pct, got.Tone, rateTone(c.pct))
+		if got.Tone != bandTone(&c.score) {
+			t.Errorf("bandVerdict(%d) tone %s, but the number is %s", c.score, got.Tone, bandTone(&c.score))
 		}
+	}
+	if bandVerdict(nil) != nil {
+		t.Error("no score draws no chip")
 	}
 }
 
-// The project strip's chips: the score counts its failing components, each
-// pass rate measures itself against the target, and a kind with no data
-// draws an empty slot rather than a verdict.
+// The project strip's chips: the score carries its band and the count of
+// components needing attention; each kind's average carries its band; a
+// kind with no data draws an empty slot rather than a verdict.
 func TestProjectTabs_Verdicts(t *testing.T) {
 	t.Parallel()
 	kpis := []kpiCard{
-		{Key: "sonarqube", Value: "50", Unit: "%", Tone: "fail"},
-		{Key: "trivy", Value: "100", Unit: "%", Tone: "pass"},
+		{Key: "sonarqube", Value: "50", Unit: "/100", Tone: "fail", Score: intPtr(50)},
+		{Key: "trivy", Value: "100", Unit: "/100", Tone: "pass", Score: intPtr(100)},
 		{Key: "sentry", Value: "–", Tone: "none"},
-		{Key: "gitlab", Value: "80", Unit: "%", Tone: "pass"},
+		{Key: "gitlab", Value: "80", Unit: "/100", Tone: "pass", Score: intPtr(80)},
 	}
 	for _, c := range []struct {
 		name  string
@@ -334,8 +332,8 @@ func TestProjectTabs_Verdicts(t *testing.T) {
 		want  *tabVerdict
 		sub   string
 	}{
-		{"failing", scoreCard{HealthyN: 5, FailingN: 2}, &tabVerdict{Tone: "fail", Text: "2 failing"}, "5 of 7 components healthy"},
-		{"healthy", scoreCard{HealthyN: 3}, &tabVerdict{Tone: "pass", Text: "All healthy"}, "3 of 3 components healthy"},
+		{"needs attention", scoreCard{HasScore: true, Score: 71, Tone: "fail", Components: 7, NeedAttention: 2}, &tabVerdict{Tone: "fail", Text: "Needs attention"}, "2 of 7 components need attention"},
+		{"healthy", scoreCard{HasScore: true, Score: 84, Tone: "pass", Components: 3, NeedAttention: 1}, &tabVerdict{Tone: "pass", Text: "Healthy"}, "1 of 3 components need attention"},
 		{"empty", scoreCard{}, nil, "no data yet"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -344,10 +342,10 @@ func TestProjectTabs_Verdicts(t *testing.T) {
 				t.Errorf("score tab verdict %+v sub %q, want %+v %q", tabs[0].Verdict, tabs[0].Sub, c.want, c.sub)
 			}
 			want := map[string]*tabVerdict{
-				"sonarqube": {Tone: "fail", Text: "30 pts below 80%"},
-				"trivy":     {Tone: "pass", Text: "Meets 80% target"},
+				"sonarqube": {Tone: "fail", Text: "Needs attention"},
+				"trivy":     {Tone: "pass", Text: "Healthy"},
 				"sentry":    nil,
-				"gitlab":    {Tone: "pass", Text: "Meets 80% target"},
+				"gitlab":    {Tone: "pass", Text: "Healthy"},
 			}
 			for _, tab := range tabs[1:] {
 				if !reflect.DeepEqual(tab.Verdict, want[tab.Key]) {
@@ -379,9 +377,9 @@ func TestComponentTabs_Verdicts(t *testing.T) {
 
 	tabs := componentTabs(project, comp, bindings, metric)
 	want := map[string]*tabVerdict{
-		"sonarqube": {Tone: "pass", Text: "Passing"},
-		"trivy":     {Tone: "fail", Text: "Failing", Stale: true},
-		"sentry":    nil, // no score: the status word is already the number
+		"sonarqube": {Tone: "pass", Text: "Healthy"},
+		"trivy":     {Tone: "fail", Text: "Needs attention", Stale: true},
+		"sentry":    nil, // no score: no band to name
 		"gitlab":    nil, // unbound
 	}
 	for _, tab := range tabs {
@@ -405,7 +403,7 @@ func TestComponentTabs_Verdicts(t *testing.T) {
 	for _, s := range []string{
 		`lotus-mt-verdict lotus-mt-verdict-pass" data-verdict="pass">`,
 		`lotus-mt-verdict lotus-mt-verdict-fail is-stale" data-verdict="fail">`,
-		"Passing</span>", "Failing</span>",
+		"Healthy</span>", "Needs attention</span>",
 	} {
 		if !strings.Contains(html, s) {
 			t.Errorf("strip lacks %q", s)

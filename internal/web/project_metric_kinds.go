@@ -294,7 +294,7 @@ const sentryHealthCol = 0
 
 func buildSentryKindPage(b *kindPageBase, envs []repo.SentryEnvironmentSummary, metrics map[uuid.UUID]repo.ComponentMetric) kindPage {
 	b.setColumns([]kindColumn{
-		{Label: "HEALTH", Width: "minmax(70px,.6fr)", Sort: "num", Title: "Grade and score of the worst environment — the one the project's Sentry card counts"},
+		{Label: "HEALTH", Width: "minmax(70px,.6fr)", Sort: "num", Title: "Score of the worst environment — the one the project's Sentry tab averages"},
 		{Label: "ISSUES", Width: "minmax(48px,.45fr)", Sort: "num", Right: true, Title: "Unresolved issues, summed over environments"},
 		{Label: "NEW", Width: "minmax(40px,.4fr)", Sort: "num", Right: true},
 		{Label: "ESCALATING", Width: "minmax(70px,.55fr)", Sort: "num", Right: true},
@@ -339,31 +339,18 @@ func buildSentryKindPage(b *kindPageBase, envs []repo.SentryEnvironmentSummary, 
 		syncedAt[i] = &synced
 		issues, newC, esc, reg, events = issues+int64(tIssues), newC+int64(tNew), esc+int64(tEsc), reg+int64(tReg), events+int64(tEvents)
 
-		// The grade the KPI card counts is the binding's headline: the
+		// The score the KPI tab averages is the binding's headline: the
 		// worst environment as the collector judged it. The snapshots'
-		// own lowest score stands in only before a headline exists.
-		grade, score := "", worst.Score
-		if worst.Grade != nil {
-			grade = *worst.Grade
-		}
-		tone := "none"
-		if grade != "" {
-			tone = sentryGradeTone(grade)
-		}
+		// own lowest score stands in only before a headline exists. No
+		// letter grade: a score reads 0–100, coloured by its band.
+		score := worst.Score
 		if kh, ok := metrics[bd.ComponentID].Metrics()["sentry"]; ok {
-			grade, score, tone = kh.Grade, kh.Score, row.Tone
+			score = kh.Score
 		}
-		health := badgeCell{Text: kindMissing, Tone: tone}
+		health := badgeCell{Text: kindMissing, Tone: bandTone(score)}
 		healthSort := ""
-		switch {
-		case grade != "" && score != nil:
-			health.Text = fmt.Sprintf("%s · %d", grade, *score)
-		case grade != "":
-			health.Text = grade
-		case score != nil:
-			health.Text = sortInt(*score)
-		}
 		if score != nil {
+			health.Text = sortInt(*score)
 			healthSort = sortInt(*score)
 		}
 		envCount := len(got)

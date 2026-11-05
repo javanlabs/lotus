@@ -171,7 +171,7 @@ func TestHomeViz_AValueNotSyncedLatelyIsMarkedStale(t *testing.T) {
 func TestStateLabelBeatsTheCount(t *testing.T) {
 	zero := int64(0)
 	kh := repo.KindHeadline{Status: "unknown", StateLabel: "not scanned", CountValue: &zero, CountLabel: "finding"}
-	if got := headlineText(kh); got != "not scanned" {
+	if got := headlineText(kh); got != "Not scanned" {
 		t.Errorf("headlineText = %q", got)
 	}
 	if got := homeMapCellLabel("trivy", kh); got != "not scanned" {

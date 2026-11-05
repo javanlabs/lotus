@@ -668,7 +668,6 @@ body {
 .lotus-mt-value { font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
 .lotus-mt-value-brand { color: var(--text-brand); }
 .lotus-mt-unit { font: 500 10px var(--font-mono); color: var(--text-faint); }
-.lotus-mt-grade { align-self: center; margin-left: 2px; font-weight: 700; }
 /* The verdict chip under the number: status_badge's pill and tones with a
    check or cross glyph, so a verdict never rests on colour alone. The slot
    holds its height when empty (nothing to judge yet), so the strip is one

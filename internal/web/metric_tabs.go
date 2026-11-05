@@ -2,7 +2,6 @@ package web
 
 import (
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -10,6 +9,7 @@ import (
 
 	"github.com/uyab/lotus/internal/collector"
 	"github.com/uyab/lotus/internal/repo"
+	"github.com/uyab/lotus/internal/scoring"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -24,12 +24,9 @@ type metricTab struct {
 	// drawn, but not as a link.
 	Key, Label, Href string
 	Value, Unit      string
-	// ValueTone colours the number: pass|fail|none, or brand for a score.
+	// ValueTone colours the number: the band of the score, pass|fail|none.
 	ValueTone string
-	// Grade is a letter shown as a badge beside the number (Sentry's A–E),
-	// "" for none.
-	Grade string
-	Sub   string
+	Sub       string
 	// Verdict is the chip under the number: the tab's verdict as a glyph
 	// and a word, so pass and fail never rest on colour alone. Nil draws
 	// an empty slot of the same height (nothing to judge yet), so the
@@ -45,12 +42,10 @@ type metricTab struct {
 	Lead bool
 }
 
-// tabVerdict is a tab's verdict chip. It replaced a MeterBar filled to the
-// number above it, which only repeated that number: a component's pass or
-// fail is not a score threshold (SonarQube's is its quality gate, Trivy's
-// its fail_on severity), so the fill could not say whether a tab passed —
-// only its colour did. The chip says it in a word and a glyph, and where
-// there is a target (a pass rate's passRateTarget) how far off it is.
+// tabVerdict is a tab's verdict chip: the band of the number above it, as
+// a glyph and a word, so healthy and needs-attention never rest on colour
+// alone. Every tab's number is a 0–100 score now, and its verdict is read
+// from that number and nothing else.
 type tabVerdict struct {
 	// Tone is pass|fail; it picks the glyph (a check or a cross) as well
 	// as the colour.
@@ -61,72 +56,41 @@ type tabVerdict struct {
 	Stale bool
 }
 
-// rateVerdict is a pass rate's chip: whether it meets passRateTarget, or
-// by how many points it misses it.
-func rateVerdict(pct int) *tabVerdict {
-	if pct >= passRateTarget {
-		return &tabVerdict{Tone: "pass", Text: fmt.Sprintf("Meets %d%% target", passRateTarget)}
+// bandVerdict is a score's chip: Healthy or Needs attention. No score
+// draws none.
+func bandVerdict(score *int) *tabVerdict {
+	if score == nil {
+		return nil
 	}
-	gap, unit := passRateTarget-pct, "pts"
-	if gap == 1 {
-		unit = "pt"
-	}
-	return &tabVerdict{Tone: "fail", Text: fmt.Sprintf("%d %s below %d%%", gap, unit, passRateTarget)}
-}
-
-// scoreVerdict is the Lotus score's chip: how many components fail — what
-// an averaged score can hide.
-func scoreVerdict(score scoreCard) *tabVerdict {
-	switch {
-	case score.FailingN > 0:
-		return &tabVerdict{Tone: "fail", Text: fmt.Sprintf("%d failing", score.FailingN)}
-	case score.HealthyN > 0:
-		return &tabVerdict{Tone: "pass", Text: "All healthy"}
-	}
-	return nil
-}
-
-// statusVerdict is a component tab's chip for a kind that has a score:
-// the number is the score, so the chip carries the verdict. A status that
-// is neither pass nor fail draws none.
-func statusVerdict(tone string) *tabVerdict {
-	switch tone {
-	case "pass":
-		return &tabVerdict{Tone: "pass", Text: "Passing"}
-	case "fail":
-		return &tabVerdict{Tone: "fail", Text: "Failing"}
-	}
-	return nil
+	b := scoring.Band(*score)
+	return &tabVerdict{Tone: string(b.Tone), Text: b.Word}
 }
 
 // projectTabs is a project's metric strip: its Lotus score, then one tab
-// per kind's pass rate, in bindableKinds order (kpiDefs is asserted to
-// follow it). Both come from projectSummary.
+// per kind's average score, in bindableKinds order (kpiDefs is asserted
+// to follow it). Both come from projectSummary. The score tab carries the
+// project's verdict, so it carries the count of components needing
+// attention too.
 func projectTabs(score scoreCard, kpis []kpiCard) []metricTab {
 	tabs := make([]metricTab, 0, len(kpis)+1)
 	st := metricTab{
-		Key: "score", Label: "LOTUS SCORE", Href: score.Href, Value: "–", Unit: "/100", ValueTone: "brand", Lead: true,
-		Sub:     "no data yet",
-		Info:    score.Info,
-		Verdict: scoreVerdict(score),
+		Key: "score", Label: "LOTUS SCORE", Href: score.Href, Value: "–", Unit: "/100", ValueTone: score.Tone, Lead: true,
+		Sub:  "no data yet",
+		Info: score.Info,
 	}
-	if total := score.HealthyN + score.FailingN; total > 0 {
-		st.Sub = fmt.Sprintf("%d of %d components healthy", score.HealthyN, total)
+	if score.Components > 0 {
+		st.Sub = attentionText(score.NeedAttention, score.Components)
 	}
 	if score.HasScore {
 		st.Value = strconv.Itoa(score.Score)
+		st.Verdict = bandVerdict(&score.Score)
 	}
 	tabs = append(tabs, st)
 	for _, k := range kpis {
-		tab := metricTab{
+		tabs = append(tabs, metricTab{
 			Key: k.Key, Label: k.Label, Href: k.Href, Value: k.Value, Unit: k.Unit, ValueTone: k.Tone,
-			Sub: k.Sub, Info: k.Info,
-		}
-		// "–" (no data yet) parses as nothing and draws no chip.
-		if pct, err := strconv.Atoi(k.Value); err == nil {
-			tab.Verdict = rateVerdict(pct)
-		}
-		tabs = append(tabs, tab)
+			Sub: k.Sub, Info: k.Info, Verdict: bandVerdict(k.Score),
+		})
 	}
 	return tabs
 }
@@ -175,28 +139,23 @@ func componentTabs(project *repo.Project, comp *repo.Component, bindings []repo.
 		case !has:
 			tab.Sub = "Not synced yet"
 		default:
-			cell := badgeFor(kinds, k)
-			tab.ValueTone = cell.Tone
+			// The number is the kind's score and its colour and chip are
+			// the score's band; with no score the number is a grey "–"
+			// and the line under it says why. No letter grade beside it:
+			// every tab reads 0–100.
+			tab.ValueTone = bandTone(kh.Score)
 			if kh.Score != nil {
 				tab.Value, tab.Unit = strconv.Itoa(*kh.Score), "/100"
-				tab.Sub = cell.Title
-				tab.Verdict = statusVerdict(cell.Tone)
-			} else {
-				// No score: the status word is the number, and the
-				// collector's own phrasing the note under it.
-				tab.Value = statusWord(collector.Status(kh.Status))
 				tab.Sub = headlineText(kh)
-			}
-			// Sentry grades its score A–E; the letter is what people quote,
-			// so it sits beside the number rather than only on the page.
-			if k == "sentry" {
-				tab.Grade = kh.Grade
+				tab.Verdict = bandVerdict(kh.Score)
+			} else {
+				tab.Sub = reasonWord(kh)
 			}
 			at := kindSyncedAt(*metric, kh)
 			// A collector with nothing more to say than its status would
-			// only repeat the chip (or the number); when it synced is
-			// worth the line instead.
-			if tab.Sub == statusWord(collector.Status(kh.Status)) {
+			// only repeat the chip; when it synced is worth the line
+			// instead.
+			if tab.Sub == "" || tab.Sub == statusWord(collector.Status(kh.Status)) {
 				tab.Sub = "Synced " + relativeTimeStrAt(at, now)
 			}
 			if note := staleNote(k, at, now); note != "" {

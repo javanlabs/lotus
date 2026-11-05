@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/uyab/lotus/internal/authz"
-	"github.com/uyab/lotus/internal/collector"
 	"github.com/uyab/lotus/internal/httpx"
 	"github.com/uyab/lotus/internal/repo"
 	"github.com/uyab/lotus/internal/tenant"
@@ -84,7 +83,7 @@ type kindRow struct {
 	ExternalKey string
 	// ProviderURL opens the binding in the integration itself (new tab).
 	ProviderURL string
-	Tone        string // the kind's headline status on this component
+	Tone        string // the band of the kind's score on this component
 	Cells       []kindCell
 	Synced      *updatedCell
 }
@@ -207,7 +206,7 @@ func newKindPage(project *repo.Project, kind string, components []componentInfo,
 		stale := ""
 		if cm, has := metrics[comp.ID]; has {
 			if kh, ok := cm.Metrics()[kind]; ok {
-				row.Tone = toneOf(collector.Status(kh.Status))
+				row.Tone = bandTone(kh.Score)
 				at := kindSyncedAt(cm, kh)
 				row.Synced = syncedCell(at)
 				stale = staleNote(kind, at, now)

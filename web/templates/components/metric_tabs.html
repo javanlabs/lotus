@@ -1,7 +1,7 @@
 {{/* metric_tabs is a metric strip: a SegmentedControl on a glass card (the
      system has no Tabs component; see app.css .lotus-mt) whose tabs are
      links, each carrying the number it opens. A project draws one (its
-     score and one tab per kind's pass rate) on its page and on every
+     score and one tab per kind's average score) on its page and on every
      integration page beneath it; a component draws one (a tab per kind)
      on every metric page beneath it. A tab with no Href (an unbound kind)
      keeps its place but is not a link.
@@ -32,7 +32,7 @@
         <div class="lotus-mt-tab{{if $on}} is-active{{end}}{{if .Muted}} is-muted{{end}}{{if .Lead}} is-lead{{end}}" data-tab="{{.Key}}">
           {{if .Href}}<a href="{{.Href}}" class="lotus-mt-link"{{if $on}} aria-current="page"{{end}}{{if .Title}} title="{{.Title}}"{{end}}>{{else}}<div class="lotus-mt-link" aria-disabled="true">{{end}}
             <span class="lotus-mt-label">{{.Label}}</span>
-            <span class="lotus-mt-main"><span class="lotus-mt-value {{if eq .ValueTone "brand"}}lotus-mt-value-brand{{else}}lotus-text-{{.ValueTone}}{{end}}"{{if $on}} data-headline{{end}}>{{.Value}}</span>{{if .Unit}}<span class="lotus-mt-unit">{{.Unit}}</span>{{end}}{{if .Grade}}<span class="lotus-badge lotus-badge-{{.ValueTone}} lotus-mt-grade" title="Grade {{.Grade}}">{{.Grade}}</span>{{end}}</span>
+            <span class="lotus-mt-main"><span class="lotus-mt-value {{if eq .ValueTone "brand"}}lotus-mt-value-brand{{else}}lotus-text-{{.ValueTone}}{{end}}"{{if $on}} data-headline{{end}}>{{.Value}}</span>{{if .Unit}}<span class="lotus-mt-unit">{{.Unit}}</span>{{end}}</span>
             {{/* The verdict chip: a glyph and a word, never colour alone. The
                  slot is drawn empty when there is no verdict, so every tab
                  is the same height. Dashed when the verdict is stale. */}}

@@ -36,7 +36,7 @@ func TestHomeDashboard_Page(t *testing.T) {
 		"cannot sign in", "bad token",
 		"Blocker issue #1: Checkout crashes", `href="/projects/payments/qa/issues/1"`,
 		"marked open", // the feed
-		"SONAR GATE",  // the per-integration rates
+		"SONARQUBE",   // the per-integration averages
 		`data-testid="health"`, `data-testid="insights"`, `data-testid="health-map"`, `data-testid="trends"`,
 		"SonarQube causes the most failures",
 	} {

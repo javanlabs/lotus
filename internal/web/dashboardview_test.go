@@ -86,7 +86,7 @@ func TestBuildDashboardViewModel_RowsCarryBadgesAndSortAlphabetically(t *testing
 		compB: {
 			ComponentID: compB, Status: "fail", Score: &scoreB,
 			MetricsJSON: metricsJSON(t, map[string]repo.KindHeadline{
-				"trivy": {Status: "fail", CountValue: int64Ptr(3), CountLabel: "critical finding"},
+				"trivy": {Status: "fail", Score: intPtr(49), CountValue: int64Ptr(3), CountLabel: "critical finding"},
 			}),
 		},
 	}
@@ -122,10 +122,18 @@ func TestBuildDashboardViewModel_RowsCarryBadgesAndSortAlphabetically(t *testing
 		t.Fatalf("no column with key %q in %+v", key, vm.Columns)
 		return badgeCell{}
 	}
-	// risky-svc's trivy headline carries a count but no score, so the cell
-	// falls back to the collector's own phrasing rather than showing "–".
-	if got := cell(vm.Rows[1], "trivy"); got.Text != "3 critical findings" || got.Tone != "fail" {
-		t.Fatalf("risky-svc trivy cell = %+v, want '3 critical findings'/fail", got)
+	// The cell is the score, coloured by its band; the collector's own
+	// phrasing is the hover text that explains it.
+	if got := cell(vm.Rows[1], "trivy"); got.Text != "49" || got.Tone != "fail" || got.Title != "3 critical findings" {
+		t.Fatalf("risky-svc trivy cell = %+v, want 49/fail titled '3 critical findings'", got)
+	}
+	// A kind with no score is a grey "–" whatever its stored status, and
+	// the row's tone is its score's band (40: needs attention).
+	if got := cell(vm.Rows[0], "gitlab"); got.Text != "–" || got.Tone != "none" || got.Title != "No data" {
+		t.Fatalf("healthy-svc gitlab cell = %+v, want grey – titled No data", got)
+	}
+	if vm.Rows[0].Tone != "pass" || vm.Rows[1].Tone != "fail" {
+		t.Fatalf("row tones = %q, %q; want the bands of 90 and 40", vm.Rows[0].Tone, vm.Rows[1].Tone)
 	}
 	// gitlab/sonarqube/sentry were never bound on risky-svc — must render
 	// as the "no data" badge, not a zero value or a panic.
@@ -182,43 +190,50 @@ func TestBuildDashboardViewModel_ComponentNeverCollectedIsUnknownNotPass(t *test
 	}
 }
 
-// buildScoreCard now takes the already-rolled-up score rather than a slice
-// to average, because the two levels roll up differently and the tile must
-// show whichever number its page's rows show.
-func TestBuildScoreCard_BucketsByStatusExcludingUnknownFromBar(t *testing.T) {
+// The score tile reads a rollup: its number, the band of that number, and
+// the count of components needing attention the average can hide.
+func TestBuildScoreCard_BandAndAttentionCount(t *testing.T) {
 	t.Parallel()
-	statuses := statusList("pass", "fail", "unknown")
-	sc := buildScoreCard(statuses, intPtr(60))
-	if sc.HealthyN != 1 || sc.FailingN != 1 {
-		t.Fatalf("HealthyN=%d FailingN=%d, want 1/1", sc.HealthyN, sc.FailingN)
+	sc := buildScoreCard(repo.ProjectRollup{Score: intPtr(84), Components: 5, NeedAttention: 2})
+	if !sc.HasScore || sc.Score != 84 || sc.Tone != "pass" || sc.Word != "Healthy" {
+		t.Fatalf("score card = %+v, want 84 Healthy", sc)
 	}
-	if sc.HealthyPct+sc.FailingPct != 100 {
-		t.Fatalf("segments sum to %d, want 100 (unknown excluded from the denominator)", sc.HealthyPct+sc.FailingPct)
+	if got := attentionText(sc.NeedAttention, sc.Components); got != "2 of 5 components need attention" {
+		t.Fatalf("attention = %q", got)
 	}
-	if !sc.HasScore || sc.Score != 60 {
-		t.Fatalf("Score = %+v, want HasScore=true Score=60 (the score it was handed)", sc)
+	if got := attentionText(0, 1); got != "0 of 1 component needs attention" {
+		t.Fatalf("attention = %q", got)
+	}
+	none := buildScoreCard(repo.ProjectRollup{})
+	if none.HasScore || none.Tone != "none" {
+		t.Fatalf("empty score card = %+v, want no score, grey", none)
 	}
 }
 
-func TestBuildKPIs_NoDataYetWhenKindNeverBound(t *testing.T) {
+// The KPI tabs are per-kind average scores, not pass rates: the same
+// numbers the project score is built from.
+func TestBuildKPIs_AverageScoresNotPassRates(t *testing.T) {
 	t.Parallel()
-	kindStatuses := map[string][]collector.Status{
-		"sonarqube": statusList("pass", "pass", "fail"),
-		// trivy/sentry/gitlab: absent entirely — never bound anywhere.
-	}
-	kpis := buildKPIs(kindStatuses, map[string]int{"sonarqube": 3}, 5)
-
-	byLabel := map[string]kpiCard{}
+	kpis := buildKPIs(map[string]repo.KindRollup{
+		"sonarqube": {Score: intPtr(77), Scored: 3, Below: 1, Count: 3},
+		"gitlab":    {Score: intPtr(88), Scored: 2, Below: 0, Count: 2},
+		// trivy/sentry: absent entirely — never bound anywhere.
+	})
+	byKey := map[string]kpiCard{}
 	for _, k := range kpis {
-		byLabel[k.Label] = k
+		byKey[k.Key] = k
 	}
-	sonar := byLabel["SONAR GATE"]
-	if sonar.Value != "67" || sonar.Tone != "fail" {
-		t.Fatalf("SONAR GATE = %+v, want value=67 tone=fail (2/3 pass, rounded — below the 80%% pass bar)", sonar)
+	sonar := byKey["sonarqube"]
+	if sonar.Label != "SONARQUBE" || sonar.Value != "77" || sonar.Unit != "/100" || sonar.Tone != "fail" || sonar.Sub != "1 of 3 below 80" {
+		t.Fatalf("sonarqube = %+v, want SONARQUBE 77/100 fail, 1 of 3 below 80", sonar)
 	}
-	trivy := byLabel["TRIVY CLEAN"]
+	gitlab := byKey["gitlab"]
+	if gitlab.Label != "GITLAB" || gitlab.Value != "88" || gitlab.Tone != "pass" || gitlab.Sub != "0 of 2 below 80" {
+		t.Fatalf("gitlab = %+v, want GITLAB 88 pass", gitlab)
+	}
+	trivy := byKey["trivy"]
 	if trivy.Value != "–" || trivy.Tone != "none" || trivy.Sub != "no data yet" {
-		t.Fatalf("TRIVY CLEAN = %+v, want the no-data placeholder", trivy)
+		t.Fatalf("trivy = %+v, want the no-data placeholder", trivy)
 	}
 }
 

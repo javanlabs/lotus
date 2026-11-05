@@ -11,6 +11,7 @@ import (
 
 	"github.com/uyab/lotus/internal/collector"
 	"github.com/uyab/lotus/internal/repo"
+	"github.com/uyab/lotus/internal/scoring"
 )
 
 // dashboardRow is one repository (component) in the generalized dashboard
@@ -86,10 +87,10 @@ type badgeCell struct {
 	LinkLabel string
 }
 
-// kpiCard is one of the four fleet-wide rollup cards (Sonar gate, Trivy
-// clean, Sentry health, Git hygiene in the mockup) — one per collector
-// kind, showing the pass rate across every component that has that kind
-// bound.
+// kpiCard is one of the four per-kind tabs beside the Lotus score: each
+// kind's score averaged over the components that report it — the same
+// per-kind average the project score is built from, so a tab and the
+// score it feeds always agree.
 type kpiCard struct {
 	// Key identifies which explanation panel this card's info button
 	// opens. Kept separate from Label so the copy can change without
@@ -97,15 +98,16 @@ type kpiCard struct {
 	Key   string
 	Label string
 	Value string // "89" or "–"
-	Unit  string // "%"
+	Unit  string // "/100", "" with no data
 	Pct   string // bar width, "89%"
-	Tone  string
+	Tone  string // the band of the score: pass|fail|none
+	// Score is Value as a number, nil with no data; its band is the tab's
+	// verdict.
+	Score *int
 	Sub   string
 	// Info explains where the number came from, shown in the card's info
-	// popover. These cards are pass RATES, not averaged scores — the
-	// distinction nothing on the card itself conveys, and the most common
-	// way to misread the strip. Kept to a sentence or two: a paragraph in
-	// a popover does not get read.
+	// popover. Kept to a sentence or two: a paragraph in a popover does
+	// not get read.
 	Info string
 	// Href opens the project's page for the kind (projectMetricURL); the
 	// whole card is the link. "" draws a card that is not clickable —
@@ -113,18 +115,21 @@ type kpiCard struct {
 	Href string
 }
 
-// scoreCard is the large "Lotus Score" tile: the org-wide rollup score and
-// status distribution across every component with a projection row.
+// scoreCard is the "Lotus Score" tile: a project's rolled-up score, its
+// band, and how many components the average is hiding.
 type scoreCard struct {
 	// Info explains the headline number, same role as kpiCard.Info.
 	Info string
 	// Href opens the project's own page, which the score tab leads back to
 	// from a metric page; "" where there is no one project to open.
-	Href                   string
-	HasScore               bool
-	Score                  int
-	HealthyPct, FailingPct int // segment widths, sum to 100 (0 each if NoData)
-	HealthyN, FailingN     int
+	Href     string
+	HasScore bool
+	Score    int
+	// Tone and Word are the score's band.
+	Tone, Word string
+	// Components were rolled up; NeedAttention of them have at least one
+	// kind below 80.
+	Components, NeedAttention int
 }
 
 // updatedCell is a component's "last updated" column: when any of its
@@ -264,28 +269,30 @@ func toneOf(s collector.Status) string {
 	}
 }
 
+// badgeFor is one kind's cell for one component: its score, coloured by
+// the score's band — never by a status of its own, so a number and its
+// colour cannot disagree. With no score the cell is a grey "–" and the
+// reason ("No signal", "Not scanned") is its hover text.
 func badgeFor(metrics map[string]repo.KindHeadline, kind string) badgeCell {
 	kh, ok := metrics[kind]
 	if !ok {
 		return badgeCell{Text: "–", Tone: "none"}
 	}
-	tone := toneOf(collector.Status(kh.Status))
 	if kh.Score != nil {
-		return badgeCell{Text: fmt.Sprintf("%d", *kh.Score), Tone: tone, Title: headlineText(kh), Sort: kh.Score}
+		return badgeCell{Text: fmt.Sprintf("%d", *kh.Score), Tone: bandTone(kh.Score), Title: headlineText(kh), Sort: kh.Score}
 	}
-	// No score to show — a kind that only grades or counts still needs a
-	// readable cell, so fall back to the phrasing itself.
-	return badgeCell{Text: headlineText(kh), Tone: tone}
+	return badgeCell{Text: "–", Tone: "none", Title: reasonWord(kh)}
 }
 
 // headlineText picks the most useful short label out of a KindHeadline:
-// a count (with its unit pluralized) beats a letter grade beats the bare
-// status word — matching what each collector actually populates (see
-// internal/collector/*/result.go).
+// a reason with nothing measured, else a count (with its unit
+// pluralized), else the bare status word — matching what each collector
+// actually populates (see internal/collector/*/result.go). Never a letter
+// grade: scores read 0–100 everywhere.
 func headlineText(kh repo.KindHeadline) string {
 	switch {
 	case kh.StateLabel != "":
-		return kh.StateLabel
+		return capitalize(kh.StateLabel)
 	case kh.CountValue != nil:
 		unit := kh.CountLabel
 		if *kh.CountValue != 1 && unit != "" {
@@ -295,8 +302,6 @@ func headlineText(kh repo.KindHeadline) string {
 			return fmt.Sprintf("%d", *kh.CountValue)
 		}
 		return fmt.Sprintf("%d %s", *kh.CountValue, unit)
-	case kh.Grade != "":
-		return kh.Grade
 	case kh.Status != "":
 		return strings.ToUpper(kh.Status[:1]) + kh.Status[1:]
 	default:
@@ -374,11 +379,9 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 	for _, comp := range components {
 		cm, has := metrics[comp.ID]
 		var kindMap map[string]repo.KindHeadline
-		status := collector.StatusUnknown
 		var score *int
 		if has {
 			kindMap = cm.Metrics()
-			status = cm.StatusValue()
 			score = cm.Score
 		}
 
@@ -398,7 +401,7 @@ func buildDashboardViewModel(subtitle string, projectCount int, components []com
 			func(k string) bool { _, ok := kindMap[k]; return ok }, comp.metricURL)
 		rows = append(rows, dashboardRow{
 			Name: comp.Name, Href: comp.url(),
-			Score: scoreStr, ScoreValue: scoreValue, ScorePct: scorePct, Tone: toneOf(status),
+			Score: scoreStr, ScoreValue: scoreValue, ScorePct: scorePct, Tone: bandTone(score),
 			Cells:    cells,
 			Updated:  updatedCellFor(cm, has),
 			TrendURL: trendURLFor(comp),
@@ -460,70 +463,52 @@ func clamp(v, lo, hi int) int {
 	return v
 }
 
-// buildScoreCard renders the headline tile. score is the number to show —
-// callers pass the rollup appropriate to their level, so "Lotus score"
-// means one thing everywhere. statuses drive only the healthy/at-risk/
-// failing distribution beneath it, which is a per-component count and
-// deliberately independent of how the score itself is computed.
-func buildScoreCard(statuses []collector.Status, score *int) scoreCard {
-	healthy, failing := 0, 0
-	for _, s := range statuses {
-		switch s {
-		case collector.StatusPass:
-			healthy++
-		case collector.StatusFail:
-			failing++
-		}
-	}
-	total := healthy + failing
+// buildScoreCard renders the headline tile from a rollup, so "Lotus
+// score" means one thing everywhere: its number, its band, and the count
+// of components needing attention that the average can hide.
+func buildScoreCard(roll repo.ProjectRollup) scoreCard {
+	band := scoring.BandOf(roll.Score, "")
 	sc := scoreCard{
-		HealthyN: healthy, FailingN: failing,
-		Info: "Each tool averaged across the components reporting it, then those averages combined — one vote per tool. Unreported tools are skipped, not zeroed. The chip under it counts the failing components the average can hide.",
+		Tone: string(band.Tone), Word: band.Word,
+		Components: roll.Components, NeedAttention: roll.NeedAttention,
+		Info: "Each tool averaged across the components reporting it, then those averages combined — one vote per tool — and rounded once. Unreported tools are skipped, not zeroed. 80 or more is healthy. The line under it counts the components with any tool below 80, which the average can hide.",
 	}
-	if score != nil {
+	if roll.Score != nil {
 		sc.HasScore = true
-		sc.Score = *score
-	}
-	if total > 0 {
-		sc.HealthyPct = healthy * 100 / total
-		sc.FailingPct = 100 - sc.HealthyPct
+		sc.Score = *roll.Score
 	}
 	return sc
 }
 
+// attentionText is the count a project's verdict always carries.
+func attentionText(need, total int) string {
+	return fmt.Sprintf("%d of %d component%s need%s attention", need, total, plural(total, "", "s"), plural(total, "s", ""))
+}
+
 // kpiDefs must stay in bindableKinds order — asserted by
-// TestKindOrderIsConsistentEverywhere.
+// TestKindOrderIsConsistentEverywhere. Labels are kindLabels'.
 var kpiDefs = []struct {
-	Kind, Label, Info string
+	Kind, Info string
 }{
-	{"sonarqube", "SONAR GATE",
-		"Share of components whose quality gate passes. Components without SonarQube are excluded, not failed."},
-	{"trivy", "TRIVY CLEAN",
-		"Share of components with no critical and no high findings. Medium and low don't count against it."},
-	{"sentry", "SENTRY HEALTH",
-		"Share of components Sentry grades A or B (score 80+). C, D and E don't count."},
-	{"gitlab", "GIT HYGIENE",
-		"Share of components whose last pipeline passed. Still-running counts as at risk."},
+	{"sonarqube", "Average SonarQube score of the components reporting it: coverage and the worst rating averaged, times the quality-gate factor."},
+	{"trivy", "Average Trivy score: 100 − 20 per critical − 5 per high, capped at 49 with any critical and at 79 when the fail-on policy fails."},
+	{"sentry", "Average Sentry health score: unresolved issues weighted by state, volume and recency. Components with no signal are left out."},
+	{"gitlab", "Average GitLab score: pipeline success less the stale-branch share × 20, capped at 49 when the last finished pipeline failed."},
 }
 
 // projectKPIs is a project's four KPI cards over its components: each
-// kind's pass rate across the components reporting it. The project page's
-// card strip and each project-level integration page's headline both read
-// it, so the headline cannot drift from the card that links to it.
+// kind's score averaged over the components reporting it (RollupProject's
+// per-kind averages). The project page's card strip and each project-
+// level integration page's headline both read it, so the headline cannot
+// drift from the card that links to it.
 func projectKPIs(components []componentInfo, metrics map[uuid.UUID]repo.ComponentMetric) []kpiCard {
-	kindStatuses := map[string][]collector.Status{}
-	kindMeasured := map[string]int{}
+	var measured []repo.ComponentMetric
 	for _, comp := range components {
-		cm, has := metrics[comp.ID]
-		if !has {
-			continue
-		}
-		for kind, kh := range cm.Metrics() {
-			kindStatuses[kind] = append(kindStatuses[kind], collector.Status(kh.Status))
-			kindMeasured[kind]++
+		if cm, has := metrics[comp.ID]; has {
+			measured = append(measured, cm)
 		}
 	}
-	return buildKPIs(kindStatuses, kindMeasured, len(components))
+	return buildKPIs(repo.RollupProject(measured).Kinds)
 }
 
 // projectSummary is a project's metric tabs: the Lotus score and the four
@@ -536,50 +521,48 @@ func projectKPIs(components []componentInfo, metrics map[uuid.UUID]repo.Componen
 // this project is (RollupProject over the components that have a
 // projection row), so one project has one Lotus score everywhere.
 func projectSummary(project *repo.Project, components []componentInfo, metrics map[uuid.UUID]repo.ComponentMetric) (scoreCard, []kpiCard) {
-	statuses := make([]collector.Status, 0, len(components))
 	var projectMetrics []repo.ComponentMetric
 	for _, comp := range components {
-		status := collector.StatusUnknown
 		if cm, has := metrics[comp.ID]; has {
-			status = cm.StatusValue()
 			projectMetrics = append(projectMetrics, cm)
 		}
-		statuses = append(statuses, status)
 	}
-
-	score := buildScoreCard(statuses, repo.RollupProject(projectMetrics).Score)
+	roll := repo.RollupProject(projectMetrics)
+	score := buildScoreCard(roll)
 	score.Href = projectURL(project)
-	kpis := projectKPIs(components, metrics)
+	kpis := buildKPIs(roll.Kinds)
 	for i := range kpis {
 		kpis[i].Href = projectMetricURL(project, kpis[i].Key)
 	}
 	return score, kpis
 }
 
-func buildKPIs(kindStatuses map[string][]collector.Status, measured map[string]int, totalComponents int) []kpiCard {
+// buildKPIs is one card per kind from its per-kind rollup: the average
+// score, its band, and how many of the scored components are below 80.
+func buildKPIs(kinds map[string]repo.KindRollup) []kpiCard {
 	kpis := make([]kpiCard, 0, len(kpiDefs))
 	for _, def := range kpiDefs {
-		rate, ok := repo.PassRate(kindStatuses[def.Kind])
-		card := kpiCard{Key: def.Kind, Label: def.Label, Info: def.Info}
-		if !ok {
+		k := kinds[def.Kind]
+		card := kpiCard{Key: def.Kind, Label: strings.ToUpper(kindLabels[def.Kind]), Info: def.Info, Score: k.Score}
+		if k.Score == nil {
 			card.Value, card.Unit, card.Tone, card.Pct = "–", "", "none", "0%"
 			card.Sub = "no data yet"
 		} else {
-			pct := int(rate*100 + 0.5)
-			card.Value, card.Unit = fmt.Sprintf("%d", pct), "%"
-			card.Pct = fmt.Sprintf("%d%%", pct)
-			card.Tone = rateTone(pct)
-			card.Sub = fmt.Sprintf("%d/%d components reporting", measured[def.Kind], totalComponents)
+			card.Value, card.Unit = fmt.Sprintf("%d", *k.Score), "/100"
+			card.Pct = fmt.Sprintf("%d%%", clamp(*k.Score, 0, 100))
+			card.Tone = string(scoring.Band(*k.Score).Tone)
+			card.Sub = fmt.Sprintf("%d of %d below %d", k.Below, k.Scored, scoring.PassThreshold)
 		}
 		kpis = append(kpis, card)
 	}
 	return kpis
 }
 
-// passRateTarget is the pass rate, in percent, at which a share of
-// passing components reads as passing: a KPI tab, a health bar. The
-// metric strip names it in its chip ("Meets 80% target").
-const passRateTarget = 80
+// passRateTarget is the share, in percent, at which a share of passing
+// components reads as passing: the dashboard's donut and its weakest-
+// project insight, which count components rather than average scores.
+// It is the same line as a score's: scoring.PassThreshold.
+const passRateTarget = scoring.PassThreshold
 
 func rateTone(pct int) string {
 	switch {
@@ -605,8 +588,7 @@ func rateTone(pct int) string {
 func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, tags map[uuid.UUID][]repo.Tag, components []componentInfo, metrics map[uuid.UUID]repo.ComponentMetric) dashboardViewModel {
 	componentCount := make(map[uuid.UUID]int, len(projects))
 	projectMetrics := make(map[uuid.UUID][]repo.ComponentMetric, len(projects))
-	kindStatuses := map[string][]collector.Status{"gitlab": nil, "sonarqube": nil, "trivy": nil, "sentry": nil}
-	kindMeasured := map[string]int{}
+	var allMetrics []repo.ComponentMetric
 
 	for _, comp := range components {
 		componentCount[comp.ProjectID]++
@@ -615,26 +597,13 @@ func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, ta
 			continue
 		}
 		projectMetrics[comp.ProjectID] = append(projectMetrics[comp.ProjectID], cm)
-
-		// The KPI cards stay component-scoped: they answer "how much of the
-		// fleet reports this integration at all", which is a coverage
-		// question about components, not about projects.
-		for kind := range kindStatuses {
-			if kh, ok := cm.Metrics()[kind]; ok {
-				kindStatuses[kind] = append(kindStatuses[kind], collector.Status(kh.Status))
-				kindMeasured[kind]++
-			}
-		}
+		allMetrics = append(allMetrics, cm)
 	}
 
 	rows := make([]dashboardRow, 0, len(projects))
-	var statuses []collector.Status
-	var scores []*int
-	failing := 0
+	failing := 0 // projects whose score is in the needs-attention band
 	for _, p := range projects {
 		roll := repo.RollupProject(projectMetrics[p.ID])
-		statuses = append(statuses, roll.Status)
-		scores = append(scores, roll.Score)
 		row := projectRow(p, componentCount[p.ID], roll)
 		row.Tags = tags[p.ID]
 		if row.Tone == "fail" {
@@ -649,6 +618,9 @@ func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, ta
 		rows[i].N = i + 1
 	}
 
+	// The fleet's summary is not drawn on this page (ShowSummary is off),
+	// but it is the same per-kind rollup, over every component.
+	fleet := repo.RollupProject(allMetrics)
 	return dashboardViewModel{
 		Empty:          len(projects) == 0,
 		NoProjects:     len(projects) == 0,
@@ -660,8 +632,8 @@ func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, ta
 		ProjectList:    true,
 		FailingCount:   failing,
 		ProjectCount:   len(projects),
-		Score:          buildScoreCard(statuses, repo.RollupScore(scores)),
-		KPIs:           buildKPIs(kindStatuses, kindMeasured, len(components)),
+		Score:          buildScoreCard(fleet),
+		KPIs:           buildKPIs(fleet.Kinds),
 		Rows:           rows,
 		RowCount:       len(rows),
 		Subtitle:       subtitle,
@@ -682,14 +654,21 @@ func projectRow(p repo.Project, components int, roll repo.ProjectRollup) dashboa
 	linkCells(cells, projectColumns, p.Name,
 		func(k string) bool { return roll.Kinds[k].Count > 0 },
 		func(k string) string { return projectMetricURL(&p, k) })
+	// The row's verdict is its score's band, so it carries the count the
+	// average can hide: how many of its measured components have a kind
+	// below 80.
+	subtext := fmt.Sprintf("%d component%s", components, plural(components, "", "s"))
+	if roll.Components > 0 {
+		subtext = attentionText(roll.NeedAttention, roll.Components)
+	}
 	return dashboardRow{
 		Name:       p.Name,
-		Subtext:    fmt.Sprintf("%d component%s", components, plural(components, "", "s")),
+		Subtext:    subtext,
 		Href:       projectURL(&p),
 		Score:      scoreStr,
 		ScoreValue: roll.Score,
 		ScorePct:   scorePct,
-		Tone:       toneOf(roll.Status),
+		Tone:       bandTone(roll.Score),
 		Cells:      cells,
 	}
 }
@@ -700,20 +679,18 @@ func projectRow(p repo.Project, components int, roll repo.ProjectRollup) dashboa
 // averaged score alone. It used to append "· N" for the number of
 // components reporting — dropped, since that count is available on the
 // project page and here it only made every cell read like a fraction.
-// A kind with status but no score (Trivy counts rather than grades at
-// component level, but its project rollup still averages the per-image
-// scores) falls back to a bare status word so the tone is never shown on
-// an empty cell.
+// A kind reported but scored nowhere (every image not scanned, say) is a
+// grey "–", never a coloured word.
 func projectBadge(roll repo.ProjectRollup, kind string) badgeCell {
 	k, ok := roll.Kinds[kind]
 	if !ok || k.Count == 0 {
 		return badgeCell{Text: "–", Tone: "none"}
 	}
-	title := fmt.Sprintf("averaged over %d component%s", k.Count, plural(k.Count, "", "s"))
-	if k.Score != nil {
-		return badgeCell{Text: fmt.Sprintf("%d", *k.Score), Tone: toneOf(k.Status), Title: title, Sort: k.Score}
+	if k.Score == nil {
+		return badgeCell{Text: "–", Tone: "none", Title: fmt.Sprintf("no score on any of %d component%s", k.Count, plural(k.Count, "", "s"))}
 	}
-	return badgeCell{Text: statusWord(k.Status), Tone: toneOf(k.Status), Title: title}
+	title := fmt.Sprintf("averaged over %d component%s · %d below %d", k.Scored, plural(k.Scored, "", "s"), k.Below, scoring.PassThreshold)
+	return badgeCell{Text: fmt.Sprintf("%d", *k.Score), Tone: bandTone(k.Score), Title: title, Sort: k.Score}
 }
 
 func statusWord(s collector.Status) string {
@@ -800,4 +777,20 @@ func firstMetricCol(trend bool) int {
 		return 4
 	}
 	return 3
+}
+
+// bandTone is a score's colour, pass|fail|none: the one place a number
+// becomes a colour (scoring.BandOf), so no cell can colour a score by a
+// rule of its own.
+func bandTone(score *int) string { return string(scoring.BandOf(score, "").Tone) }
+
+// reasonWord says why a kind has no score: the collector's own reason
+// ("No signal", "Not scanned", "No pipeline data"), else "No data".
+// Headlines stored before the reason words were capitalised read the
+// same.
+func reasonWord(kh repo.KindHeadline) string {
+	if kh.StateLabel != "" {
+		return capitalize(kh.StateLabel)
+	}
+	return scoring.ReasonNoData
 }
