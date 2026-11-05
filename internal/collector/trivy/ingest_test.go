@@ -96,4 +96,17 @@ func TestComputeHeadline_ChangingFailOnChangesStatusWithoutResync(t *testing.T) 
 	if any.Status != collector.StatusFail {
 		t.Fatalf("fail_on=any: Status = %q, want fail (total>0)", any.Status)
 	}
+	// The policy fails it by capping the score, so the number agrees.
+	if any.Score == nil || *any.Score != 79 || critical.Score == nil || *critical.Score != 100 {
+		t.Fatalf("scores = %v (any), %v (critical); want 79 and 100", any.Score, critical.Score)
+	}
+}
+
+// One critical and five high findings score 100 − 20 − 25 = 55, which a
+// critical caps at 49: red because the number is.
+func TestComputeHeadline_CriticalCapsAt49(t *testing.T) {
+	h := trivycollector.ComputeHeadline(trivycollector.Counts{Total: 31, Critical: 1, High: 5}, "critical")
+	if h.Score == nil || *h.Score != 49 || h.Status != collector.StatusFail {
+		t.Fatalf("headline = %v %q, want 49 fail", h.Score, h.Status)
+	}
 }

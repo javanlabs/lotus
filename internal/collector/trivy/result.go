@@ -12,6 +12,7 @@ import (
 	trivyclient "github.com/uyab/lotus/internal/clients/trivy"
 	"github.com/uyab/lotus/internal/collector"
 	"github.com/uyab/lotus/internal/repo"
+	"github.com/uyab/lotus/internal/scoring"
 	"github.com/uyab/lotus/internal/tenant"
 )
 
@@ -69,43 +70,40 @@ func failOnFromSettings(orgSettings json.RawMessage) string {
 // component_metrics_current row on a settings change (task 3.6) calls
 // this exact function again with the same stored counts and the new
 // failOn.
+//
+// The policy no longer decides the status on its own: it caps the score
+// (scoring.TrivyScore), and the status is read from the score, so the
+// number and the colour always agree. A critical finding caps at 49, a
+// policy failure without one at 79.
 func ComputeHeadline(c Counts, failOn string) collector.Headline {
+	ks := scoring.TrivyScore(ScoreInput(c, failOn))
+	total := int64(c.Total)
+	return collector.Headline{
+		Status: collector.StatusForScore(ks.Score), Score: ks.Score, CountValue: &total, CountLabel: "finding",
+		Summary: fmt.Sprintf("%d critical, %d high, %d total", c.Critical, c.High, c.Total),
+	}
+}
+
+// ScoreInput is what scoring.TrivyScore reads from scanned counts under
+// the organization's fail-on policy.
+func ScoreInput(c Counts, failOn string) scoring.TrivyInput {
 	if failOn == "" {
 		failOn = "critical"
 	}
-	var status collector.Status
+	return scoring.TrivyInput{Critical: c.Critical, High: c.High, PolicyFails: policyFails(c, failOn), FailOn: failOn}
+}
+
+// policyFails is whether the organization's trivy_fail_on policy fails
+// these counts: "critical" (the default) on any critical or high finding,
+// "high" on medium too, "any" on any finding at all.
+func policyFails(c Counts, failOn string) bool {
 	switch failOn {
 	case "any":
-		if c.Total > 0 {
-			status = collector.StatusFail
-		} else {
-			status = collector.StatusPass
-		}
+		return c.Total > 0
 	case "high":
-		switch {
-		case c.Critical > 0 || c.High > 0:
-			status = collector.StatusFail
-		case c.Medium > 0:
-			status = collector.StatusFail
-		default:
-			status = collector.StatusPass
-		}
+		return c.Critical > 0 || c.High > 0 || c.Medium > 0
 	default: // "critical"
-		switch {
-		case c.Critical > 0:
-			status = collector.StatusFail
-		case c.High > 0:
-			status = collector.StatusFail
-		default:
-			status = collector.StatusPass
-		}
-	}
-
-	score := 100 - min(100, c.Critical*20+c.High*5)
-	total := int64(c.Total)
-	return collector.Headline{
-		Status: status, Score: &score, CountValue: &total, CountLabel: "finding",
-		Summary: fmt.Sprintf("%d critical, %d high, %d total", c.Critical, c.High, c.Total),
+		return c.Critical > 0 || c.High > 0
 	}
 }
 
@@ -117,7 +115,7 @@ func buildResult(d trivyDetail, failOn string) (collector.Result, error) {
 		}
 		return collector.Result{
 			Headline: collector.Headline{
-				Status: collector.StatusUnknown, StateLabel: "not scanned",
+				Status: collector.StatusUnknown, StateLabel: scoring.ReasonNotScanned,
 				Summary: "This image has no finished scan in Harbor, so its vulnerabilities are unknown.",
 			},
 			Detail: detail, DetailKind: string(collector.KindTrivy),

@@ -96,8 +96,8 @@ func TestCollect_TagPatternPinsToExactTag(t *testing.T) {
 	// v1.1.0 only tags the older artifact, which has no scan_overview: its
 	// vulnerabilities are unknown, not zero.
 	h := result.Headline
-	if h.Status != collector.StatusUnknown || h.StateLabel != "not scanned" || h.Score != nil || h.CountValue != nil {
-		t.Fatalf("headline = %+v, want unknown, not scanned, nothing measured", h)
+	if h.Status != collector.StatusUnknown || h.StateLabel != "Not scanned" || h.Score != nil || h.CountValue != nil {
+		t.Fatalf("headline = %+v, want unknown, Not scanned, nothing measured", h)
 	}
 	if len(result.Facts) != 0 {
 		t.Errorf("facts = %v, want none: zeros would chart as a clean reading", result.Facts)

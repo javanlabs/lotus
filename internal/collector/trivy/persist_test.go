@@ -270,7 +270,7 @@ func TestPersist_NotScannedReachesTheProjection(t *testing.T) {
 		if err := tx.QueryRow(`SELECT metrics->'trivy'->>'status', metrics->'trivy'->>'state_label', (metrics->'trivy'->>'score')::int, (metrics->'trivy'->>'count_value')::int FROM component_metrics_current WHERE component_id = $1`, componentID).Scan(&status, &label, &score, &count); err != nil {
 			t.Fatal(err)
 		}
-		if status != "unknown" || label != "not scanned" || score != nil || count != nil {
+		if status != "unknown" || label != "Not scanned" || score != nil || count != nil {
 			t.Errorf("projection = %s %q score %v count %v", status, label, score, count)
 		}
 	})
