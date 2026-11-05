@@ -1055,6 +1055,71 @@ a.lotus-dash-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-
 .lotus-nav-item.is-disabled { color: var(--plum-200); cursor: default; }
 .lotus-nav-item.is-disabled:hover { background: transparent; color: var(--plum-200); }
 
+/* The app sidebar (components/shell.html). Flat on purpose: the cards in
+   <main> carry the system's heavy frame (moat, ring, blush underline), and
+   the old edge line plus inner shadow drew a second frame beside them. So
+   no line and no shadow here, and no --shadow-sidebar or
+   --gradient-sidebar-bloom either; the page bloom runs under both columns.
+
+   The rail is set apart by tone alone: a faint white veil, full strength
+   on the left and faded to nothing before the edge, so there is no seam
+   where it meets <main>. */
+.lotus-sidebar {
+  position: sticky;
+  top: 0;
+  width: 238px;
+  height: 100vh;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 0 14px;
+  isolation: isolate;
+}
+.lotus-sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: rgba(255, 255, 255, .5);
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 45%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0, #000 45%, transparent 100%);
+}
+.lotus-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin: 0 12px 14px;
+  padding: 4px 10px;
+  color: var(--text-primary);
+}
+/* The active row is a raised white pill — the segmented control's thumb
+   — rather than a lilac fill: on a flat rail it is the one thing that
+   stands off the surface. Scoped to the rail so the account menu's rows
+   and any other .lotus-nav-item keep the canonical treatment. */
+.lotus-sidebar .lotus-nav-item.is-active {
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-segment-thumb);
+}
+/* The account card has no border at rest: it fills like a nav row on
+   hover, and becomes an opaque panel only while its menu is open, since
+   the menu is the one floating thing on the rail. */
+.lotus-sidebar-account {
+  border-radius: var(--radius-control-md);
+  overflow: hidden;
+  transition: background-color var(--duration-base) var(--ease-standard), box-shadow var(--duration-base) var(--ease-standard);
+}
+.lotus-sidebar-account:hover { background: var(--surface-nav-hover); }
+.lotus-sidebar-account.is-open {
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-segment-thumb), var(--shadow-raised);
+}
+.lotus-sidebar-account-menu {
+  overflow: hidden;
+  transition: max-height .28s var(--ease-standard), opacity var(--duration-fast) ease;
+}
+
 /* Modal (web/templates/components/modal.html).
 
    A native <dialog>, not a positioned div: the browser supplies the focus
