@@ -1712,9 +1712,6 @@ a.lotus-dash-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-
 .lotus-status-title { flex: 1; min-width: 220px; }
 .lotus-status-org { font: 500 11px var(--font-mono); color: var(--text-muted); }
 .lotus-status-title h1 { margin: 4px 0 0; font-size: 26px; font-weight: 700; letter-spacing: -.02em; color: var(--text-brand); }
-.lotus-status-date { display: flex; align-items: center; gap: 8px; margin: 0; }
-.lotus-status-date label { font: 600 10.5px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-label); }
-.lotus-status-date .lotus-input { width: 160px; height: 30px; }
 .lotus-status-verdict {
   display: flex;
   flex-direction: column;
@@ -1733,13 +1730,59 @@ a.lotus-dash-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-
 .lotus-status-word { font-size: 22px; font-weight: 700; }
 .lotus-status-section { margin-top: 26px; }
 .lotus-status-section h2 { margin: 0 0 10px; font: 600 10.5px var(--font-mono); letter-spacing: .08em; color: var(--text-label); }
+/* Each bar carries its date inside it, pinned to the bottom so the day
+   numbers share one baseline across the strip: the day of the month, and
+   above it the month on the first bar and on each 1st. White on the pass
+   and fail fills (4.6:1 and 7:1), ink on the grey No data fill. */
 .lotus-status-strip { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 3px; }
-.lotus-status-cell { display: block; height: 30px; border-radius: 3px; background: var(--status-none-bg); }
-.lotus-status-cell.is-pass { background: var(--status-pass); }
-.lotus-status-cell.is-fail { background: var(--status-fail); }
+.lotus-status-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  min-width: 0;
+  height: 30px;
+  padding-bottom: 4px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--status-none-bg);
+  color: var(--ink-700);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.lotus-status-cell.is-pass { background: var(--status-pass); color: var(--white); }
+.lotus-status-cell.is-fail { background: var(--status-fail); color: var(--white); }
 .lotus-status-cell.is-selected { outline: 2px solid var(--text-brand); outline-offset: 2px; }
+.lotus-status-cell.is-none.is-selected { color: var(--text-brand); }
 .lotus-status-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-ring); }
-.lotus-status-legend { display: flex; gap: 14px; margin-top: 10px; font-size: 11px; color: var(--text-muted); }
+.lotus-status-month { font-size: 8.5px; font-weight: 600; letter-spacing: .02em; }
+.lotus-status-daynum { font-size: 10px; font-weight: 500; }
+.lotus-status-cell.is-selected .lotus-status-daynum { font-weight: 700; }
+/* Phone widths: 30 columns would be too narrow for their labels, so the
+   strip keeps a readable column width and scrolls sideways instead, with
+   no visible scrollbar. It opens scrolled to the end (x-init in
+   status.html), where the selected day is. The 4px padding, taken back by
+   the negative margin, keeps the selected bar's outline from being clipped
+   by the scroll box. */
+@media (max-width: 560px) {
+  .lotus-status-strip {
+    grid-template-columns: repeat(30, minmax(24px, 1fr));
+    margin: -4px;
+    padding: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .lotus-status-strip::-webkit-scrollbar { display: none; }
+}
+/* The strip's heading row: the title on the left, the legend on the right. */
+.lotus-status-strip-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; margin-bottom: 10px; }
+.lotus-status-section .lotus-status-strip-head h2 { margin: 0; }
+.lotus-status-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-muted); }
 .lotus-status-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .lotus-status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--status-none-bg); }
 .lotus-status-dot.is-pass { background: var(--status-pass); }
@@ -1764,6 +1807,4 @@ a.lotus-dash-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-
 .lotus-status-foot { margin-top: 32px; font: 400 11px var(--font-mono); color: var(--text-muted); }
 @media print {
   .lotus-status { padding: 0; max-width: none; }
-  .lotus-status-noprint { display: none !important; }
-  .lotus-status-date .lotus-input { border: 0; padding: 0; background: none; }
 }

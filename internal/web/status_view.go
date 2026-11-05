@@ -2,6 +2,8 @@ package web
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/uyab/lotus/internal/collector"
@@ -41,6 +43,22 @@ type statusCell struct {
 	Label    string // "28 Oct 2026 · Failed", so state is never colour alone
 	Href     string
 	Selected bool
+	// DayNum is the day of the month printed inside the bar, "1".."31".
+	DayNum string
+	// Month marks where a month starts in the strip: "OCT" on the first
+	// bar and on every day 1 after it, empty on every other bar. Printed
+	// inside the bar, above DayNum.
+	Month string
+}
+
+// statusMonthMark is the strip's month marker for d: its month as an
+// uppercase English abbreviation on the strip's first bar and on the first
+// of a month, empty otherwise. Go's "Jan" layout is always English.
+func statusMonthMark(d time.Time, first bool) string {
+	if !first && d.Day() != 1 {
+		return ""
+	}
+	return strings.ToUpper(d.Format("Jan"))
 }
 
 // statusKindCell is one integration's headline for one component.
@@ -54,12 +72,9 @@ type statusRow struct {
 type statusView struct {
 	OrgName, ProjectName string
 	Date                 string // "2 Nov 2026"
-	DateValue            string // "2026-11-02", the date input's value
-	MaxDate              string // today, the date input's max (set by the handler)
 	Score                string // empty with no data
 	Verdict, Tone        string
 	Cells                []statusCell
-	StripStart, StripEnd string
 	Columns              []string
 	Rows                 []statusRow
 	UpdatedAt            string // empty with no data
@@ -94,11 +109,10 @@ func dayOnOrBefore(days []repo.ProjectStatusDay, day time.Time) *repo.ProjectSta
 func buildStatusView(orgName string, p *repo.Project, days []repo.ProjectStatusDay, selected time.Time) statusView {
 	v := statusView{
 		OrgName: orgName, ProjectName: p.Name,
-		Date: selected.Format("2 Jan 2006"), DateValue: selected.Format(time.DateOnly),
+		Date: selected.Format("2 Jan 2006"),
 	}
 
 	start := selected.AddDate(0, 0, -(statusStripDays - 1))
-	v.StripStart, v.StripEnd = start.Format("2 Jan"), selected.Format("2 Jan 2006")
 	v.Cells = make([]statusCell, 0, statusStripDays)
 	for d := start; !d.After(selected); d = d.AddDate(0, 0, 1) {
 		status := ""
@@ -110,6 +124,8 @@ func buildStatusView(orgName string, p *repo.Project, days []repo.ProjectStatusD
 			Day: d, Tone: tone, Label: d.Format("2 Jan 2006") + " · " + verdict,
 			Href:     "/status/" + p.Slug + "?date=" + d.Format(time.DateOnly),
 			Selected: d.Equal(selected),
+			DayNum:   strconv.Itoa(d.Day()),
+			Month:    statusMonthMark(d, d.Equal(start)),
 		})
 	}
 

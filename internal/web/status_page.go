@@ -49,15 +49,13 @@ func statusPage(d Deps) fiber.Handler {
 			return err
 		}
 
-		now := time.Now()
-		selected := parseStatusDate(c.Query("date"), now)
+		selected := parseStatusDate(c.Query("date"), time.Now())
 		days, err := repo.ProjectStatusDays(c.Context(), s, project.ID,
 			selected.AddDate(0, 0, -(statusStripDays-1)), selected)
 		if err != nil {
 			return err
 		}
 		view := buildStatusView(org.Name, project, days, selected)
-		view.MaxDate = parseStatusDate("", now).Format(time.DateOnly)
 
 		c.Type("html")
 		return d.Renderer.Render(c, "pages/status.html", httpx.ViewData{

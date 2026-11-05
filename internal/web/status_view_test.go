@@ -2,6 +2,8 @@ package web
 
 import (
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,8 +90,8 @@ func TestBuildStatusView_CarriesTheLastDayForward(t *testing.T) {
 	if c := v.Cells[0]; c.Label != "4 Oct 2026 · No data" {
 		t.Errorf("Oct 4 cell label = %q", c.Label)
 	}
-	if v.DateValue != "2026-11-02" || v.ProjectName != "Payments" || v.OrgName != "PT Javan Cipta Solusi" {
-		t.Errorf("header = %q %q %q", v.DateValue, v.ProjectName, v.OrgName)
+	if v.Date != "2 Nov 2026" || v.ProjectName != "Payments" || v.OrgName != "PT Javan Cipta Solusi" {
+		t.Errorf("header = %q %q %q", v.Date, v.ProjectName, v.OrgName)
 	}
 	if v.UpdatedAt == "" {
 		t.Errorf("no updated time from the carried row")
@@ -133,6 +135,92 @@ func TestBuildStatusView_NoDataIsNeverPassed(t *testing.T) {
 	v = buildStatusView("Acme", &repo.Project{Slug: "pay"}, []repo.ProjectStatusDay{statusDay("2026-11-02", "unknown", &s)}, wibDay(2026, 11, 2))
 	if v.Verdict != "No data" || v.Tone != "none" || v.Score != "" || v.Cells[29].Tone != "none" {
 		t.Fatalf("unknown day: verdict %q tone %q score %q cell %q", v.Verdict, v.Tone, v.Score, v.Cells[29].Tone)
+	}
+}
+
+// stripLabels is the strip as it reads under the bars: "OCT 7" where a
+// month is marked, "8" where only the day is.
+func stripLabels(cells []statusCell) []string {
+	out := make([]string, len(cells))
+	for i, c := range cells {
+		out[i] = c.DayNum
+		if c.Month != "" {
+			out[i] = c.Month + " " + c.DayNum
+		}
+	}
+	return out
+}
+
+// marked is the labels that carry a month marker.
+func marked(labels []string) []string {
+	var out []string
+	for _, l := range labels {
+		if strings.Contains(l, " ") {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+func TestBuildStatusView_StripLabels(t *testing.T) {
+	t.Parallel()
+	p := &repo.Project{Slug: "pay"}
+	for _, tc := range []struct {
+		name        string
+		selected    time.Time
+		first, last string
+		wantMarked  []string
+		markedAt    []int
+	}{
+		{
+			name: "crosses a month", selected: wibDay(2026, 11, 5),
+			first: "OCT 7", last: "5", wantMarked: []string{"OCT 7", "NOV 1"}, markedAt: []int{0, 25},
+		},
+		{
+			name: "crosses a year", selected: wibDay(2027, 1, 10),
+			first: "DEC 12", last: "10", wantMarked: []string{"DEC 12", "JAN 1"}, markedAt: []int{0, 20},
+		},
+		{
+			// 30 days inside one month: only the first bar is marked.
+			name: "one month", selected: wibDay(2026, 10, 31),
+			first: "OCT 2", last: "31", wantMarked: []string{"OCT 2"}, markedAt: []int{0},
+		},
+		{
+			// The strip starts on the 1st: one marker, not two.
+			name: "starts on the first", selected: wibDay(2026, 10, 30),
+			first: "OCT 1", last: "30", wantMarked: []string{"OCT 1"}, markedAt: []int{0},
+		},
+		{
+			// February is shorter than the strip, so the strip touches
+			// three months.
+			name: "spans three months", selected: wibDay(2027, 3, 1),
+			first: "JAN 31", last: "MAR 1", wantMarked: []string{"JAN 31", "FEB 1", "MAR 1"}, markedAt: []int{0, 1, 29},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			v := buildStatusView("Acme", p, nil, tc.selected)
+			labels := stripLabels(v.Cells)
+			if len(labels) != statusStripDays {
+				t.Fatalf("%d labels, want %d", len(labels), statusStripDays)
+			}
+			if labels[0] != tc.first || labels[len(labels)-1] != tc.last {
+				t.Errorf("strip reads %q..%q, want %q..%q", labels[0], labels[len(labels)-1], tc.first, tc.last)
+			}
+			if got := marked(labels); !slices.Equal(got, tc.wantMarked) {
+				t.Errorf("marked = %v, want %v (strip %v)", got, tc.wantMarked, labels)
+			}
+			for _, i := range tc.markedAt {
+				if v.Cells[i].Month == "" {
+					t.Errorf("cell %d (%s) has no month marker", i, v.Cells[i].Day.Format(time.DateOnly))
+				}
+			}
+			for i, c := range v.Cells {
+				if want := strconv.Itoa(c.Day.Day()); c.DayNum != want {
+					t.Errorf("cell %d DayNum = %q, want %q", i, c.DayNum, want)
+				}
+			}
+		})
 	}
 }
 

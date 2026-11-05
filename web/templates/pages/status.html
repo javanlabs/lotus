@@ -11,12 +11,6 @@
       <div class="lotus-status-org">{{$d.OrgName}} · Quality report</div>
       <h1>{{$d.ProjectName}}</h1>
     </div>
-    <form method="get" class="lotus-status-date">
-      <label for="status-date">Date</label>
-      <input type="date" id="status-date" name="date" value="{{$d.DateValue}}" max="{{$d.MaxDate}}" required
-             class="lotus-input" data-testid="status-date">
-      <button type="submit" class="btn-lotus btn-lotus-secondary btn-lotus-sm lotus-status-noprint">Show</button>
-    </form>
   </header>
 
   <section class="lotus-status-verdict is-{{$d.Tone}}" data-testid="status-verdict" aria-label="Verdict for {{$d.Date}}">
@@ -28,22 +22,31 @@
   </section>
 
   <section class="lotus-status-section">
-    <h2>LAST 30 DAYS · {{$d.StripStart}} – {{$d.StripEnd}}</h2>
-    <div class="lotus-status-strip" data-testid="status-strip">
+    <div class="lotus-status-strip-head">
+      <h2>LAST 30 DAYS</h2>
+      <div class="lotus-status-legend">
+        <span><i class="lotus-status-dot is-pass"></i>Passed</span>
+        <span><i class="lotus-status-dot is-fail"></i>Failed</span>
+        <span><i class="lotus-status-dot is-none"></i>No data</span>
+      </div>
+    </div>
+    {{/* Each bar carries its own date inside it: the day of the month,
+         and above it the month where one starts. The text is
+         aria-hidden — the bar's own label already reads the full date.
+         On phones the strip scrolls sideways; x-init opens it at the end,
+         on the selected day (always the last bar). */}}
+    <div class="lotus-status-strip" data-testid="status-strip" x-data x-init="$el.scrollLeft = $el.scrollWidth">
       {{range $d.Cells}}
       <a href="{{.Href}}" class="lotus-status-cell is-{{.Tone}}{{if .Selected}} is-selected{{end}}"
-         aria-label="{{.Label}}" title="{{.Label}}"{{if .Selected}} aria-current="date"{{end}}></a>
+         aria-label="{{.Label}}" title="{{.Label}}"{{if .Selected}} aria-current="date"{{end}}>
+        {{- if .Month}}<span class="lotus-status-month" aria-hidden="true" data-testid="status-strip-month">{{.Month}}</span>{{end -}}
+        <span class="lotus-status-daynum" aria-hidden="true" data-testid="status-strip-day">{{.DayNum}}</span>
+      </a>
       {{end}}
-    </div>
-    <div class="lotus-status-legend">
-      <span><i class="lotus-status-dot is-pass"></i>Passed</span>
-      <span><i class="lotus-status-dot is-fail"></i>Failed</span>
-      <span><i class="lotus-status-dot is-none"></i>No data</span>
     </div>
   </section>
 
   <section class="lotus-status-section">
-    <h2>COMPONENTS ON {{$d.Date}}</h2>
     {{if $d.Rows}}
     <div class="lotus-status-table" role="table" data-testid="status-components">
       <div class="lotus-status-row lotus-status-row-head" role="row">

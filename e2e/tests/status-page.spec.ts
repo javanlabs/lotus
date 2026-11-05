@@ -55,7 +55,7 @@ test('status page is off until an owner publishes it', async ({ page, browser })
   await client.close();
 });
 
-test('picking a date shows that day', async ({ browser }) => {
+test('the strip picks a day', async ({ browser }) => {
   const { orgId, subdomain } = await seedOwnerSession('status-dates-e2e', 'placeholder');
   const origin = tenantOrigin(subdomain);
   const projectId = await seedProject(orgId, true);
@@ -77,6 +77,17 @@ test('picking a date shows that day', async ({ browser }) => {
   await expect(page.getByTestId('status-score')).toHaveText('62');
   await expect(page.getByTestId('status-components')).toContainText('ledger-api');
   await expect(page.getByRole('link', { name: '22 Oct 2026 · Failed' })).toHaveAttribute('aria-current', 'date');
+  // Sep 23 – Oct 22: every bar carries its day of the month inside it;
+  // the month is marked on the first bar and on Oct 1 only.
+  const strip = page.getByTestId('status-strip');
+  await expect(strip.getByTestId('status-strip-day')).toHaveCount(30);
+  await expect(strip.getByTestId('status-strip-day').first()).toHaveText('23');
+  await expect(strip.getByTestId('status-strip-day').nth(8)).toHaveText('1');
+  await expect(strip.getByTestId('status-strip-day').last()).toHaveText('22');
+  await expect(strip.getByTestId('status-strip-month')).toHaveText(['SEP', 'OCT']);
+  await expect(page.getByRole('link', { name: '23 Sep 2026 · No data', exact: true }).getByTestId('status-strip-month')).toHaveText('SEP');
+  await expect(page.getByRole('link', { name: '1 Oct 2026 · No data', exact: true }).getByTestId('status-strip-month')).toHaveText('OCT');
+  await expect(page.getByTestId('status-date')).toHaveCount(0);
 
   // The strip is the 30 days ending on the selected date, so Oct 25 is a
   // cell from a later date, where Oct 25's pass is still carried forward.
@@ -90,9 +101,8 @@ test('picking a date shows that day', async ({ browser }) => {
   await expect(page).toHaveURL(`${origin}/status/pay?date=2026-10-22`);
   await expect(page.getByTestId('status-score')).toHaveText('62');
 
-  await page.getByTestId('status-date').fill('2026-09-01');
-  await page.getByRole('button', { name: 'Show' }).click();
-  await expect(page).toHaveURL(`${origin}/status/pay?date=2026-09-01`);
+  // Any day is still one ?date= away, even outside the strip.
+  await page.goto(`${origin}/status/pay?date=2026-09-01`);
   await expect(page.getByTestId('status-word')).toHaveText('No data');
   await expect(page.getByTestId('status-score')).toHaveCount(0);
   await expect(page.getByTestId('status-components')).toHaveCount(0);
