@@ -188,7 +188,7 @@ func buildHomeDashboard(in homeInputs) homeDashboard {
 	d.Figures = []homeFigure{
 		{Label: "PROJECTS", Value: thousands(int64(in.ProjectCount)), Tone: "neutral", Href: "/projects"},
 		{Label: "COMPONENTS", Value: thousands(int64(len(in.Components))), Tone: "neutral", Href: "/projects"},
-		{Label: "FAILING COMPONENTS", Value: thousands(int64(failing)), Tone: attention(failing), Href: "/projects"},
+		{Label: "NEED ATTENTION", Value: thousands(int64(failing)), Tone: attention(failing), Href: "/projects"},
 		{Label: "STALE METRICS", Value: thousands(int64(stale)), Tone: attention(stale)},
 		{Label: "SYNC FAILURES · 24H", Value: thousands(int64(in.FailedSyncs)), Tone: attention(in.FailedSyncs), Href: "/activity"},
 	}

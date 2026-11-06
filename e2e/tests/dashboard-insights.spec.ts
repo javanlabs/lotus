@@ -36,7 +36,7 @@ test('dashboard visualizes health and says where to start', async ({ page, conte
 
   await expect(page.getByTestId('health')).toContainText('50%');
   await expect(page.getByTestId('kind-bars')).toContainText('SONARQUBE');
-  await expect(page.getByTestId('insights')).toContainText('SonarQube causes the most failures');
+  await expect(page.getByTestId('insights')).toContainText('SonarQube needs attention most');
 
   // Worst first, and each cell — the kind's score, not a letter — opens
   // that integration on that component.

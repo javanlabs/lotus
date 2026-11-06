@@ -52,7 +52,7 @@ test('the dashboard is where the app opens, and the health map leads to each fai
   await expect(page.getByRole('link', { name: 'Dashboard', exact: true })).toHaveClass(/is-active/);
 
   const summary = page.getByTestId('summary');
-  await expect(summary.getByText('FAILING COMPONENTS')).toBeVisible();
+  await expect(summary.getByText('NEED ATTENTION')).toBeVisible();
   await expect(summary.locator('a', { hasText: 'OPEN ISSUES' })).toContainText('1');
 
   const insights = page.getByTestId('insights');

@@ -37,7 +37,7 @@
              @click="filter='all'">All<span style="font:500 9.5px 'IBM Plex Mono',monospace;opacity:.7">{{.Data.RowCount}}</span></div>
         <div style="display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:var(--radius-segment);white-space:nowrap;font-size:11.5px;cursor:pointer"
              :style="{ fontWeight: filter==='fail' ? 600 : 500, color: filter==='fail' ? '#43284E' : '#6B7280', background: filter==='fail' ? 'linear-gradient(180deg,#FFFFFF 0%,#FAF9FB 100%)' : 'transparent', boxShadow: filter==='fail' ? 'var(--shadow-segment-thumb)' : 'none' }"
-             @click="filter='fail'">Failing<span style="font:500 9.5px 'IBM Plex Mono',monospace;opacity:.7">{{.Data.FailingCount}}</span></div>
+             @click="filter='fail'">Needs attention<span style="font:500 9.5px 'IBM Plex Mono',monospace;opacity:.7">{{.Data.FailingCount}}</span></div>
       </div>
       <a href="/projects/new" class="btn-lotus btn-lotus-secondary">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#43284E"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>New project

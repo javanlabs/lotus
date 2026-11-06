@@ -7,7 +7,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/uyab/lotus/internal/collector"
 	"github.com/uyab/lotus/internal/repo"
 	"github.com/uyab/lotus/internal/scoring"
 	"github.com/uyab/lotus/internal/tenant"
@@ -155,7 +154,7 @@ func componentTabs(project *repo.Project, comp *repo.Component, bindings []repo.
 			// A collector with nothing more to say than its status would
 			// only repeat the chip; when it synced is worth the line
 			// instead.
-			if tab.Sub == "" || tab.Sub == statusWord(collector.Status(kh.Status)) {
+			if tab.Sub == "" || (tab.Verdict != nil && tab.Sub == tab.Verdict.Text) {
 				tab.Sub = "Synced " + relativeTimeStrAt(at, now)
 			}
 			if note := staleNote(k, at, now); note != "" {
