@@ -97,7 +97,7 @@ test('the projects list renders one row per project, with its rolled-up metrics'
     );
 
     // A passing project too: with the "warn" tier gone the filter is
-    // All / Needs attention, so hiding can only be asserted against a row that
+    // All / Failing, so hiding can only be asserted against a row that
     // is not failing.
     const healthy = await client.query<{ id: string }>(
       `INSERT INTO projects (org_id, slug, name) VALUES ($1, 'h', 'Identity') RETURNING id`,
@@ -122,8 +122,8 @@ test('the projects list renders one row per project, with its rolled-up metrics'
   await context.addCookies([{ name: 'lotus_session', value: sessionToken, url: origin }]);
   await page.goto(`${origin}/projects`);
 
-  // A project needing attention is rendered twice — in the level's "All" list and in
-  // the "Needs attention" list — and only the active filter's copy is visible, so
+  // A failing project is rendered twice — in the level's "All" list and in
+  // the "Failing" list — and only the active filter's copy is visible, so
   // every lookup below is scoped to visible elements.
 
   // Rows are projects, not components: the project is the outermost unit
@@ -152,7 +152,7 @@ test('the projects list renders one row per project, with its rolled-up metrics'
   // filter round-trip, not just present in the DOM.
   // .first(): the segmented-control button is the first match in DOM
   // order.
-  await page.getByText(/^Needs attention\d+$/).first().click();
+  await page.getByText('Failing', { exact: false }).first().click();
   await expect(page.getByText('Payments', { exact: true }).filter({ visible: true })).toBeVisible();
   await expect(page.getByText('Identity', { exact: true }).filter({ visible: true })).not.toBeVisible();
   await page.getByText('All', { exact: false }).first().click();

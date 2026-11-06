@@ -85,15 +85,15 @@ func TestBuildHomeDashboard_AlertsAndFigures(t *testing.T) {
 		figures[f.Label] = f
 	}
 	for label, value := range map[string]string{
-		"PROJECTS": "2", "COMPONENTS": "3", "NEED ATTENTION": "1", "STALE METRICS": "1",
+		"PROJECTS": "2", "COMPONENTS": "3", "FAILING COMPONENTS": "1", "STALE METRICS": "1",
 		"SYNC FAILURES · 24H": "4", "OPEN ISSUES": "7", "OPEN PLANS": "2", "ASSIGNED TO ME": "3",
 	} {
 		if figures[label].Value != value {
 			t.Errorf("%s = %q, want %s", label, figures[label].Value, value)
 		}
 	}
-	if figures["NEED ATTENTION"].Tone != "fail" || figures["PROJECTS"].Tone != "neutral" {
-		t.Errorf("tones: failing %q, projects %q", figures["NEED ATTENTION"].Tone, figures["PROJECTS"].Tone)
+	if figures["FAILING COMPONENTS"].Tone != "fail" || figures["PROJECTS"].Tone != "neutral" {
+		t.Errorf("tones: failing %q, projects %q", figures["FAILING COMPONENTS"].Tone, figures["PROJECTS"].Tone)
 	}
 	// The per-integration rates, in the fixed order (AGENTS.md).
 	for i, k := range bindableKinds {

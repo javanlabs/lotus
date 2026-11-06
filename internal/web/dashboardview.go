@@ -286,8 +286,7 @@ func badgeFor(metrics map[string]repo.KindHeadline, kind string) badgeCell {
 
 // headlineText picks the most useful short label out of a KindHeadline:
 // a reason with nothing measured, else a count (with its unit
-// pluralized), else the score's band word (Healthy / Needs attention),
-// else the status in the same words — matching what each collector
+// pluralized), else the bare status word — matching what each collector
 // actually populates (see internal/collector/*/result.go). Never a letter
 // grade: scores read 0–100 everywhere.
 func headlineText(kh repo.KindHeadline) string {
@@ -303,12 +302,7 @@ func headlineText(kh repo.KindHeadline) string {
 			return fmt.Sprintf("%d", *kh.CountValue)
 		}
 		return fmt.Sprintf("%d %s", *kh.CountValue, unit)
-	case kh.Score != nil:
-		return scoring.Band(*kh.Score).Word
 	case kh.Status != "":
-		if w := statusWord(collector.Status(kh.Status)); w != "–" {
-			return w
-		}
 		return strings.ToUpper(kh.Status[:1]) + kh.Status[1:]
 	default:
 		return "–"
@@ -702,9 +696,9 @@ func projectBadge(roll repo.ProjectRollup, kind string) badgeCell {
 func statusWord(s collector.Status) string {
 	switch s {
 	case collector.StatusPass:
-		return scoring.WordHealthy
+		return "Pass"
 	case collector.StatusFail:
-		return scoring.WordNeedsAttention
+		return "Fail"
 	default:
 		return "–"
 	}

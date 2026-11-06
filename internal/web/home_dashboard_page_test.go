@@ -38,7 +38,7 @@ func TestHomeDashboard_Page(t *testing.T) {
 		"marked open", // the feed
 		"SONARQUBE",   // the per-integration averages
 		`data-testid="health"`, `data-testid="insights"`, `data-testid="health-map"`, `data-testid="trends"`,
-		"SonarQube needs attention most",
+		"SonarQube causes the most failures",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard missing %q", want)

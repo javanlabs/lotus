@@ -62,7 +62,7 @@
     <div style="display:flex;align-items:center;padding:9px 14px;font-size:11px;color:#6B7280">
       {{if .ProjectList}}
       <span x-show="filter==='all'">Showing {{.RowCount}} of {{.RowCount}}</span>
-      <span x-show="filter==='fail'" x-cloak>Showing {{.FailingCount}} needing attention of {{.RowCount}}</span>
+      <span x-show="filter==='fail'" x-cloak>Showing {{.FailingCount}} failing of {{.RowCount}}</span>
       {{else}}
       <span>Showing {{.RowCount}} of {{.RowCount}}</span>
       {{end}}

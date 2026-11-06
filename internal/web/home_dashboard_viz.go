@@ -316,7 +316,7 @@ func homeInsights(totalFails int, kindFails map[string]int, kindProjectFails map
 	projects map[string]*repo.Project, nearWins []homeInsightLink, weakest func() (string, int, bool), trends []homeTrend) []homeInsight {
 	var out []homeInsight
 	if totalFails == 0 {
-		return []homeInsight{{Figure: "0", Tone: "pass", Title: "Nothing needs attention", Detail: "Every connected integration is healthy on every component."}}
+		return []homeInsight{{Figure: "0", Tone: "pass", Title: "No check is failing", Detail: "Every connected integration passes on every component."}}
 	}
 
 	// The integration behind the most failures.
@@ -327,8 +327,8 @@ func homeInsights(totalFails int, kindFails map[string]int, kindProjectFails map
 		}
 	}
 	biggest := homeInsight{Figure: fmt.Sprintf("%d/%d", topN, totalFails), Tone: "fail",
-		Title:  kindLabels[topKind] + " needs attention most",
-		Detail: fmt.Sprintf("%d of %d checks needing attention come from it. A shared fix here moves the score furthest.", topN, totalFails)}
+		Title:  kindLabels[topKind] + " causes the most failures",
+		Detail: fmt.Sprintf("%d of %d failing checks come from it. A shared fix here moves the score furthest.", topN, totalFails)}
 	slugs := make([]string, 0, len(kindProjectFails[topKind]))
 	for s := range kindProjectFails[topKind] {
 		slugs = append(slugs, s)
@@ -342,20 +342,20 @@ func homeInsights(totalFails int, kindFails map[string]int, kindProjectFails map
 	}
 	out = append(out, biggest)
 
-	// Components one fix away from healthy.
+	// Components one fix away from green.
 	if n := len(nearWins); n > 0 {
 		links := nearWins
 		if n > homeNearWinNames {
 			links = nearWins[:homeNearWinNames]
 		}
 		out = append(out, homeInsight{Figure: strconv.Itoa(n), Tone: "pass",
-			Title:  fmt.Sprintf("%d component%s one fix away from healthy", n, plural(n, " is", "s are")),
-			Detail: "Each has a single integration needing attention: the cheapest wins on the board.", Links: links})
+			Title:  fmt.Sprintf("%d component%s one fix away from green", n, plural(n, " is", "s are")),
+			Detail: "Each fails a single integration: the cheapest wins on the board.", Links: links})
 	}
 
 	if name, pct, ok := weakest(); ok {
 		out = append(out, homeInsight{Figure: fmt.Sprintf("%d%%", pct), Tone: rateTone(pct),
-			Title: name + " is the weakest project", Detail: fmt.Sprintf("Only %d%% of its checks are healthy.", pct)})
+			Title: name + " is the weakest project", Detail: fmt.Sprintf("Only %d%% of its checks pass.", pct)})
 	}
 
 	// The trend that got worst, relative to where it started.

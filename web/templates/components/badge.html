@@ -21,11 +21,11 @@
      to show its rollup status at a glance, same Tone vocabulary. */}}
 {{define "status_dot"}}<span class="lotus-status-dot lotus-status-dot-{{.}}"></span>{{end}}
 
-{{/* status_legend is the Healthy / Needs attention / No data key shown above the
+{{/* status_legend is the pass/fail/no-data key shown above the
      repositories table. */}}
 {{define "status_legend"}}<div style="display:flex;gap:12px;font-size:10.5px;color:#6B7280;align-items:center">
-  <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-pass);display:block"></i>Healthy</span>
-  <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-fail);display:block"></i>Needs attention</span>
-  <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-none);display:block"></i>No data</span>
+  <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-pass);display:block"></i>pass</span>
+  <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-fail);display:block"></i>fail</span>
+  <span style="display:flex;align-items:center;gap:5px"><i class="lotus-shape-xs" style="width:9px;height:9px;background:var(--color-status-none);display:block"></i>no data</span>
   {{if .ShowUpdated}}<span style="display:flex;align-items:center;gap:5px" title="Not synced in more than 24 hours; hover a dashed value for details"><i class="lotus-shape-xs" style="width:9px;height:9px;border:1px dashed var(--color-ink-soft);box-sizing:border-box;display:block"></i>stale</span>{{end}}
 </div>{{end}}

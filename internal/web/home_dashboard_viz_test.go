@@ -100,7 +100,7 @@ func TestHomeViz_MapNeverHidesAFailingComponent(t *testing.T) {
 
 func TestHomeViz_InsightsNameTheBiggestCauseAndTheNearWin(t *testing.T) {
 	ins := vizFixture(t).Insights
-	if ins[0].Figure != "2/3" || ins[0].Title != "SonarQube needs attention most" {
+	if ins[0].Figure != "2/3" || ins[0].Title != "SonarQube causes the most failures" {
 		t.Errorf("biggest = %+v", ins[0])
 	}
 	if ins[1].Figure != "1" || len(ins[1].Links) != 1 || ins[1].Links[0].Href != "/projects/alpha/components/near/metrics/sonarqube" {
