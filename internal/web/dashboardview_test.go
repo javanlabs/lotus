@@ -195,13 +195,13 @@ func TestBuildDashboardViewModel_ComponentNeverCollectedIsUnknownNotPass(t *test
 func TestBuildScoreCard_BandAndAttentionCount(t *testing.T) {
 	t.Parallel()
 	sc := buildScoreCard(repo.ProjectRollup{Score: intPtr(84), Components: 5, NeedAttention: 2})
-	if !sc.HasScore || sc.Score != 84 || sc.Tone != "pass" || sc.Word != "Healthy" {
-		t.Fatalf("score card = %+v, want 84 Healthy", sc)
+	if !sc.HasScore || sc.Score != 84 || sc.Tone != "pass" || sc.Word != "Pass" {
+		t.Fatalf("score card = %+v, want 84 Pass", sc)
 	}
-	if got := attentionText(sc.NeedAttention, sc.Components); got != "2 of 5 components need attention" {
+	if got := attentionText(sc.NeedAttention, sc.Components); got != "2 of 5 components fail" {
 		t.Fatalf("attention = %q", got)
 	}
-	if got := attentionText(0, 1); got != "0 of 1 component needs attention" {
+	if got := attentionText(0, 1); got != "0 of 1 component fails" {
 		t.Fatalf("attention = %q", got)
 	}
 	none := buildScoreCard(repo.ProjectRollup{})

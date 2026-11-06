@@ -175,9 +175,9 @@ test('the metric tabs stay put while switching between the project and its integ
   // verdict says it in words.
   const heights = await tabs.locator('.lotus-mt-tab').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
   expect(new Set(heights).size).toBe(1);
-  await expect(tabs.locator('[data-verdict]').first()).toHaveText(/Needs attention|Healthy/);
+  await expect(tabs.locator('[data-verdict]').first()).toHaveText(/Fail|Pass/);
   // The score's tab carries how many components the average hides.
-  await expect(tabs.locator('.lotus-mt-tab').first()).toContainText('1 of 2 components need attention');
+  await expect(tabs.locator('.lotus-mt-tab').first()).toContainText('1 of 2 components fail');
   await tabs.screenshot({ path: 'test-results/project-strip.png' });
 });
 

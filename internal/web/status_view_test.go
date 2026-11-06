@@ -82,8 +82,8 @@ func TestBuildStatusView_StripIsFixedToToday(t *testing.T) {
 	}
 	// The verdict is the selected day's (Oct 20 carried to Oct 22), not
 	// today's (Oct 25 carried to Nov 2).
-	if v.Date != "22 Oct 2026" || v.Verdict != "Needs attention" || v.Score != "62" {
-		t.Errorf("verdict = %q %q %q, want 22 Oct 2026 Needs attention 62", v.Date, v.Verdict, v.Score)
+	if v.Date != "22 Oct 2026" || v.Verdict != "Fail" || v.Score != "62" {
+		t.Errorf("verdict = %q %q %q, want 22 Oct 2026 Fail 62", v.Date, v.Verdict, v.Score)
 	}
 	if len(v.Rows) != 1 || v.Rows[0].Name != "ledger-api" {
 		t.Errorf("rows = %+v, want Oct 20's ledger-api", v.Rows)
@@ -120,8 +120,8 @@ func TestBuildStatusView_CarriesTheLastDayForward(t *testing.T) {
 	days := []repo.ProjectStatusDay{statusDay("2026-10-20", "fail", &s62), statusDay("2026-10-25", "pass", &s84)}
 
 	v := buildStatusView("PT Javan Cipta Solusi", p, days, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
-	if v.Verdict != "Healthy" || v.Tone != "pass" || v.Score != "84" {
-		t.Fatalf("verdict = %q %q %q, want Healthy pass 84 (Oct 25 carried to Nov 2)", v.Verdict, v.Tone, v.Score)
+	if v.Verdict != "Pass" || v.Tone != "pass" || v.Score != "84" {
+		t.Fatalf("verdict = %q %q %q, want Pass pass 84 (Oct 25 carried to Nov 2)", v.Verdict, v.Tone, v.Score)
 	}
 	if len(v.Cells) != 30 {
 		t.Fatalf("%d cells, want 30", len(v.Cells))
@@ -147,7 +147,7 @@ func TestBuildStatusView_CarriesTheLastDayForward(t *testing.T) {
 			t.Errorf("cell %d Selected = %v", i, c.Selected)
 		}
 	}
-	if c := v.Cells[16]; c.Label != "20 Oct 2026 · Needs attention" || c.Href != "/status/pay?date=2026-10-20" {
+	if c := v.Cells[16]; c.Label != "20 Oct 2026 · Fail" || c.Href != "/status/pay?date=2026-10-20" {
 		t.Errorf("Oct 20 cell = %+v", c)
 	}
 	if c := v.Cells[0]; c.Label != "4 Oct 2026 · No data" {
@@ -167,7 +167,7 @@ func TestBuildStatusView_CarriesPastTheLastRecordedDay(t *testing.T) {
 	t.Parallel()
 	s := 40
 	v := buildStatusView("Acme", &repo.Project{Slug: "pay"}, []repo.ProjectStatusDay{statusDay("2026-06-01", "fail", &s)}, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
-	if v.Verdict != "Needs attention" || v.Score != "40" {
+	if v.Verdict != "Fail" || v.Score != "40" {
 		t.Fatalf("verdict = %q %q, want the June row carried forward", v.Verdict, v.Score)
 	}
 	for _, c := range v.Cells {
@@ -214,12 +214,12 @@ func TestBuildStatusView_VerdictIsTheScoresBand(t *testing.T) {
 	p := &repo.Project{Slug: "pay"}
 
 	v := buildStatusView("Acme", p, days, wibDay(2026, 11, 2), wibDay(2026, 10, 31))
-	if v.Score != "83" || v.Verdict != "Healthy" || v.Tone != "pass" {
-		t.Errorf("83 stored as fail: %q %q %q, want 83 Healthy pass", v.Score, v.Verdict, v.Tone)
+	if v.Score != "83" || v.Verdict != "Pass" || v.Tone != "pass" {
+		t.Errorf("83 stored as fail: %q %q %q, want 83 Pass pass", v.Score, v.Verdict, v.Tone)
 	}
 	v = buildStatusView("Acme", p, days, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
-	if v.Score != "64" || v.Verdict != "Needs attention" || v.Tone != "fail" {
-		t.Errorf("64 stored as pass: %q %q %q, want 64 Needs attention fail", v.Score, v.Verdict, v.Tone)
+	if v.Score != "64" || v.Verdict != "Fail" || v.Tone != "fail" {
+		t.Errorf("64 stored as pass: %q %q %q, want 64 Fail fail", v.Score, v.Verdict, v.Tone)
 	}
 	tones := cellTones(v.Cells)
 	if tones["2026-10-31"] != "pass" || tones["2026-11-02"] != "fail" {
@@ -336,7 +336,7 @@ func TestBuildStatusView_ColumnsFollowBindableKinds(t *testing.T) {
 		if i == gitlab {
 			// The cell is coloured by its score's band, not the status
 			// stored beside it: 77 needs attention.
-			if c.Text != "77" || c.Tone != "fail" || c.Title != "GitLab: 77 · Needs attention" {
+			if c.Text != "77" || c.Tone != "fail" || c.Title != "GitLab: 77 · Fail" {
 				t.Errorf("gitlab cell = %+v, want 77 fail", c)
 			}
 			continue
@@ -351,14 +351,27 @@ func TestBuildStatusView_ColumnsFollowBindableKinds(t *testing.T) {
 // kind below 80 — however healthy the project's own score reads.
 func TestBuildStatusView_VerdictCountsComponentsNeedingAttention(t *testing.T) {
 	t.Parallel()
-	s96, s19, s88 := 96, 19, 88
+	s96, s70, s19, s88 := 96, 70, 19, 88
 	day := statusDay("2026-11-02", "pass", &s88,
-		repo.StatusDayComponent{Name: "API", Kinds: map[string]repo.KindHeadline{"sonarqube": {Status: "pass", Score: &s96}, "sentry": {Status: "fail", Score: &s19}}},
+		repo.StatusDayComponent{Name: "API", Kinds: map[string]repo.KindHeadline{"sonarqube": {Status: "pass", Score: &s96}, "sentry": {Status: "fail", Score: &s70}}},
 		repo.StatusDayComponent{Name: "Web", Kinds: map[string]repo.KindHeadline{"sonarqube": {Status: "pass", Score: &s96}, "gitlab": {Status: "unknown"}}},
 	)
 	v := buildStatusView("Acme", &repo.Project{Slug: "pay"}, []repo.ProjectStatusDay{day}, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
-	if v.Score != "88" || v.Verdict != "Healthy" || v.Attention != "1 of 2 components need attention" {
+	// Rolled up from the components, as the project page does: sonarqube
+	// averages 96, sentry 70, so 83 — whatever score was stored (88).
+	if v.Score != "83" || v.Verdict != "Pass" || v.Attention != "1 of 2 components fail" {
 		t.Fatalf("verdict = %q %q %q", v.Score, v.Verdict, v.Attention)
+	}
+
+	// A component that fails (API averages 58) caps the project at 58, as
+	// on the project page, though 88 was stored.
+	day = statusDay("2026-11-02", "pass", &s88,
+		repo.StatusDayComponent{Name: "API", Kinds: map[string]repo.KindHeadline{"sonarqube": {Status: "pass", Score: &s96}, "sentry": {Status: "fail", Score: &s19}}},
+		repo.StatusDayComponent{Name: "Web", Kinds: map[string]repo.KindHeadline{"sonarqube": {Status: "pass", Score: &s96}}},
+	)
+	v = buildStatusView("Acme", &repo.Project{Slug: "pay"}, []repo.ProjectStatusDay{day}, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
+	if v.Score != "58" || v.Verdict != "Fail" || v.Tone != "fail" || v.Cells[29].Tone != "fail" {
+		t.Fatalf("capped: %q %q %q bar %q, want 58 Fail fail", v.Score, v.Verdict, v.Tone, v.Cells[29].Tone)
 	}
 	if empty := buildStatusView("Acme", &repo.Project{Slug: "pay"}, nil, wibDay(2026, 11, 2), wibDay(2026, 11, 2)); empty.Attention != "" {
 		t.Fatalf("no data still counts components: %q", empty.Attention)

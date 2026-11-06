@@ -59,14 +59,14 @@ is one of `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci` or
 
 Every score — a kind on a component, a component, a project — is 0–100
 and has exactly one reading, `internal/scoring/bands.go`: 80–100 is
-Healthy (green), 0–79 is Needs attention (red), no score is a grey "–"
+Pass (green), 0–79 is Fail (red), no score is a grey "–"
 with a reason word. A kind's status is `collector.StatusForScore` of its
 score; a hard failure (failed quality gate, critical CVE, failed
 pipeline) is a *cap* on the score, never a separate verdict, so a number
 and its colour cannot disagree (`internal/collector/invariant_test.go`).
 At the project level, if any component has failed (< 80), the project's
 Lotus score is capped at the lowest component score, so a project cannot
-read as healthy while one of its components needs attention.
+read as Pass while one of its components fails.
 
 Each level rounds once, half up (`scoring.RoundHalfUp`), at its end;
 never floor or truncate, never round an intermediate. A missing score

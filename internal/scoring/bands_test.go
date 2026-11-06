@@ -11,10 +11,10 @@ func TestBand(t *testing.T) {
 		score int
 		want  BandInfo
 	}{
-		{100, BandInfo{TonePass, WordHealthy}},
-		{80, BandInfo{TonePass, WordHealthy}},
-		{79, BandInfo{ToneFail, WordNeedsAttention}},
-		{0, BandInfo{ToneFail, WordNeedsAttention}},
+		{100, BandInfo{TonePass, WordPass}},
+		{80, BandInfo{TonePass, WordPass}},
+		{79, BandInfo{ToneFail, WordFail}},
+		{0, BandInfo{ToneFail, WordFail}},
 	} {
 		if got := Band(tc.score); got != tc.want {
 			t.Errorf("Band(%d) = %+v, want %+v", tc.score, got, tc.want)

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -93,7 +94,7 @@ type statusView struct {
 	Score                string // empty with no data
 	Verdict, Tone        string
 	// Attention is the count a project's verdict always carries: "2 of
-	// 18 components need attention"; empty with no data.
+	// 18 components fail"; empty with no data.
 	Attention string
 	Cells     []statusCell
 	Columns   []string
@@ -118,9 +119,31 @@ func statusDayVerdict(status string, score *int) (verdict, tone string) {
 		return b.Word, string(b.Tone)
 	}
 	if collector.Status(status) == collector.StatusPass {
-		return scoring.WordHealthy, string(scoring.TonePass)
+		return scoring.WordPass, string(scoring.TonePass)
 	}
-	return scoring.WordNeedsAttention, string(scoring.ToneFail)
+	return scoring.WordFail, string(scoring.ToneFail)
+}
+
+// dayScore is a recorded day's Lotus score, rolled up from the day's own
+// components by repo.RollupProject — the roll-up the project page uses,
+// cap included — so the two can never disagree, whatever the stored score
+// was written by. A day with no components keeps its stored score.
+func dayScore(row *repo.ProjectStatusDay) *int {
+	if len(row.Components) == 0 {
+		return row.Score
+	}
+	metrics := make([]repo.ComponentMetric, 0, len(row.Components))
+	for _, comp := range row.Components {
+		raw, err := json.Marshal(comp.Kinds)
+		if err != nil {
+			return row.Score
+		}
+		metrics = append(metrics, repo.ComponentMetric{MetricsJSON: raw})
+	}
+	if score := repo.RollupProject(metrics).Score; score != nil {
+		return score
+	}
+	return row.Score
 }
 
 // dayOnOrBefore is the newest of days (ascending) on or before day, or nil.
@@ -150,7 +173,7 @@ func buildStatusView(orgName string, p *repo.Project, days []repo.ProjectStatusD
 	for d := start; !d.After(today); d = d.AddDate(0, 0, 1) {
 		status, score := "", (*int)(nil)
 		if row := dayOnOrBefore(days, d); row != nil {
-			status, score = row.Status, row.Score
+			status, score = row.Status, dayScore(row)
 		}
 		verdict, tone := statusDayVerdict(status, score)
 		v.Cells = append(v.Cells, statusCell{
@@ -171,9 +194,10 @@ func buildStatusView(orgName string, p *repo.Project, days []repo.ProjectStatusD
 		v.Verdict, v.Tone = statusDayVerdict("", nil)
 		return v
 	}
-	v.Verdict, v.Tone = statusDayVerdict(row.Status, row.Score)
-	if v.Tone != "none" && row.Score != nil {
-		v.Score = fmt.Sprintf("%d", *row.Score)
+	score := dayScore(row)
+	v.Verdict, v.Tone = statusDayVerdict(row.Status, score)
+	if v.Tone != "none" && score != nil {
+		v.Score = fmt.Sprintf("%d", *score)
 	}
 	v.UpdatedAt = row.UpdatedAt.In(wib).Format("2 Jan 2006 15:04") + " WIB"
 	if v.Tone != "none" && len(row.Components) > 0 {

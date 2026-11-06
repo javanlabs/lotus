@@ -71,7 +71,7 @@ func ComponentRollup(kinds map[string]KindHeadline) (collector.Status, *int) {
 }
 
 // NeedsAttention is whether any of a component's kinds scores below the
-// pass threshold — what "N of M components need attention" counts. A
+// pass threshold — what "N of M components fail" counts. A
 // component's average can be green while one of its kinds is red; this
 // is the count that average cannot hide.
 func NeedsAttention(kinds map[string]KindHeadline) bool {

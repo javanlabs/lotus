@@ -2,9 +2,9 @@ package web
 
 import (
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
-	"net/http"
 	"strings"
 	"testing"
 	"time"

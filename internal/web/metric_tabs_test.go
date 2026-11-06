@@ -297,10 +297,10 @@ func TestBandVerdict(t *testing.T) {
 		score int
 		want  tabVerdict
 	}{
-		{100, tabVerdict{Tone: "pass", Text: "Healthy"}},
-		{80, tabVerdict{Tone: "pass", Text: "Healthy"}},
-		{79, tabVerdict{Tone: "fail", Text: "Needs attention"}},
-		{0, tabVerdict{Tone: "fail", Text: "Needs attention"}},
+		{100, tabVerdict{Tone: "pass", Text: "Pass"}},
+		{80, tabVerdict{Tone: "pass", Text: "Pass"}},
+		{79, tabVerdict{Tone: "fail", Text: "Fail"}},
+		{0, tabVerdict{Tone: "fail", Text: "Fail"}},
 	} {
 		got := bandVerdict(&c.score)
 		if *got != c.want {
@@ -332,8 +332,8 @@ func TestProjectTabs_Verdicts(t *testing.T) {
 		want  *tabVerdict
 		sub   string
 	}{
-		{"needs attention", scoreCard{HasScore: true, Score: 71, Tone: "fail", Components: 7, NeedAttention: 2}, &tabVerdict{Tone: "fail", Text: "Needs attention"}, "2 of 7 components need attention"},
-		{"healthy", scoreCard{HasScore: true, Score: 84, Tone: "pass", Components: 3, NeedAttention: 1}, &tabVerdict{Tone: "pass", Text: "Healthy"}, "1 of 3 components need attention"},
+		{"needs attention", scoreCard{HasScore: true, Score: 71, Tone: "fail", Components: 7, NeedAttention: 2}, &tabVerdict{Tone: "fail", Text: "Fail"}, "2 of 7 components fail"},
+		{"healthy", scoreCard{HasScore: true, Score: 84, Tone: "pass", Components: 3, NeedAttention: 1}, &tabVerdict{Tone: "pass", Text: "Pass"}, "1 of 3 components fail"},
 		{"empty", scoreCard{}, nil, "no data yet"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -342,10 +342,10 @@ func TestProjectTabs_Verdicts(t *testing.T) {
 				t.Errorf("score tab verdict %+v sub %q, want %+v %q", tabs[0].Verdict, tabs[0].Sub, c.want, c.sub)
 			}
 			want := map[string]*tabVerdict{
-				"sonarqube": {Tone: "fail", Text: "Needs attention"},
-				"trivy":     {Tone: "pass", Text: "Healthy"},
+				"sonarqube": {Tone: "fail", Text: "Fail"},
+				"trivy":     {Tone: "pass", Text: "Pass"},
 				"sentry":    nil,
-				"gitlab":    {Tone: "pass", Text: "Healthy"},
+				"gitlab":    {Tone: "pass", Text: "Pass"},
 			}
 			for _, tab := range tabs[1:] {
 				if !reflect.DeepEqual(tab.Verdict, want[tab.Key]) {
@@ -377,8 +377,8 @@ func TestComponentTabs_Verdicts(t *testing.T) {
 
 	tabs := componentTabs(project, comp, bindings, metric)
 	want := map[string]*tabVerdict{
-		"sonarqube": {Tone: "pass", Text: "Healthy"},
-		"trivy":     {Tone: "fail", Text: "Needs attention", Stale: true},
+		"sonarqube": {Tone: "pass", Text: "Pass"},
+		"trivy":     {Tone: "fail", Text: "Fail", Stale: true},
 		"sentry":    nil, // no score: no band to name
 		"gitlab":    nil, // unbound
 	}
@@ -403,7 +403,7 @@ func TestComponentTabs_Verdicts(t *testing.T) {
 	for _, s := range []string{
 		`lotus-mt-verdict lotus-mt-verdict-pass" data-verdict="pass">`,
 		`lotus-mt-verdict lotus-mt-verdict-fail is-stale" data-verdict="fail">`,
-		"Healthy</span>", "Needs attention</span>",
+		"Pass</span>", "Fail</span>",
 	} {
 		if !strings.Contains(html, s) {
 			t.Errorf("strip lacks %q", s)

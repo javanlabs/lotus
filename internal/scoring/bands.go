@@ -28,8 +28,8 @@ const (
 
 // The bands' words.
 const (
-	WordHealthy        = "Healthy"
-	WordNeedsAttention = "Needs attention"
+	WordPass = "Pass"
+	WordFail = "Fail"
 )
 
 // Why a kind has no score. Each is shown beside a grey "–".
@@ -50,9 +50,9 @@ type BandInfo struct {
 // Band reads a score that exists.
 func Band(score int) BandInfo {
 	if Passes(score) {
-		return BandInfo{Tone: TonePass, Word: WordHealthy}
+		return BandInfo{Tone: TonePass, Word: WordPass}
 	}
-	return BandInfo{Tone: ToneFail, Word: WordNeedsAttention}
+	return BandInfo{Tone: ToneFail, Word: WordFail}
 }
 
 // BandOf reads a score that may be absent; reason is the word shown when

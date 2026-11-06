@@ -65,8 +65,8 @@ func TestScoringDocs_WorkedExampleMatchesTheCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"= 82.75 →", ">64</strong> · Needs attention", "1 of 3 components need attention",
-		sonar.Breakdown, gitlab.Breakdown, "Healthy</strong>", "Needs attention</strong>"} {
+	for _, want := range []string{"= 82.75 →", ">64</strong> · Fail", "1 of 3 components fail",
+		sonar.Breakdown, gitlab.Breakdown, "Pass</strong>", "Fail</strong>"} {
 		if !strings.Contains(string(page), want) {
 			t.Errorf("scoring page lacks %q", want)
 		}

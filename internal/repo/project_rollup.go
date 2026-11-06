@@ -31,7 +31,7 @@ type ProjectRollup struct {
 	Kinds  map[string]KindRollup
 	// Components is how many components were rolled up, and
 	// NeedAttention how many of them have at least one kind below 80 —
-	// "N of M components need attention", the count an average hides.
+	// "N of M components fail", the count an average hides.
 	Components, NeedAttention int
 }
 

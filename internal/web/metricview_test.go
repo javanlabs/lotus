@@ -334,7 +334,7 @@ func TestMetricBreakdowns(t *testing.T) {
 	f := func(v float64) *float64 { return &v }
 	i := func(v int) *int { return &v }
 	sonar := sonarBreakdown(&repo.SonarSnapshot{Coverage: f(90), ReliabilityRating: str("A"), SecurityRating: str("A"), SqaleRating: str("A"), QualityGate: str("ERROR")})
-	if sonar.Score != "48" || sonar.Tone != "fail" || sonar.Word != "Needs attention" || sonar.Text != "Coverage 90 · Worst rating A → 100 · Gate failed ×0.5 = 48" {
+	if sonar.Score != "48" || sonar.Tone != "fail" || sonar.Word != "Fail" || sonar.Text != "Coverage 90 · Worst rating A → 100 · Gate failed ×0.5 = 48" {
 		t.Errorf("sonar = %+v", sonar)
 	}
 	trivy := trivyBreakdown(&repo.TrivySnapshot{Total: 31, Critical: 1, High: 5}, false, "critical")
@@ -345,7 +345,7 @@ func TestMetricBreakdowns(t *testing.T) {
 		t.Errorf("not scanned = %+v", ns)
 	}
 	sentry := sentryBreakdown(repo.SentrySnapshot{Score: i(80), Load: f(5.6), TotalIssues: 4})
-	if sentry.Score != "80" || sentry.Tone != "pass" || sentry.Word != "Healthy" {
+	if sentry.Score != "80" || sentry.Tone != "pass" || sentry.Word != "Pass" {
 		t.Errorf("sentry = %+v", sentry)
 	}
 	gitlab := gitlabBreakdown(&repo.GitlabSnapshot{PipelineSuccessRate: f(0.85), BranchesTotal: i(10), BranchesStale: i(3),

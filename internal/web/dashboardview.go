@@ -465,13 +465,13 @@ func clamp(v, lo, hi int) int {
 
 // buildScoreCard renders the headline tile from a rollup, so "Lotus
 // score" means one thing everywhere: its number, its band, and the count
-// of components needing attention that the average can hide.
+// of components failing that the average can hide.
 func buildScoreCard(roll repo.ProjectRollup) scoreCard {
 	band := scoring.BandOf(roll.Score, "")
 	sc := scoreCard{
 		Tone: string(band.Tone), Word: band.Word,
 		Components: roll.Components, NeedAttention: roll.NeedAttention,
-		Info: "Each tool averaged across the components reporting it, then those averages combined — one vote per tool — and rounded once. Unreported tools are skipped, not zeroed. 80 or more is healthy. The line under it counts the components with any tool below 80, which the average can hide.",
+		Info: "Each tool averaged across the components reporting it, then those averages combined — one vote per tool — and rounded once. Unreported tools are skipped, not zeroed. 80 or more passes. The line under it counts the components with any tool below 80, which the average can hide.",
 	}
 	if roll.Score != nil {
 		sc.HasScore = true
@@ -482,7 +482,7 @@ func buildScoreCard(roll repo.ProjectRollup) scoreCard {
 
 // attentionText is the count a project's verdict always carries.
 func attentionText(need, total int) string {
-	return fmt.Sprintf("%d of %d component%s need%s attention", need, total, plural(total, "", "s"), plural(total, "s", ""))
+	return fmt.Sprintf("%d of %d component%s fail%s", need, total, plural(total, "", "s"), plural(total, "s", ""))
 }
 
 // kpiDefs must stay in bindableKinds order — asserted by
@@ -601,7 +601,7 @@ func buildProjectDashboardViewModel(subtitle string, projects []repo.Project, ta
 	}
 
 	rows := make([]dashboardRow, 0, len(projects))
-	failing := 0 // projects whose score is in the needs-attention band
+	failing := 0 // projects whose score is in the fail band
 	for _, p := range projects {
 		roll := repo.RollupProject(projectMetrics[p.ID])
 		row := projectRow(p, componentCount[p.ID], roll)

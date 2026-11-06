@@ -132,11 +132,11 @@ test('the projects list renders one row per project, with its rolled-up metrics'
   await expect(page.getByText('Payments', { exact: true }).filter({ visible: true })).toBeVisible();
   await expect(page.getByText('billing-api')).not.toBeVisible();
   // Scoped to the row: there are two single-component projects now. The
-  // row's verdict carries how many of its components need attention.
+  // row's verdict carries how many of its components fail.
   await expect(page.locator('.lotus-repo-row:visible', { hasText: 'Payments' })
-    .getByText('1 of 1 component needs attention', { exact: true })).toBeVisible();
+    .getByText('1 of 1 component fails', { exact: true })).toBeVisible();
   await expect(page.locator('.lotus-repo-row:visible', { hasText: 'Identity' })
-    .getByText('0 of 1 component needs attention', { exact: true })).toBeVisible();
+    .getByText('0 of 1 component fails', { exact: true })).toBeVisible();
 
   await page.getByText('Payments', { exact: true }).filter({ visible: true }).click();
   await expect(page.getByText('billing-api')).toBeVisible();

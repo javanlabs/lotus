@@ -92,7 +92,7 @@ func readOnlyDSN(dsn string) (string, error) {
 
 func printPlan(w io.Writer, plan reproject.Plan, quiet bool) {
 	for _, p := range plan.Projects {
-		fmt.Fprintf(w, "%s: %s %s → %s %s · %d of %d components need attention\n", p.Name,
+		fmt.Fprintf(w, "%s: %s %s → %s %s · %d of %d components fail\n", p.Name,
 			score(p.Before.Score), p.Before.Status, score(p.After.Score), p.After.Status, p.After.NeedAttention, p.After.Components)
 		if quiet {
 			continue

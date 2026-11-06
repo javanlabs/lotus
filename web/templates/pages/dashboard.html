@@ -25,17 +25,17 @@
     <div class="lotus-dash-donut-wrap">
       <div class="lotus-dash-donut">
         {{$h := $v.Health}}
-        <svg viewBox="0 0 42 42" role="img" aria-label="{{$h.Pass}} healthy, {{$h.Fail}} needing attention, {{$h.None}} with no data">
+        <svg viewBox="0 0 42 42" role="img" aria-label="{{$h.Pass}} pass, {{$h.Fail}} fail, {{$h.None}} with no data">
           <circle cx="21" cy="21" r="15.9155" class="lotus-dash-donut-track"/>
-          {{if $h.PassLen}}<circle cx="21" cy="21" r="15.9155" class="lotus-dash-arc-pass" pathLength="100" stroke-dasharray="{{$h.PassLen}} 100"><title>{{$h.Pass}} healthy</title></circle>{{end}}
-          {{if $h.FailLen}}<circle cx="21" cy="21" r="15.9155" class="lotus-dash-arc-fail" pathLength="100" stroke-dasharray="{{$h.FailLen}} 100" stroke-dashoffset="{{$h.FailOffset}}"><title>{{$h.Fail}} needing attention</title></circle>{{end}}
+          {{if $h.PassLen}}<circle cx="21" cy="21" r="15.9155" class="lotus-dash-arc-pass" pathLength="100" stroke-dasharray="{{$h.PassLen}} 100"><title>{{$h.Pass}} pass</title></circle>{{end}}
+          {{if $h.FailLen}}<circle cx="21" cy="21" r="15.9155" class="lotus-dash-arc-fail" pathLength="100" stroke-dasharray="{{$h.FailLen}} 100" stroke-dashoffset="{{$h.FailOffset}}"><title>{{$h.Fail}} fail</title></circle>{{end}}
           {{if $h.NoneLen}}<circle cx="21" cy="21" r="15.9155" class="lotus-dash-arc-none" pathLength="100" stroke-dasharray="{{$h.NoneLen}} 100" stroke-dashoffset="{{$h.NoneOffset}}"><title>{{$h.None}} with no data</title></circle>{{end}}
         </svg>
-        <div class="lotus-dash-donut-center"><strong class="{{if eq $h.Tone "none"}}lotus-mt-stat-neutral{{else}}lotus-text-{{$h.Tone}}{{end}}">{{$h.Pct}}</strong><span>healthy</span></div>
+        <div class="lotus-dash-donut-center"><strong class="{{if eq $h.Tone "none"}}lotus-mt-stat-neutral{{else}}lotus-text-{{$h.Tone}}{{end}}">{{$h.Pct}}</strong><span>pass</span></div>
       </div>
       <ul class="lotus-dash-legend">
-        <li><i class="lotus-dash-key is-pass"></i><b>{{$h.Pass}}</b> healthy</li>
-        <li><i class="lotus-dash-key is-fail"></i><b>{{$h.Fail}}</b> need attention</li>
+        <li><i class="lotus-dash-key is-pass"></i><b>{{$h.Pass}}</b> pass</li>
+        <li><i class="lotus-dash-key is-fail"></i><b>{{$h.Fail}}</b> fail</li>
         <li><i class="lotus-dash-key is-none"></i><b>{{$h.None}}</b> no data</li>
       </ul>
     </div>
@@ -68,8 +68,8 @@
     <span class="lotus-panel-note">worst first</span>
     <div class="lotus-panel-tools">
       <ul class="lotus-dash-legend is-row">
-        <li><i class="lotus-dash-key is-pass"></i>Healthy (80–100)</li>
-        <li><i class="lotus-dash-key is-fail"></i>Needs attention (0–79)</li>
+        <li><i class="lotus-dash-key is-pass"></i>Pass (80–100)</li>
+        <li><i class="lotus-dash-key is-fail"></i>Fail (0–79)</li>
         <li><i class="lotus-dash-key is-none"></i>No data</li>
       </ul>
     </div>

@@ -203,14 +203,14 @@ func TestHomeMapCellIsTheScore(t *testing.T) {
 	if got := homeMapCellLabel(trivy); got != "49" {
 		t.Errorf("trivy label = %q, want the score", got)
 	}
-	if got := homeMapCellTitle("trivy", trivy); got != "Trivy: 49 · Needs attention · 1 critical · 5 high · 31 total" {
+	if got := homeMapCellTitle("trivy", trivy); got != "Trivy: 49 · Fail · 1 critical · 5 high · 31 total" {
 		t.Errorf("trivy title = %q", got)
 	}
 	sonar := repo.KindHeadline{Status: "pass", Score: intPtr(96), Grade: "A"}
 	if got := homeMapCellLabel(sonar); got != "96" {
 		t.Errorf("sonarqube label = %q, want the score, not the letter", got)
 	}
-	if got := homeMapCellTitle("sonarqube", sonar); got != "SonarQube: 96 · Healthy · SonarQube worst rating A" {
+	if got := homeMapCellTitle("sonarqube", sonar); got != "SonarQube: 96 · Pass · SonarQube worst rating A" {
 		t.Errorf("sonarqube title = %q", got)
 	}
 }

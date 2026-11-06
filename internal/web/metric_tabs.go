@@ -56,7 +56,7 @@ type tabVerdict struct {
 	Stale bool
 }
 
-// bandVerdict is a score's chip: Healthy or Needs attention. No score
+// bandVerdict is a score's chip: Pass or Fail. No score
 // draws none.
 func bandVerdict(score *int) *tabVerdict {
 	if score == nil {
