@@ -75,6 +75,10 @@ func TestHomeViz_MapIsWorstFirstInTheFixedKindOrder(t *testing.T) {
 	if v.Map[0].Cells[0].Label == "" {
 		t.Error("a cell with no text would be colour alone")
 	}
+	// The project name under a component opens the project.
+	if v.Map[0].ProjectHref != "/projects/beta" || v.Map[1].ProjectHref != "/projects/alpha" {
+		t.Errorf("project links = %q, %q", v.Map[0].ProjectHref, v.Map[1].ProjectHref)
+	}
 }
 
 // The map is the only list of failing components, so past its cap it drops

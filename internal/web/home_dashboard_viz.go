@@ -69,9 +69,9 @@ type homeMapCell struct {
 }
 
 type homeMapRow struct {
-	Name, Project, Href string
-	Failing             int
-	Cells               []homeMapCell
+	Name, Project, Href, ProjectHref string
+	Failing                          int
+	Cells                            []homeMapCell
 }
 
 // homeInsightLink is a component or page an insight names.
@@ -169,7 +169,7 @@ func buildHomeViz(in homeInputs, rates []kpiCard) homeViz {
 		project := &repo.Project{ID: c.ProjectID, Slug: c.ProjectSlug}
 		comp := &repo.Component{ID: c.ID, Slug: c.Slug}
 		projects[c.ProjectSlug] = project
-		row := homeMapRow{Name: c.Name, Project: c.ProjectName, Href: componentURL(project, comp)}
+		row := homeMapRow{Name: c.Name, Project: c.ProjectName, Href: componentURL(project, comp), ProjectHref: projectURL(project)}
 		cm, has := in.Metrics[c.ID]
 		var kinds map[string]repo.KindHeadline
 		if has {

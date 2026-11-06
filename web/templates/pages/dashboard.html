@@ -80,7 +80,7 @@
       <tbody>
         {{range $v.Map}}
         <tr>
-          <th scope="row"><a href="{{.Href}}" class="lotus-dash-title">{{.Name}}</a><span class="lotus-dash-detail">{{.Project}}</span></th>
+          <th scope="row"><a href="{{.Href}}" class="lotus-dash-title">{{.Name}}</a>{{if .ProjectHref}}<a href="{{.ProjectHref}}" class="lotus-dash-detail">{{.Project}}</a>{{else}}<span class="lotus-dash-detail">{{.Project}}</span>{{end}}</th>
           {{range .Cells}}
           <td>{{if .Href}}<a href="{{.Href}}" class="lotus-dash-cell is-{{.Tone}}{{if .Stale}} is-stale{{end}}" title="{{.Title}}">{{.Label}}{{if .Stale}} <span class="lotus-dash-cell-stale">stale</span>{{end}}</a>{{else}}<span class="lotus-dash-cell is-{{.Tone}}" title="{{.Title}}">{{.Label}}</span>{{end}}</td>
           {{end}}
