@@ -101,20 +101,26 @@ type statusView struct {
 	UpdatedAt string // empty with no data
 }
 
-// statusDayVerdict reads a recorded status in the score bands' words.
-// A day recorded since statuses are read from the score (pass at 80 or
-// more) is its score's band; a day recorded before keeps the verdict it
-// was given — past days are never rewritten. Anything but pass or fail —
-// unknown, or no row at all — is No data.
-func statusDayVerdict(status string) (verdict, tone string) {
+// statusDayVerdict reads a recorded day in the score bands' words. A day
+// with a score is that score's band — the colour comes from the number,
+// so a row recorded before statuses were read from the score cannot
+// show "83" in red. A day with no score keeps the verdict it was given.
+// Anything but pass or fail — unknown, or no row at all — is No data,
+// whatever score it carries.
+func statusDayVerdict(status string, score *int) (verdict, tone string) {
 	switch collector.Status(status) {
-	case collector.StatusPass:
-		return scoring.WordHealthy, "pass"
-	case collector.StatusFail:
-		return scoring.WordNeedsAttention, "fail"
+	case collector.StatusPass, collector.StatusFail:
 	default:
-		return scoring.ReasonNoData, "none"
+		return scoring.ReasonNoData, string(scoring.ToneNone)
 	}
+	if score != nil {
+		b := scoring.Band(*score)
+		return b.Word, string(b.Tone)
+	}
+	if collector.Status(status) == collector.StatusPass {
+		return scoring.WordHealthy, string(scoring.TonePass)
+	}
+	return scoring.WordNeedsAttention, string(scoring.ToneFail)
 }
 
 // dayOnOrBefore is the newest of days (ascending) on or before day, or nil.
@@ -142,11 +148,11 @@ func buildStatusView(orgName string, p *repo.Project, days []repo.ProjectStatusD
 	start := statusStripStart(today)
 	v.Cells = make([]statusCell, 0, statusStripDays)
 	for d := start; !d.After(today); d = d.AddDate(0, 0, 1) {
-		status := ""
+		status, score := "", (*int)(nil)
 		if row := dayOnOrBefore(days, d); row != nil {
-			status = row.Status
+			status, score = row.Status, row.Score
 		}
-		verdict, tone := statusDayVerdict(status)
+		verdict, tone := statusDayVerdict(status, score)
 		v.Cells = append(v.Cells, statusCell{
 			Day: d, Tone: tone, Label: d.Format("2 Jan 2006") + " · " + verdict,
 			Href:     "/status/" + p.Slug + "?date=" + d.Format(time.DateOnly),
@@ -162,10 +168,10 @@ func buildStatusView(orgName string, p *repo.Project, days []repo.ProjectStatusD
 
 	row := dayOnOrBefore(days, selected)
 	if row == nil {
-		v.Verdict, v.Tone = statusDayVerdict("")
+		v.Verdict, v.Tone = statusDayVerdict("", nil)
 		return v
 	}
-	v.Verdict, v.Tone = statusDayVerdict(row.Status)
+	v.Verdict, v.Tone = statusDayVerdict(row.Status, row.Score)
 	if v.Tone != "none" && row.Score != nil {
 		v.Score = fmt.Sprintf("%d", *row.Score)
 	}

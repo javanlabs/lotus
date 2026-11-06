@@ -1755,8 +1755,8 @@ a.lotus-dash-detail:hover { color: var(--text-brand); text-decoration: underline
 .lotus-status-section h2 { margin: 0 0 10px; font: 600 10.5px var(--font-mono); letter-spacing: .08em; color: var(--text-label); }
 /* Each bar carries its date inside it, pinned to the bottom so the day
    numbers share one baseline across the strip: the day of the month, and
-   above it the month on the first bar and on each 1st. White on the pass
-   and fail fills (4.6:1 and 7:1), ink on the grey No data fill. */
+   above it the month on the first bar and on each 1st. Bars are soft
+   tints of their state's colour; only the selected bar is solid. */
 .lotus-status-strip { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 3px; }
 .lotus-status-cell {
   display: flex;
@@ -1777,10 +1777,12 @@ a.lotus-dash-detail:hover { color: var(--text-brand); text-decoration: underline
   white-space: nowrap;
   text-decoration: none;
 }
-.lotus-status-cell.is-pass { background: var(--status-pass); color: var(--white); }
-.lotus-status-cell.is-fail { background: var(--status-fail); color: var(--white); }
-.lotus-status-cell.is-selected { outline: 2px solid var(--text-brand); outline-offset: 2px; }
-.lotus-status-cell.is-none.is-selected { color: var(--text-brand); }
+.lotus-status-cell.is-pass { background: var(--status-pass-bg); color: var(--status-pass); }
+.lotus-status-cell.is-fail { background: var(--status-fail-bg); color: var(--status-fail); }
+/* Selected is the only dark bar: the state's solid colour, white text. */
+.lotus-status-cell.is-selected { background: var(--ink-700); color: var(--white); }
+.lotus-status-cell.is-pass.is-selected { background: var(--status-pass); }
+.lotus-status-cell.is-fail.is-selected { background: var(--status-fail); }
 .lotus-status-cell:focus-visible { outline: none; box-shadow: var(--shadow-focus-ring); }
 .lotus-status-month { font-size: 8.5px; font-weight: 600; letter-spacing: .02em; }
 .lotus-status-daynum { font-size: 10px; font-weight: 500; }
@@ -1807,8 +1809,8 @@ a.lotus-dash-detail:hover { color: var(--text-brand); text-decoration: underline
 .lotus-status-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-muted); }
 .lotus-status-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .lotus-status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--status-none-bg); }
-.lotus-status-dot.is-pass { background: var(--status-pass); }
-.lotus-status-dot.is-fail { background: var(--status-fail); }
+.lotus-status-dot.is-pass { background: var(--status-pass-bg); }
+.lotus-status-dot.is-fail { background: var(--status-fail-bg); }
 /* One column per integration, as many as bindableKinds holds: the name
    column is set, the rest flow in. */
 .lotus-status-row {

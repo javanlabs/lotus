@@ -201,6 +201,32 @@ func TestBuildStatusView_NoDataIsNeverPassed(t *testing.T) {
 	}
 }
 
+// A day's colour comes from its score. A row recorded before statuses
+// were read from the score may carry a status that disagrees with it;
+// the page must show the number's band, never "83" in red.
+func TestBuildStatusView_VerdictIsTheScoresBand(t *testing.T) {
+	t.Parallel()
+	s83, s64 := 83, 64
+	days := []repo.ProjectStatusDay{
+		statusDay("2026-10-30", "fail", &s83),
+		statusDay("2026-11-02", "pass", &s64),
+	}
+	p := &repo.Project{Slug: "pay"}
+
+	v := buildStatusView("Acme", p, days, wibDay(2026, 11, 2), wibDay(2026, 10, 31))
+	if v.Score != "83" || v.Verdict != "Healthy" || v.Tone != "pass" {
+		t.Errorf("83 stored as fail: %q %q %q, want 83 Healthy pass", v.Score, v.Verdict, v.Tone)
+	}
+	v = buildStatusView("Acme", p, days, wibDay(2026, 11, 2), wibDay(2026, 11, 2))
+	if v.Score != "64" || v.Verdict != "Needs attention" || v.Tone != "fail" {
+		t.Errorf("64 stored as pass: %q %q %q, want 64 Needs attention fail", v.Score, v.Verdict, v.Tone)
+	}
+	tones := cellTones(v.Cells)
+	if tones["2026-10-31"] != "pass" || tones["2026-11-02"] != "fail" {
+		t.Errorf("bars = %v, want Oct 31 pass and Nov 2 fail", tones)
+	}
+}
+
 // stripLabels is the strip as it reads under the bars: "OCT 7" where a
 // month is marked, "8" where only the day is.
 func stripLabels(cells []statusCell) []string {
