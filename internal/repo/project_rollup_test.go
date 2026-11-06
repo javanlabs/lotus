@@ -23,9 +23,9 @@ func kh(status string, s *int) repo.KindHeadline {
 // function exists rather than a flat average over every component.
 //
 // Here nine components report only GitLab at 90, and one reports only
-// SonarQube at 30. A flat average would be 84 — SonarQube outvoted nine to
+// SonarQube at 80. A flat average would be 89 — SonarQube outvoted nine to
 // one purely because more repos happen to report GitLab. Averaging each
-// kind first gives (90 + 30) / 2 = 60: every integration a project uses
+// kind first gives (90 + 80) / 2 = 85: every integration a project uses
 // weighs the same, so adding a tenth repo does not silently reweight the
 // project's health.
 func TestRollupProject_AveragesPerKindBeforeCombining(t *testing.T) {
@@ -34,11 +34,11 @@ func TestRollupProject_AveragesPerKindBeforeCombining(t *testing.T) {
 	for i := 0; i < 9; i++ {
 		comps = append(comps, cm(map[string]repo.KindHeadline{"gitlab": kh("pass", score(90))}))
 	}
-	comps = append(comps, cm(map[string]repo.KindHeadline{"sonarqube": kh("fail", score(30))}))
+	comps = append(comps, cm(map[string]repo.KindHeadline{"sonarqube": kh("pass", score(80))}))
 
 	got := repo.RollupProject(comps)
-	if got.Score == nil || *got.Score != 60 {
-		t.Fatalf("Score = %v, want 60 (per-kind average, not the flat 84)", got.Score)
+	if got.Score == nil || *got.Score != 85 {
+		t.Fatalf("Score = %v, want 85 (per-kind average, not the flat 89)", got.Score)
 	}
 	if got.Kinds["gitlab"].Count != 9 || got.Kinds["sonarqube"].Count != 1 {
 		t.Fatalf("Counts = gitlab:%d sonarqube:%d, want 9 and 1",
@@ -46,9 +46,9 @@ func TestRollupProject_AveragesPerKindBeforeCombining(t *testing.T) {
 	}
 }
 
-// A project's status is read from its score: no cap at project level, so
-// one failing kind lowers the average rather than overriding it. The
-// count of components needing attention is what the average cannot hide.
+// A project's status is read from its score: if a component fails (< 80),
+// the project score is capped at the lowest component's score, so the
+// project fails too.
 func TestRollupProject_StatusIsTheBandOfTheScore(t *testing.T) {
 	t.Parallel()
 	got := repo.RollupProject([]repo.ComponentMetric{
@@ -56,9 +56,10 @@ func TestRollupProject_StatusIsTheBandOfTheScore(t *testing.T) {
 		cm(map[string]repo.KindHeadline{"sonarqube": kh("fail", score(70))}),
 		cm(map[string]repo.KindHeadline{"trivy": kh("unknown", nil)}),
 	})
-	// (95 + 90 + 70) / 3 = 85 — Trivy has no score and is left out.
-	if got.Score == nil || *got.Score != 85 || got.Status != collector.StatusPass {
-		t.Fatalf("rollup = %v %q, want 85 pass", got.Score, got.Status)
+	// Without cap: (95 + 90 + 70) / 3 = 85.
+	// But component 2 failed at 70, so the project score is capped at 70.
+	if got.Score == nil || *got.Score != 70 || got.Status != collector.StatusFail {
+		t.Fatalf("rollup = %v %q, want 70 fail", got.Score, got.Status)
 	}
 	if got.Components != 3 || got.NeedAttention != 1 {
 		t.Fatalf("need attention = %d of %d, want 1 of 3", got.NeedAttention, got.Components)
@@ -68,6 +69,27 @@ func TestRollupProject_StatusIsTheBandOfTheScore(t *testing.T) {
 	}
 	if k := got.Kinds["trivy"]; k.Score != nil || k.Status != collector.StatusUnknown || k.Count != 1 || k.Scored != 0 {
 		t.Fatalf("trivy kind = %+v, want no score, unknown, reported once", k)
+	}
+}
+
+func TestRollupProject_CapsAtLowestFailingComponentScore(t *testing.T) {
+	t.Parallel()
+	// Storefront example: 64, 98, 98 -> per-tool average is 83, capped at 64.
+	got := repo.RollupProject([]repo.ComponentMetric{
+		cm(map[string]repo.KindHeadline{
+			"sonarqube": kh("fail", score(48)), "trivy": kh("fail", score(49)),
+			"sentry": kh("pass", score(80)), "gitlab": kh("fail", score(79)),
+		}),
+		cm(map[string]repo.KindHeadline{
+			"sonarqube": kh("pass", score(95)), "trivy": kh("pass", score(100)),
+			"gitlab": kh("pass", score(98)),
+		}),
+		cm(map[string]repo.KindHeadline{
+			"trivy": kh("pass", score(100)), "sentry": kh("pass", score(96)),
+		}),
+	})
+	if got.Score == nil || *got.Score != 64 || got.Status != collector.StatusFail {
+		t.Fatalf("Storefront rollup = %v %q, want 64 fail", got.Score, got.Status)
 	}
 }
 

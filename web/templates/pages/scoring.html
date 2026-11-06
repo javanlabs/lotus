@@ -156,7 +156,9 @@
       <strong>A project's Lotus score</strong> takes one extra step. Lotus first averages each tool
       across every component that has a score for it — all your SonarQube scores together, all your
       Trivy scores together — and then averages those per-tool results. Nothing is rounded until the
-      very end; the project's score is rounded once. Its colour and word are its band.
+      very end; the project's score is rounded once. If any component has failed (score below 80),
+      the project's score is capped at the lowest component's score: a project cannot be healthy
+      while one of its components is failing. Its colour and word are its band.
     </p>
 
     <div style="margin:12px 0 0;padding:12px 14px;background:rgba(35,128,143,.06);border-radius:10px 3px 10px 3px">
@@ -270,7 +272,9 @@
           <span style="font:500 12px 'IBM Plex Mono',monospace">Sentry: (80 + 96) ÷ 2 = <strong>88</strong></span><br>
           <span style="font:500 12px 'IBM Plex Mono',monospace">GitLab: (79 + 98) ÷ 2 = <strong>88.5</strong></span><br>
           Then average those four and round once:<br>
-          <span style="font:500 12px 'IBM Plex Mono',monospace">(71.5 + 83 + 88 + 88.5) ÷ 4 = 82.75 → <strong style="color:#43284E">83</strong> · Healthy</span>
+          <span style="font:500 12px 'IBM Plex Mono',monospace">(71.5 + 83 + 88 + 88.5) ÷ 4 = 82.75 → 83</span><br>
+          Because payment-api failed (64), the project score is capped at the lowest component score:<br>
+          <span style="font:500 12px 'IBM Plex Mono',monospace">capped at 64 → <strong style="color:#A94D68">64</strong> · Needs attention</span>
           <span style="font-size:11.5px;color:#6B7280">&nbsp;&larr; Storefront&rsquo;s Lotus score</span><br>
           The project's tool tabs show those per-tool averages rounded for display — SonarQube 72,
           Trivy 83, Sentry 88, GitLab 89 — each with how many components are below 80.
@@ -279,19 +283,21 @@
     </div>
 
     <div style="margin-top:14px;padding:12px 14px;background:var(--surface-danger-soft);border-radius:10px 3px 10px 3px">
-      <div style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#A94D68">WHAT THE AVERAGE HIDES</div>
+      <div style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#A94D68">A FAILING COMPONENT CAPS THE PROJECT</div>
       <p style="margin:6px 0 0;font-size:12.5px;color:var(--ink-700);line-height:1.65">
-        Storefront reads <strong>83 · Healthy</strong>, and its verdict says
+        Storefront's per-tool average is 83, but its Lotus score reads
+        <strong>64 · Needs attention</strong>, and its verdict says
         <strong>1 of 3 components need attention</strong>: payment-api has three tools below 80 —
-        a failed quality gate, a critical vulnerability, a GitLab score one point short. Those three
-        are where this project's work is. Fixing the critical alone lifts payment-api's Trivy from 49
-        to 75, its component to 71, and the project to 85.
+        a failed quality gate, a critical vulnerability, a GitLab score one point short.
+        A project is only as healthy as its weakest component: if any component fails (&lt; 80),
+        the project's Lotus score is capped at the lowest component score (64).
       </p>
       <p style="margin:6px 0 0;font-size:12.5px;color:var(--ink-700);line-height:1.65">
-        Note too that the Lotus score is <strong>not</strong> the average of the component scores —
+        Note too that the un-capped Lotus score is <strong>not</strong> the average of the component scores —
         that would be <span style="font:500 12px 'IBM Plex Mono',monospace">(64 + 98 + 98) ÷ 3 = 87</span>.
         Per-tool averaging gives SonarQube's two measurements a full quarter of the project, instead
-        of letting components that don't run SonarQube dilute them.
+        of letting components that don't run SonarQube dilute them. Once payment-api passes, Storefront
+        unblocks to its full per-tool score.
       </p>
     </div>
   {{template "lotus_card_section_close" .}}

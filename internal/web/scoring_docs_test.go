@@ -52,8 +52,8 @@ func TestScoringDocs_WorkedExampleMatchesTheCode(t *testing.T) {
 		}
 	}
 	roll := repo.RollupProject(components)
-	if roll.Score == nil || *roll.Score != 83 || roll.NeedAttention != 1 || roll.Components != 3 {
-		t.Fatalf("project = %v, %d of %d need attention; want 83, 1 of 3", roll.Score, roll.NeedAttention, roll.Components)
+	if roll.Score == nil || *roll.Score != 64 || roll.NeedAttention != 1 || roll.Components != 3 || roll.Status != "fail" {
+		t.Fatalf("project = %v %q, %d of %d need attention; want 64 fail, 1 of 3", roll.Score, roll.Status, roll.NeedAttention, roll.Components)
 	}
 	for kind, want := range map[string]int{"sonarqube": 72, "trivy": 83, "sentry": 88, "gitlab": 89} {
 		if k := roll.Kinds[kind]; k.Score == nil || *k.Score != want {
@@ -65,7 +65,7 @@ func TestScoringDocs_WorkedExampleMatchesTheCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"= 82.75 →", ">83</strong> · Healthy", "1 of 3 components need attention",
+	for _, want := range []string{"= 82.75 →", ">64</strong> · Needs attention", "1 of 3 components need attention",
 		sonar.Breakdown, gitlab.Breakdown, "Healthy</strong>", "Needs attention</strong>"} {
 		if !strings.Contains(string(page), want) {
 			t.Errorf("scoring page lacks %q", want)

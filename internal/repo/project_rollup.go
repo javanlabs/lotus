@@ -48,14 +48,16 @@ type ProjectRollup struct {
 // counted as zero.
 //
 // Nothing is rounded until the end: the per-kind averages are combined
-// unrounded and the project's score is rounded once, half up. There is no
-// cap at this level; a kind's hard failure has already capped that kind's
-// own score. The status is read from the score, so a project's verdict is
+// unrounded and the project's score is rounded once, half up. If any
+// component has failed (score < 80), the project score is capped at the
+// lowest component score: a project cannot pass while one of its components
+// fails. The status is read from the score, so a project's verdict is
 // its band — and NeedAttention says how many components that average is
 // hiding.
 func RollupProject(components []ComponentMetric) ProjectRollup {
 	perKindScores := map[string][]*int{}
 	roll := ProjectRollup{Components: len(components)}
+	var minCompScore *int
 
 	for _, c := range components {
 		kinds := c.Metrics()
@@ -64,6 +66,16 @@ func RollupProject(components []ComponentMetric) ProjectRollup {
 		}
 		for kind, kh := range kinds {
 			perKindScores[kind] = append(perKindScores[kind], kh.Score)
+		}
+
+		compScore := c.Score
+		if compScore == nil && len(kinds) > 0 {
+			_, compScore = ComponentRollup(kinds)
+		}
+		if compScore != nil {
+			if minCompScore == nil || *compScore < *minCompScore {
+				minCompScore = compScore
+			}
 		}
 	}
 
@@ -86,6 +98,10 @@ func RollupProject(components []ComponentMetric) ProjectRollup {
 	}
 
 	roll.Score = scoring.Rounded(scoring.AverageFloat(kindAvgs))
+	if minCompScore != nil && !scoring.Passes(*minCompScore) && roll.Score != nil {
+		capped := scoring.Cap(*roll.Score, *minCompScore)
+		roll.Score = &capped
+	}
 	roll.Status = collector.StatusForScore(roll.Score)
 	return roll
 }
